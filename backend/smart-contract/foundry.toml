@@ -1,0 +1,11 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+polygonzkevm_rpc_url = "https://polygonzkevm-cardona.g.alchemy.com/v2/Ys7mXBCGPyrC30IezKb1b362vYOI1XBL"
+test = "test"
+
+[profile.remappings]
+forge-std = "lib/forge-std/src/"
+
+solc = "0.8.29"
