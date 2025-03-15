@@ -50,7 +50,7 @@ AetherDEX/
 
 - [Node.js](https://nodejs.org/) (v16+)
 - [Foundry](https://book.getfoundry.sh/) for smart contract development
-- [Yarn](https://yarnpkg.com/) or [npm](https://www.npmjs.com/) for package management
+- [bun](https://bunpkg.com/) or [npm](https://www.npmjs.com/) for package management
 - An Ethereum wallet (e.g., MetaMask)
 - Basic understanding of DeFi and AMM concepts
 
@@ -70,7 +70,7 @@ AetherDEX/
    
    # Frontend
    cd ../../interface/web
-   yarn install
+   bun install
    ```
 
 ## Development
@@ -92,7 +92,7 @@ Start the development server:
 
 ```bash
 cd interface/web
-yarn dev
+bun dev
 ```
 
 The application will be available at `http://localhost:3000`.
@@ -114,7 +114,7 @@ Build and deploy the frontend:
 
 ```bash
 cd interface/web
-yarn build
+bun build
 ```
 
 Deploy the built files from the `dist` directory to your preferred hosting service.
@@ -130,7 +130,7 @@ forge test -vvv
 
 # Frontend tests
 cd interface/web
-yarn test
+bun test
 ```
 
 ## Security
