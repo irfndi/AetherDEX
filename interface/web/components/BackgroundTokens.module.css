@@ -1,0 +1,32 @@
+.container {
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  pointer-events: none;
+  overflow: hidden;
+  backdrop-filter: blur(3px);
+  background-color: hsl(var(--background) / 0.5);
+}
+
+.token {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  opacity: 0.25;
+  filter: blur(0.75rem);
+  will-change: transform, filter;
+  transition: all 2s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: pulse 4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}

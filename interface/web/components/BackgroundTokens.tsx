@@ -1,82 +1,76 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
+import styles from "./BackgroundTokens.module.css";
 
 const tokens = [
-  "ETH",
-  "BTC",
-  "USDT",
-  "BNB",
-  "XRP",
-  "ADA",
-  "DOGE",
-  "SOL",
-  "DOT",
-  "MATIC",
-  "LTC",
-  "TRX",
-  "SHIB",
-  "AVAX",
-  "UNI",
-  "LINK",
-  "XLM",
-  "XMR",
-  "ETC",
-  "ICP",
-  "FIL",
-  "VET",
-  "EGLD",
-  "AAVE",
-  "EOS",
-  "THETA",
-  "XTZ",
-  "NEO",
-  "BSV",
-  "ZEC",
+  "ETH", "BTC", "USDT", "BNB", "XRP", "ADA", "DOGE", "SOL", "DOT", "MATIC",
+  "LTC", "TRX", "SHIB", "AVAX", "UNI", "LINK", "XLM", "XMR", "ETC", "ICP",
+  "FIL", "VET", "EGLD", "AAVE", "EOS", "THETA", "XTZ", "NEO", "BSV", "ZEC"
 ];
 
 export const BackgroundTokens = () => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const container = containerRef.current
-    if (!container) return
+    console.log("BackgroundTokens useEffect running");
+    const container = containerRef.current;
+    if (!container) return;
 
-    let animationFrameId = requestAnimationFrame(animate); // Changed const to let
-
-    function animate() {
-      if (!container) return; // Added null check for container
-
-      const elements = Array.from(container.children) as HTMLElement[]
-      for (const element of elements) { // Replaced forEach with for...of
-        const x = Math.random() * 100
-        const y = Math.random() * 100
-        const duration = Math.random() * 1 + 1
-        const delay = Math.random() * 5
-        const size = Math.random() * 1.5 + 1.5
-
-        element.style.setProperty("--x", `${x}%`)
-        element.style.setProperty("--y", `${y}%`)
-        element.style.setProperty("--animation-duration", `${duration}s`)
-        element.style.setProperty("--animation-delay", `${delay}s`)
-        element.style.setProperty("--scale", `${size}`)
-      }
-
-      animationFrameId = requestAnimationFrame(animate)
+    // Initial positions and styles for each element
+    const elements = Array.from(container.children) as HTMLElement[];
+    for (const element of elements) {
+      // Set initial position
+      const x = Math.random() * 90 + 5; // Keep within 5-95% to avoid edge clipping
+      const y = Math.random() * 90 + 5;
+      element.style.transform = `translate(${x}vw, ${y}vh)`;
+      
+      // Set color with animation
+      const hue = Math.random() * 360;
+      element.style.backgroundColor = `hsl(${hue}deg, 100%, 50%)`;
+      element.style.filter = `saturate(${Math.random() * 0.5 + 0.5})`;
+      
+      // Randomize animation properties
+      const duration = 2 + Math.random() * 2;
+      const delay = Math.random() * -2;
+      element.style.transition = `
+        transform ${duration}s cubic-bezier(0.4, 0, 0.2, 1),
+        filter 2s ease-in-out
+      `;
+      element.style.animationDelay = `${delay}s`;
     }
+
+    const animate = () => {
+      for (const element of elements) {
+        const x = Math.random() * 90 + 5;
+        const y = Math.random() * 90 + 5;
+        const scale = 0.8 + Math.random() * 0.4;
+        element.style.transform = `translate(${x}vw, ${y}vh) scale(${scale})`;
+        element.style.filter = `saturate(${Math.random() * 0.5 + 0.5})`;
+      }
+    };
+
+    // Initial animation
+    animate();
+
+    // Set up interval for continuous animation
+    const intervalId = setInterval(animate, 4000);
 
     return () => {
-      cancelAnimationFrame(animationFrameId)
-    }
-  }, [])
+      clearInterval(intervalId);
+    };
+  }, []);
 
   return (
-    <div ref={containerRef} className="fixed inset-0 pointer-events-none overflow-hidden">
-      {tokens.map((token) => ( // Removed index 'i'
+    <div
+      ref={containerRef}
+      className={styles.container}
+    >
+      {tokens.map((token) => (
         <div
-          key={token} // Using token as key
-          className="absolute w-10 h-10 rounded-full opacity-30 blur-sm"
-          style={{
+          key={token}
+          className={styles.token}
+          style={{ 
             backgroundColor: `hsl(${Math.random() * 360}deg, 100%, 50%)`,
           }}
         />

@@ -62,9 +62,9 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen text-foreground" style={{ backgroundColor: 'lightgreen' }}>
       <Header
-        onWalletConnect={(address) => console.log("Connected:", address)} // Passing onWalletConnect prop
+        onWalletConnect={(address) => console.log("Connected:", address)}
       />
       <BackgroundTokens />
       <main className="pt-32 px-4">

@@ -51,10 +51,22 @@ AetherDEX smart contracts are being developed in three phases, mirroring the ove
 
 ## Technology Stack
 
--   **Smart Contract Language:** Solidity (latest stable version)
+-   **Smart Contract Language:** Solidity 0.8.29
 -   **Development & Testing Framework:** Foundry
 -   **Security Libraries:** OpenZeppelin
 -   **Target Blockchains:** Polygon zkEVM Cardona (initial focus), Solana, Ethereum, Binance Smart Chain (BSC)
+
+## Version Management
+
+-   **Current Solidity Version:** 0.8.29 (March 2025)
+-   **Upgrade Benefits:**
+    -   Enhanced security features and bug fixes
+    -   Improved compiler optimizations
+    -   Better type checking and error handling
+-   **Compatibility:** All contracts are compatible with Solidity 0.8.29, with special attention to:
+    -   TWAP Oracle initialization
+    -   Struct parameter handling
+    -   Type safety improvements
 
 ## Testing and Deployment
 
