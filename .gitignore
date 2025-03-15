@@ -63,3 +63,4 @@ debug.log
 *.pem
 .vercel
 .turbo
+.goose
