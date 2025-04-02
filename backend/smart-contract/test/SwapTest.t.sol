@@ -127,7 +127,7 @@ contract AetherTest is
         // Verify that re-initialization reverts
         vm.startPrank(address(factory));
         vm.expectRevert("INITIALIZED");
-        newPool.initialize(address(newTokenA), address(newTokenB));
+        newPool.initialize(address(newTokenA), address(newTokenB), uint24(3000), address(factory));
         vm.stopPrank();
     }
 

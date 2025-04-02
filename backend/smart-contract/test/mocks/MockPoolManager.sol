@@ -1,142 +1,224 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.29; // UPDATED PRAGMA VERSION TO 0.8.29
+pragma solidity ^0.8.29;
 
-import {IPoolManager, BalanceDelta} from "../../src/interfaces/IPoolManager.sol";
+import {IPoolManager} from "../../src/interfaces/IPoolManager.sol";
+import {AetherPool} from "../../src/AetherPool.sol";
+import {BaseHook} from "../../src/hooks/BaseHook.sol";
+import {Hooks} from "../../src/libraries/Hooks.sol";
 import {PoolKey} from "../../src/types/PoolKey.sol";
+import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-// Define IHooks interface for testing
-interface IHooks {
-    function beforeSwap(
-        address sender,
-        PoolKey calldata key,
-        IPoolManager.SwapParams calldata params,
-        bytes calldata data
-    ) external returns (bytes4);
+contract MockPoolManager is IPoolManager {
+    // AetherPool public immutable pool; // Make mutable to break constructor dependency
+    AetherPool public pool;
+    // address public immutable hookAddress; // Make mutable for test setup flexibility
+    address public hookAddress;
+    BalanceDelta private _balanceDelta;
 
-    function afterSwap(
-        address sender,
-        PoolKey calldata key,
-        IPoolManager.SwapParams calldata params,
-        BalanceDelta memory delta,
-        bytes calldata data
-    ) external returns (bytes4);
+    // Events
+    event SwapHookCalled(bool beforeSwap, address sender, BalanceDelta delta);
+    event HookError(string reason);
 
-    function beforeModifyPosition(
-        address sender,
-        PoolKey calldata key,
-        IPoolManager.ModifyPositionParams calldata params,
-        bytes calldata data
-    ) external returns (bytes4);
-
-    function afterModifyPosition(
-        address sender,
-        PoolKey calldata key,
-        IPoolManager.ModifyPositionParams calldata params,
-        BalanceDelta memory delta,
-        bytes calldata data
-    ) external returns (bytes4);
-}
-
-/**
- * @title MockPoolManager
- * @dev A mock implementation of the IPoolManager interface for testing hooks
- */
-contract MockPoolManager {
-    // Tracking variables to verify hook calls
-    bool public beforeSwapCalled;
-    bool public afterSwapCalled;
-    bool public beforeModifyPositionCalled;
-    bool public afterModifyPositionCalled;
-
-    // Current balance delta for testing
-    BalanceDelta private balanceDelta;
-
-    // Mapping to track initialized pools
-    mapping(bytes32 => bool) public pools;
-
-    /**
-     * @notice Initialize a new pool
-     * @param key The pool key identifying the pool
-     */
-    function initialize(PoolKey calldata key) external returns (int24 tick) {
-        bytes32 poolId = keccak256(abi.encode(key));
-        pools[poolId] = true;
-        return 0; // Initial tick
+    // Constructor now only takes the hook address, pool is set later
+    constructor(address _hookAddress) {
+        // pool = AetherPool(_pool); // Pool address set later via setPool
+        hookAddress = _hookAddress; // Can be address(0) initially
     }
 
-    /**
-     * @notice Set the balance delta for testing
-     * @param amount0 The delta for token0
-     * @param amount1 The delta for token1
-     */
-    function setBalanceDelta(int256 amount0, int256 amount1) external {
-        balanceDelta = BalanceDelta(amount0, amount1);
+    // Function to set the pool address after deployment
+    function setPool(address _poolAddress) external {
+        require(address(pool) == address(0), "MPM: Pool already set");
+        pool = AetherPool(_poolAddress);
     }
 
-    /**
-     * @notice Get the current balance delta
-     * @return The current balance delta
-     */
-    function getBalanceDelta() external view returns (BalanceDelta memory) {
-        return balanceDelta;
+    // Function to update hook address after deployment
+    function setHookAddress(address _newHookAddress) external {
+        hookAddress = _newHookAddress;
     }
 
-    /**
-     * @notice Mock implementation of the swap function
-     */
-    function swap(PoolKey calldata key, IPoolManager.SwapParams calldata params, bytes calldata hookData)
+    function swap(PoolKey calldata key, SwapParams calldata params, bytes calldata hookData)
         external
+        override
         returns (BalanceDelta memory delta)
     {
-        // Verify the pool exists
-        bytes32 poolId = keccak256(abi.encode(key));
-        require(pools[poolId], "Pool not initialized");
+        // Validate key
+        _validateKey(key);
 
-        // Call hooks
-        if (address(key.hooks) != address(0)) {
-            beforeSwapCalled = true;
-            // Call beforeSwap hook
-            bytes4 selector = IHooks(key.hooks).beforeSwap(msg.sender, key, params, hookData);
-            require(selector == IHooks.beforeSwap.selector, "Invalid beforeSwap selector");
+        // Handle pre-swap hook
+        _handleBeforeSwapHook(key, params, hookData);
 
-            // Simulate swap
+        // Execute swap and get delta
+        delta = _executeSwap(key, params);
 
-            afterSwapCalled = true;
-            // Call afterSwap hook
-            selector = IHooks(key.hooks).afterSwap(msg.sender, key, params, balanceDelta, hookData);
-            require(selector == IHooks.afterSwap.selector, "Invalid afterSwap selector");
-        }
+        // Handle post-swap hook
+        _handleAfterSwapHook(key, params, delta, hookData);
 
-        return balanceDelta;
+        return delta;
     }
 
-    /**
-     * @notice Mock implementation of the modifyPosition function
-     */
-    function modifyPosition(
-        PoolKey calldata key,
-        IPoolManager.ModifyPositionParams calldata params,
-        bytes calldata hookData
-    ) external returns (BalanceDelta memory delta) {
-        // Verify the pool exists
-        bytes32 poolId = keccak256(abi.encode(key));
-        require(pools[poolId], "Pool not initialized");
+    function _validateKey(PoolKey calldata key) internal view {
+        require(key.token0 == pool.token0(), "MPM: Invalid token0");
+        require(key.token1 == pool.token1(), "MPM: Invalid token1");
+        require(key.hooks == hookAddress, "MPM: Invalid hook address");
+    }
 
-        // Call hooks
-        if (address(key.hooks) != address(0)) {
-            beforeModifyPositionCalled = true;
-            // Call beforeModifyPosition hook
-            bytes4 selector = IHooks(key.hooks).beforeModifyPosition(msg.sender, key, params, hookData);
-            require(selector == IHooks.beforeModifyPosition.selector, "Invalid beforeModifyPosition selector");
+    function _handleBeforeSwapHook(PoolKey calldata key, SwapParams calldata params, bytes calldata hookData)
+        internal
+    {
+        if (hookAddress != address(0) && Hooks.hasPermission(hookAddress, Hooks.BEFORE_SWAP_FLAG)) {
+            try BaseHook(hookAddress).beforeSwap(msg.sender, key, params, hookData) returns (bytes4 selector) {
+                require(selector == BaseHook.beforeSwap.selector, "MPM: Invalid hook selector");
+                emit SwapHookCalled(true, msg.sender, BalanceDelta(0, 0));
+            } catch Error(string memory reason) {
+                emit HookError(reason);
+                revert(reason);
+            }
+        }
+    }
 
-            // Simulate position modification
+    function _executeSwap(PoolKey calldata key, SwapParams calldata params) internal returns (BalanceDelta memory) {
+        require(params.amountSpecified > 0, "MPM: Mock only supports exact input swaps");
 
-            afterModifyPositionCalled = true;
-            // Call afterModifyPosition hook
-            selector = IHooks(key.hooks).afterModifyPosition(msg.sender, key, params, balanceDelta, hookData);
-            require(selector == IHooks.afterModifyPosition.selector, "Invalid afterModifyPosition selector");
+        uint256 amountIn = uint256(params.amountSpecified);
+        (address tokenIn, address tokenOut) = params.zeroForOne ? (key.token0, key.token1) : (key.token1, key.token0);
+
+        // Record balances
+        uint256 balanceInBefore = IERC20(tokenIn).balanceOf(address(pool));
+        uint256 balanceOutBefore = IERC20(tokenOut).balanceOf(address(pool));
+
+        // Execute swap
+        pool.swap(amountIn, tokenIn, msg.sender, msg.sender);
+
+        // Calculate delta
+        return _calculateDelta(
+            params.zeroForOne,
+            balanceInBefore,
+            balanceOutBefore,
+            IERC20(tokenIn).balanceOf(address(pool)),
+            IERC20(tokenOut).balanceOf(address(pool))
+        );
+    }
+
+    function _calculateDelta(
+        bool zeroForOne,
+        uint256 balanceInBefore,
+        uint256 balanceOutBefore,
+        uint256 balanceInAfter,
+        uint256 balanceOutAfter
+    ) internal pure returns (BalanceDelta memory) {
+        int256 amount0Change;
+        int256 amount1Change;
+
+        if (zeroForOne) {
+            amount0Change = int256(balanceInAfter - balanceInBefore);
+            amount1Change = int256(balanceOutAfter) - int256(balanceOutBefore);
+        } else {
+            amount1Change = int256(balanceInAfter - balanceInBefore);
+            amount0Change = int256(balanceOutAfter) - int256(balanceOutBefore);
         }
 
-        return balanceDelta;
+        return BalanceDelta(amount0Change, amount1Change);
+    }
+
+    function _handleAfterSwapHook(
+        PoolKey calldata key,
+        SwapParams calldata params,
+        BalanceDelta memory delta,
+        bytes calldata hookData
+    ) internal {
+        if (hookAddress != address(0) && Hooks.hasPermission(hookAddress, Hooks.AFTER_SWAP_FLAG)) {
+            try BaseHook(hookAddress).afterSwap(msg.sender, key, params, delta, hookData) returns (bytes4 selector) {
+                require(selector == BaseHook.afterSwap.selector, "MPM: Invalid hook selector");
+                emit SwapHookCalled(false, msg.sender, delta);
+            } catch Error(string memory reason) {
+                emit HookError(reason);
+                revert(reason);
+            }
+        }
+    }
+
+    // Testing helper functions
+    function setBalanceDelta(int256 amount0, int256 amount1) external {
+        _balanceDelta = BalanceDelta(amount0, amount1);
+    }
+
+    function getBalanceDelta() public view returns (BalanceDelta memory) {
+        return _balanceDelta;
+    }
+
+    // State variables to track initialization
+    mapping(bytes32 => bool) public initializedPools; // Use poolId for mapping
+    mapping(bytes32 => uint160) public initialSqrtPriceX96;
+    mapping(bytes32 => int24) public initialTick; // Store the initial tick
+
+    // Required interface stubs
+    function modifyPosition(PoolKey calldata, ModifyPositionParams calldata, bytes calldata)
+        external
+        override
+        returns (BalanceDelta memory)
+    {
+        revert("MPM: Not implemented");
+    }
+
+    function donate(PoolKey calldata, uint256, uint256, bytes calldata) external override {
+        revert("MPM: Not implemented");
+    }
+
+    /// @inheritdoc IPoolManager
+    function initialize(PoolKey calldata key, uint160 sqrtPriceX96, bytes calldata hookData)
+        external
+        override
+    {
+        // Basic implementation for mock: store initialization status and parameters
+        bytes32 poolId = keccak256(abi.encode(key)); // Correctly calculate poolId hash
+        require(!initializedPools[poolId], "MPM: Pool already initialized");
+
+        initializedPools[poolId] = true;
+        initialSqrtPriceX96[poolId] = sqrtPriceX96;
+        // Simulate calculating tick from sqrtPriceX96 (can be simplified for mock)
+        // For simplicity, let's just use 0 or a fixed value.
+        // If tests require a specific tick calculation, this needs refinement.
+        int24 tick = 0; // Placeholder tick value, now a local variable
+        initialTick[poolId] = tick; // Store the mock tick
+
+        // Optionally, call hook if present and has permission
+        if (key.hooks != address(0) && Hooks.hasPermission(key.hooks, Hooks.AFTER_INITIALIZE_FLAG)) {
+            // Remove the 'tick' argument as BaseHook.afterInitialize expects only 4 arguments
+            try BaseHook(key.hooks).afterInitialize(msg.sender, key, sqrtPriceX96, hookData) returns (
+                bytes4 selector
+            ) {
+                require(selector == BaseHook.afterInitialize.selector, "MPM: Invalid afterInitialize hook selector");
+            } catch Error(string memory reason) {
+                // Handle or log hook error if necessary for testing
+                revert(reason);
+            }
+        }
+        // No revert needed here as we are implementing the function
+    }
+
+    function getPool(PoolKey calldata key) external view override returns (Pool memory) {
+        require(key.token0 == pool.token0() && key.token1 == pool.token1(), "MPM: Pool not found");
+        return Pool({token0: pool.token0(), token1: pool.token1(), fee: 3000, tickSpacing: 60, hooks: hookAddress});
+    }
+
+    function take(PoolKey calldata, address, uint256, uint256, bytes calldata) external override {
+        revert("MPM: Not implemented");
+    }
+
+    function settle(address) external override returns (BalanceDelta memory, BalanceDelta memory) {
+        revert("MPM: Not implemented");
+    }
+
+    function mint(address, PoolKey calldata, uint256, uint256, bytes calldata) external override {
+        revert("MPM: Not implemented");
+    }
+
+    function burn(address, PoolKey calldata, uint256, uint256, bytes calldata) external override {
+        revert("MPM: Not implemented");
+    }
+
+    function validateHookAddress(bytes32) external view override returns (bool) {
+        return hookAddress != address(0);
     }
 }

@@ -7,9 +7,11 @@ import {TWAPOracleHook} from "../../src/hooks/TWAPOracleHook.sol";
 import {DynamicFeeHook} from "../../src/hooks/DynamicFeeHook.sol";
 import {FeeRegistry} from "../../src/FeeRegistry.sol";
 import {IPoolManager, BalanceDelta} from "../../src/interfaces/IPoolManager.sol";
+import {Hooks} from "../../src/libraries/Hooks.sol";
 import {PoolKey} from "../../src/types/PoolKey.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockPoolManager} from "../mocks/MockPoolManager.sol";
+import {HookFactory} from "../utils/HookFactory.sol";
 
 /**
  * @title HooksIntegrationTest
@@ -33,48 +35,56 @@ contract HooksIntegrationTest is Test {
         token0 = new MockERC20("Token0", "TKN0", 18);
         token1 = new MockERC20("Token1", "TKN1", 18);
 
-        // Deploy pool manager and hooks
-        poolManager = new MockPoolManager();
+        // Deploy fee registry and factory for hooks
         feeRegistry = new FeeRegistry();
+        HookFactory factory = new HookFactory();
 
-        twapHook = new TWAPOracleHook(IPoolManager(address(poolManager)));
-        feeHook = new DynamicFeeHook(IPoolManager(address(poolManager)), address(feeRegistry));
+        // Deploy hooks through factory to ensure proper flag encoding
+        twapHook = factory.deployTWAPHook(address(this), 3600);
+        feeHook = factory.deployDynamicFeeHook(address(this), address(feeRegistry));
 
-        // Setup pool key
-        poolKey = PoolKey(
-            address(token0),
-            address(token1),
-            3000, // 0.3% fee tier
-            60, // tick spacing
-            address(twapHook) // Using TWAP hook for this test
-        );
+        // Create and initialize the pool
+        AetherPool pool = new AetherPool(address(this));
+        pool.initialize(address(token0), address(token1), uint24(3000), address(this));
+
+        // Deploy pool manager with pool and TWAP hook
+        poolManager = new MockPoolManager(address(pool), address(twapHook));
+
+        // Setup pool key with TWAP hook
+        poolKey = PoolKey({
+            token0: address(token0),
+            token1: address(token1),
+            fee: 3000, // 0.3% fee tier
+            tickSpacing: 60,
+            hooks: address(twapHook)
+        });
 
         // Mint tokens to test accounts
         token0.mint(alice, 1000 ether);
         token1.mint(alice, 1000 ether);
 
-        // Initialize the pool in the manager
-        poolManager.initialize(poolKey);
-        
         // Initialize the TWAP oracle with a starting price
         twapHook.initializeOracle(poolKey, 1000);
-        
-        // Set a valid fee tier in the registry for the dynamic fee hook test
-        feeRegistry.setFeeConfig(address(token0), address(token1), 3000, 1000, 100); // Configure fee parameters
-        
-        // Initialize the TWAP oracle with a starting price for all tests
-        twapHook.initializeOracle(poolKey, 1000);
+
+        // Configure fees in registry
+        feeRegistry.setFeeConfig(
+            address(token0),
+            address(token1),
+            3000, // max fee
+            1000, // min fee
+            100   // fee adjustment step
+        );
     }
 
     function test_TWAPHookBeforeSwap() public {
         // Ensure the TWAP oracle is initialized for this test
         // This is needed to prevent arithmetic overflow in the TWAP calculation
         twapHook.initializeOracle(poolKey, 1000);
-        
+
         // Setup the current timestamp for the TWAP oracle to use
         // This ensures we have a valid observation at the current timestamp
         vm.warp(block.timestamp + 1); // Advance time by 1 second
-        
+
         // Setup swap parameters
         IPoolManager.SwapParams memory params =
             IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 10 ether, sqrtPriceLimitX96: 0});
@@ -95,11 +105,11 @@ contract HooksIntegrationTest is Test {
         // Ensure the TWAP oracle is initialized for this test
         // This is needed to prevent arithmetic overflow in the TWAP calculation
         twapHook.initializeOracle(poolKey, 1000);
-        
+
         // Setup the current timestamp for the TWAP oracle to use
         // This ensures we have a valid observation at the current timestamp
         vm.warp(block.timestamp + 1); // Advance time by 1 second
-        
+
         // Setup swap parameters
         IPoolManager.SwapParams memory params =
             IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 10 ether, sqrtPriceLimitX96: 0});
@@ -132,14 +142,14 @@ contract HooksIntegrationTest is Test {
             60, // tick spacing
             address(feeHook) // Using fee hook for this test
         );
-        
+
         // Initialize the pool with the dynamic fee hook
-        poolManager.initialize(dynamicFeePoolKey);
-        
+        poolManager.initialize(dynamicFeePoolKey, uint160(0), "");
+
         // Make sure the fee registry has the correct fee for this token pair
         // This ensures the fee in the registry matches the fee in the pool key (3000)
         feeRegistry.setFeeConfig(address(token0), address(token1), 3000, 3000, 0);
-        
+
         // Setup swap parameters
         IPoolManager.SwapParams memory params =
             IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 10 ether, sqrtPriceLimitX96: 0});
@@ -162,19 +172,19 @@ contract HooksIntegrationTest is Test {
             60, // tick spacing
             address(feeHook) // Using fee hook for this test
         );
-        
+
         // Initialize the pool with the dynamic fee hook
-        poolManager.initialize(dynamicFeePoolKey);
-        
+        poolManager.initialize(dynamicFeePoolKey, uint160(0), "");
+
         // Make sure the fee registry has the correct fee for this token pair
         // This ensures the fee in the registry matches the fee in the pool key (3000)
         feeRegistry.setFeeConfig(address(token0), address(token1), 3000, 3000, 0);
-        
+
         // Initialize the TWAP oracle for both pool keys
         // This is needed to prevent arithmetic overflow in the TWAP calculation
         twapHook.initializeOracle(poolKey, 1000);
         twapHook.initializeOracle(dynamicFeePoolKey, 1000);
-        
+
         // Setup the current timestamp for the TWAP oracle to use
         // This ensures we have a valid observation at the current timestamp
         vm.warp(block.timestamp + 1); // Advance time by 1 second
@@ -195,11 +205,11 @@ contract HooksIntegrationTest is Test {
         // Ensure the TWAP oracle is initialized for this test
         // This is needed to prevent arithmetic overflow in the TWAP calculation
         twapHook.initializeOracle(poolKey, 1000);
-        
+
         // Setup the current timestamp for the TWAP oracle to use
         // This ensures we have a valid observation at the current timestamp
         vm.warp(block.timestamp + 1); // Advance time by 1 second
-        
+
         // Setup position parameters
         IPoolManager.ModifyPositionParams memory params =
             IPoolManager.ModifyPositionParams({tickLower: -100, tickUpper: 100, liquidityDelta: 1000 ether});
@@ -217,8 +227,8 @@ contract HooksIntegrationTest is Test {
             twapHook.afterModifyPosition(alice, poolKey, params, poolManager.getBalanceDelta(), bytes(""));
 
         // Verify the hooks return the correct selectors
-        assertEq(beforeSelector, TWAPOracleHook.beforeModifyPosition.selector, "beforeModifyPosition selector mismatch");
-        assertEq(afterSelector, TWAPOracleHook.afterModifyPosition.selector, "afterModifyPosition selector mismatch");
+        assertEq(beforeSelector, twapHook.beforeModifyPosition.selector, "beforeModifyPosition selector mismatch");
+        assertEq(afterSelector, twapHook.afterModifyPosition.selector, "afterModifyPosition selector mismatch");
 
         // Note: In a real test, we would need to mock these calls through the pool manager
         // For now, we'll just check the selectors

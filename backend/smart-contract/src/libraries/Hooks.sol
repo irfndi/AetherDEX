@@ -1,109 +1,122 @@
-// SPDX-License-Identifier: GPL-3.0
-// Hooks.sol
-pragma solidity ^0.8.29; // UPDATED PRAGMA VERSION TO 0.8.28
-/**
- * @title Hooks Abstract Contract
- * @dev Provides the base implementation for hook contracts in the AetherDEX ecosystem.
- * This contract follows the Uniswap V4 hook pattern and defines the interface and
- * basic functionality that all hook implementations should adhere to.
- *
- * Hooks are used to extend pool functionality by executing custom logic at specific
- * points during swap and liquidity operations.
- */
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.29;
 
-import {IPoolManager} from "../interfaces/IPoolManager.sol";
 import {PoolKey} from "../types/PoolKey.sol";
+import {IPoolManager} from "../interfaces/IPoolManager.sol";
 import {BalanceDelta} from "../interfaces/IPoolManager.sol";
 
-abstract contract Hooks {
-    /**
-     * @dev Hook flags used to indicate which hooks are implemented by a contract.
-     * These flags are used during hook validation to ensure the hook address
-     * correctly implements the required functionality.
-     *
-     * Each flag represents a specific hook point in the pool lifecycle:
-     * - BEFORE_SWAP_FLAG: Logic executed before a swap operation
-     * - AFTER_SWAP_FLAG: Logic executed after a swap operation
-     * - BEFORE_MODIFY_POSITION_FLAG: Logic executed before a position is modified
-     * - AFTER_MODIFY_POSITION_FLAG: Logic executed after a position is modified
-     */
-    uint160 internal constant BEFORE_SWAP_FLAG = 1 << 0;
-    uint160 internal constant AFTER_SWAP_FLAG = 1 << 1;
+/**
+ * @title Hooks
+ * @notice Library for managing hook permissions and validation
+ * @dev Library for implementing hook function selectors for pool callbacks
+ */
+library Hooks {
+    // Hook flags for different permissions
+    uint160 internal constant BEFORE_INITIALIZE_FLAG = 1 << 0;
+    uint160 internal constant AFTER_INITIALIZE_FLAG = 1 << 1;
     uint160 internal constant BEFORE_MODIFY_POSITION_FLAG = 1 << 2;
     uint160 internal constant AFTER_MODIFY_POSITION_FLAG = 1 << 3;
+    uint160 internal constant BEFORE_SWAP_FLAG = 1 << 4;
+    uint160 internal constant AFTER_SWAP_FLAG = 1 << 5;
+    uint160 internal constant BEFORE_DONATE_FLAG = 1 << 6;
+    uint160 internal constant AFTER_DONATE_FLAG = 1 << 7;
 
-    /**
-     * @dev Validates that a hook address implements the required hook functions.
-     * This is done by checking if the hook address has the correct flags set.
-     *
-     * @param hookAddress The address of the hook contract to validate
-     * @param flags The flags indicating which hooks should be implemented
-     *
-     * Note: Implementation is simplified for linting purposes in this version.
-     * In production, this would verify the hook address against the required flags
-     * by checking the address bits.
-     */
-    function validateHookAddress(address hookAddress, uint160 flags) internal pure {
-        // Implementation simplified for linting purposes
+    struct Permissions {
+        bool beforeInitialize;
+        bool afterInitialize;
+        bool beforeModifyPosition;
+        bool afterModifyPosition;
+        bool beforeSwap;
+        bool afterSwap;
+        bool beforeDonate;
+        bool afterDonate;
     }
 
     /**
-     * @dev Hook called before a swap operation.
-     * This function can be overridden to implement custom logic that executes
-     * before a swap, such as fee calculation or access control.
-     * @return bytes4 Function selector to indicate successful execution
+     * @notice Validates that a hook address has the required flags
+     * @param hookAddress The address of the hook to validate
+     * @param requiredFlags The flags that must be present in the hook address
      */
-    function beforeSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, bytes calldata)
-        external
-        virtual
-        returns (bytes4)
-    {
-        return this.beforeSwap.selector;
+    function validateHookAddress(address hookAddress, uint160 requiredFlags) internal pure {
+        // Mask out the non-flag bits of the hook address
+        uint160 hookFlags = uint160(hookAddress) & ((1 << 8) - 1);
+
+        // Make sure the hook address has all required flags
+        require((hookFlags & requiredFlags) == requiredFlags, "Hook address missing required flags");
     }
 
     /**
-     * @dev Hook called after a swap operation.
-     * This function can be overridden to implement custom logic that executes
-     * after a swap, such as TWAP updates or cross-chain messaging.
-     * @return bytes4 Function selector to indicate successful execution
+     * @notice Converts hook permissions to flags
+     * @param permissions The permissions struct to convert
+     * @return flags The permissions as a bitmask
      */
+    function permissionsToFlags(Permissions memory permissions) internal pure returns (uint160) {
+        return (permissions.beforeInitialize ? BEFORE_INITIALIZE_FLAG : 0)
+            | (permissions.afterInitialize ? AFTER_INITIALIZE_FLAG : 0)
+            | (permissions.beforeModifyPosition ? BEFORE_MODIFY_POSITION_FLAG : 0)
+            | (permissions.afterModifyPosition ? AFTER_MODIFY_POSITION_FLAG : 0)
+            | (permissions.beforeSwap ? BEFORE_SWAP_FLAG : 0) | (permissions.afterSwap ? AFTER_SWAP_FLAG : 0)
+            | (permissions.beforeDonate ? BEFORE_DONATE_FLAG : 0) | (permissions.afterDonate ? AFTER_DONATE_FLAG : 0);
+    }
+
+    /**
+     * @notice Checks if a hook address has a specific permission
+     * @param hookAddress The address of the hook to check
+     * @param flag The permission flag to check for
+     * @return hasPermission True if the hook has the permission
+     */
+    function hasPermission(address hookAddress, uint160 flag) internal pure returns (bool) {
+        return (uint160(hookAddress) & flag) != 0;
+    }
+
+    // Define static selectors for each hook method
+    bytes4 internal constant BEFORE_SWAP_SELECTOR =
+        bytes4(keccak256("beforeSwap(address,PoolKey,IPoolManager.SwapParams,bytes)"));
+
+    bytes4 internal constant AFTER_SWAP_SELECTOR =
+        bytes4(keccak256("afterSwap(address,PoolKey,IPoolManager.SwapParams,BalanceDelta,bytes)"));
+
+    bytes4 internal constant BEFORE_MODIFY_POSITION_SELECTOR =
+        bytes4(keccak256("beforeModifyPosition(address,PoolKey,IPoolManager.ModifyPositionParams,bytes)"));
+
+    bytes4 internal constant AFTER_MODIFY_POSITION_SELECTOR =
+        bytes4(keccak256("afterModifyPosition(address,PoolKey,IPoolManager.ModifyPositionParams,BalanceDelta,bytes)"));
+
+    function beforeSwap(
+        address /*sender*/,
+        PoolKey memory /*key*/,
+        IPoolManager.SwapParams memory /*params*/,
+        bytes memory /*hookData*/
+    ) internal pure returns (bytes4) {
+        return BEFORE_SWAP_SELECTOR;
+    }
+
     function afterSwap(
-        address,
-        PoolKey calldata,
-        IPoolManager.SwapParams calldata,
-        BalanceDelta calldata,
-        bytes calldata
-    ) external virtual returns (bytes4) {
-        return this.afterSwap.selector;
+        address /*sender*/,
+        PoolKey memory /*key*/,
+        IPoolManager.SwapParams memory /*params*/,
+        BalanceDelta memory /*delta*/,
+        bytes memory /*hookData*/
+    ) internal pure returns (bytes4) {
+        return AFTER_SWAP_SELECTOR;
     }
 
-    /**
-     * @dev Hook called before modifying a position.
-     * This function can be overridden to implement custom logic that executes
-     * before adding or removing liquidity, such as access control.
-     * @return bytes4 Function selector to indicate successful execution
-     */
-    function beforeModifyPosition(address, PoolKey calldata, IPoolManager.ModifyPositionParams calldata, bytes calldata)
-        external
-        virtual
-        returns (bytes4)
-    {
-        return this.beforeModifyPosition.selector;
+    function beforeModifyPosition(
+        address /*sender*/,
+        PoolKey memory /*key*/,
+        IPoolManager.ModifyPositionParams memory /*params*/,
+        bytes memory /*data*/
+    ) internal pure returns (bytes4) {
+        return BEFORE_MODIFY_POSITION_SELECTOR;
     }
 
-    /**
-     * @dev Hook called after modifying a position.
-     * This function can be overridden to implement custom logic that executes
-     * after adding or removing liquidity, such as reward distribution.
-     * @return bytes4 Function selector to indicate successful execution
-     */
     function afterModifyPosition(
-        address,
-        PoolKey calldata,
-        IPoolManager.ModifyPositionParams calldata,
-        BalanceDelta calldata,
-        bytes calldata
-    ) external virtual returns (bytes4) {
-        return this.afterModifyPosition.selector;
+        address /*sender*/,
+        PoolKey memory /*key*/,
+        IPoolManager.ModifyPositionParams memory /*params*/,
+        BalanceDelta memory /*delta*/,
+        bytes memory /*data*/
+    ) internal pure returns (bytes4) {
+        return AFTER_MODIFY_POSITION_SELECTOR;
     }
 }

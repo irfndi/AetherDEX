@@ -1,52 +1,231 @@
-// SPDX-License-Identifier: GPL-3.0
-// FeeRegistry.sol
-pragma solidity ^0.8.29; // UPDATED PRAGMA VERSION TO 0.8.28
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.29;
 
 import {Ownable} from "./access/Ownable.sol";
-/**
- * @title FeeRegistry
- * @notice Registry for dynamic fees based on swap activity.
- * @dev The FeeRegistry stores the fee configuration for each token pair and calculates the current fee based on the swap volume.
- * The fee is calculated as minFee + (swapVolume * adjustmentRate) and capped at maxFee.
- * The fee is updated whenever a swap occurs and the new fee is calculated based on the updated swap volume.
- */
+import {IFeeRegistry} from "./interfaces/IFeeRegistry.sol";
+import {PoolKey} from "./types/PoolKey.sol";
 
-contract FeeRegistry is Ownable {
-    struct FeeConfig {
-        uint24 maxFee;
-        uint24 minFee;
-        uint24 adjustmentRate;
-        uint256 lastUpdated;
-        uint256 swapVolume;
+/// @title Fee Registry
+/// @notice Manages both static fee configurations (fee tier and tick spacing) and dynamic fees for specific Aether Pools.
+/// Allows the owner to add static configurations and register pools for dynamic fee updates by authorized addresses (e.g., hooks).
+contract FeeRegistry is IFeeRegistry, Ownable {
+    // --- Constants for Dynamic Fee Adjustments ---
+    uint24 private constant MIN_FEE = 100; // 0.01%
+    uint24 private constant MAX_FEE = 10000; // 1.00% (Adjusted from 10% for realism)
+    uint24 private constant FEE_STEP = 50; // 0.005%
+    uint256 private constant VOLUME_THRESHOLD = 1000 ether; // 1000 tokens (assuming 18 decimals)
+
+    // --- State Variables ---
+
+    /// @notice Mapping from a static fee tier to its required tick spacing.
+    /// @dev Used for pools that do not use dynamic fees. A non-zero value indicates the fee tier is supported.
+    mapping(uint24 => int24) public tickSpacings;
+
+    /// @notice Mapping from the hash of a PoolKey to its dynamically set fee.
+    /// @dev If a fee exists here, it overrides any static configuration for that specific pool.
+    /// A non-zero value indicates the pool is registered for dynamic fees.
+    mapping(bytes32 => uint24) public dynamicFees;
+
+    /// @notice Mapping from the hash of a PoolKey to the address authorized to update its dynamic fee.
+    /// @dev Only this address can call `updateFee` for the given pool.
+    mapping(bytes32 => address) public feeUpdaters;
+
+    // --- Events ---
+
+    /// @notice Emitted when a new static fee configuration is added.
+    /// @param fee The fee tier added.
+    /// @param tickSpacing The tick spacing associated with the fee.
+    event FeeConfigurationAdded(uint24 indexed fee, int24 indexed tickSpacing);
+
+    /// @notice Emitted when a pool is registered for dynamic fee updates.
+    /// @param poolKeyHash The hash of the PoolKey identifying the pool.
+    /// @param initialFee The initial dynamic fee set for the pool.
+    /// @param updater The address authorized to update the fee.
+    event DynamicFeePoolRegistered(bytes32 indexed poolKeyHash, uint24 initialFee, address indexed updater);
+
+    /// @notice Emitted when the authorized fee updater for a dynamic pool is changed.
+    /// @param poolKeyHash The hash of the PoolKey identifying the pool.
+    /// @param oldUpdater The previously authorized updater address.
+    /// @param newUpdater The newly authorized updater address.
+    event FeeUpdaterSet(bytes32 indexed poolKeyHash, address indexed oldUpdater, address indexed newUpdater);
+
+    /// @notice Emitted when the dynamic fee for a pool is updated.
+    /// @param poolKeyHash The hash of the PoolKey identifying the pool.
+    /// @param updater The address that performed the update.
+    /// @param newFee The new dynamic fee value.
+    event DynamicFeeUpdated(bytes32 indexed poolKeyHash, address indexed updater, uint24 newFee);
+
+    // --- Errors ---
+
+    /// @notice Error thrown when trying to add a static fee configuration that already exists.
+    /// @param fee The fee tier that already exists.
+    error FeeAlreadyExists(uint24 fee);
+
+    /// @notice Error thrown when trying to add a fee configuration with invalid parameters (e.g., fee is 0).
+    error InvalidFeeConfiguration();
+
+    /// @notice Error thrown when querying a fee tier or tick spacing that is not supported or registered.
+    /// @param fee The fee tier queried.
+    error FeeTierNotSupported(uint24 fee);
+
+    /// @notice Error thrown when trying to update a pool not registered for dynamic fees.
+    /// @param poolKeyHash The hash of the PoolKey.
+    error PoolNotRegistered(bytes32 poolKeyHash);
+
+    /// @notice Error thrown when an unauthorized address tries to update a dynamic fee.
+    /// @param poolKeyHash The hash of the PoolKey.
+    /// @param caller The address attempting the update.
+    /// @param expectedUpdater The authorized updater address.
+    error UnauthorizedUpdater(bytes32 poolKeyHash, address caller, address expectedUpdater);
+
+    /// @notice Error thrown when trying to set an invalid dynamic fee (e.g., 0).
+    /// @param poolKeyHash The hash of the PoolKey.
+    /// @param invalidFee The invalid fee value attempted.
+    error InvalidDynamicFee(bytes32 poolKeyHash, uint24 invalidFee);
+
+    /// @notice Error thrown during registration if the initial fee or updater address is invalid.
+    /// @param poolKeyHash The hash of the PoolKey.
+    /// @param initialFee The initial fee provided.
+    /// @param updater The updater address provided.
+    error InvalidInitialFeeOrUpdater(bytes32 poolKeyHash, uint24 initialFee, address updater);
+
+    /// @notice Error thrown when trying to register a pool that is already registered for dynamic fees.
+    /// @param poolKeyHash The hash of the PoolKey.
+    error PoolAlreadyRegistered(bytes32 poolKeyHash);
+
+    /// @notice Error thrown when trying to set an invalid new updater address (e.g., zero address).
+    /// @param poolKeyHash The hash of the PoolKey.
+    /// @param invalidUpdater The invalid updater address provided.
+    error InvalidNewUpdater(bytes32 poolKeyHash, address invalidUpdater);
+
+    /// @notice Error thrown when trying to set the new updater to the same address as the current one.
+    /// @param poolKeyHash The hash of the PoolKey.
+    /// @param updater The address provided which is the same as the current updater.
+    error NewUpdaterSameAsOld(bytes32 poolKeyHash, address updater);
+
+
+    constructor(address initialOwner) Ownable(initialOwner) {}
+
+    /// @notice Adds a new static fee configuration (fee tier and tick spacing).
+    /// @dev Only callable by the owner. Reverts if the fee tier already exists or parameters are invalid.
+    /// @param fee The fee tier to add (e.g., 3000 for 0.3%). Must be non-zero.
+    /// @param tickSpacing The corresponding tick spacing. Must be positive.
+    function addFeeConfiguration(uint24 fee, int24 tickSpacing) external onlyOwner {
+        if (fee == 0 || tickSpacing <= 0) {
+            revert InvalidFeeConfiguration();
+        }
+        // Check if tickSpacing is non-zero, indicating the fee tier already exists
+        if (tickSpacings[fee] != 0) {
+            revert FeeAlreadyExists(fee);
+        }
+
+        tickSpacings[fee] = tickSpacing;
+        emit FeeConfigurationAdded(fee, tickSpacing);
     }
 
-    mapping(bytes32 => FeeConfig) public feeConfigs;
+    // [REMOVED] getFeeConfiguration function is no longer needed.
 
-    constructor() Ownable(msg.sender) {}
-
-    function setFeeConfig(address token0, address token1, uint24 _maxFee, uint24 _minFee, uint24 _adjustmentRate)
-        external
-        onlyOwner
-    {
-        bytes32 key = keccak256(abi.encodePacked(token0, token1));
-        feeConfigs[key] = FeeConfig({
-            maxFee: _maxFee,
-            minFee: _minFee,
-            adjustmentRate: _adjustmentRate,
-            lastUpdated: block.timestamp,
-            swapVolume: 0
-        });
+    /// @notice Checks if a static fee tier is supported (i.e., has a tick spacing configured).
+    /// @param fee The fee tier to check.
+    /// @return bool True if the fee tier is supported, false otherwise.
+    function isSupportedFeeTier(uint24 fee) external view returns (bool) {
+        // A fee tier is supported if its tick spacing is non-zero (meaning it was added)
+        return tickSpacings[fee] != 0;
     }
 
-    function getFee(address token0, address token1) external view returns (uint24) {
-        bytes32 key = keccak256(abi.encodePacked(token0, token1));
-        FeeConfig storage config = feeConfigs[key];
-        uint24 calculatedFee = config.minFee + uint24((config.swapVolume * config.adjustmentRate) / 1e18);
-        return calculatedFee > config.maxFee ? config.maxFee : calculatedFee;
+    /// @inheritdoc IFeeRegistry
+    function getFee(PoolKey calldata key) external view returns (uint24 fee) {
+        bytes32 poolKeyHash = keccak256(abi.encode(key));
+        uint24 dynamicFee = dynamicFees[poolKeyHash];
+
+        if (dynamicFee != 0) {
+            // If a dynamic fee is registered (non-zero), return it
+            return dynamicFee;
+        } else {
+            // Otherwise, check if the static fee tier is supported
+            if (tickSpacings[key.fee] == 0) {
+                // If no tick spacing is configured for this fee tier, it's not supported
+                revert FeeTierNotSupported(key.fee);
+            }
+            // Return the static fee tier from the key, as it's supported
+            return key.fee;
+        }
     }
 
-    function updateFee(address token0, address token1, int256 swapAmount) external {
-        bytes32 key = keccak256(abi.encodePacked(token0, token1));
-        feeConfigs[key].swapVolume += uint256(swapAmount > 0 ? swapAmount : -swapAmount);
+    /// @inheritdoc IFeeRegistry
+    /// @notice Updates the dynamic fee for a registered pool based on recent swap volume.
+    /// @dev Only callable by the authorized fee updater for the pool.
+    /// The actual fee calculation logic based on swapVolume is pending implementation.
+    /// @param key The PoolKey identifying the pool.
+    /// @param swapVolume The recent swap volume used to potentially adjust the fee.
+    function updateFee(PoolKey calldata key, uint256 swapVolume) external {
+        bytes32 poolKeyHash = keccak256(abi.encode(key));
+        address expectedUpdater = feeUpdaters[poolKeyHash];
+
+        // Check if the pool is registered for dynamic fees
+        if (expectedUpdater == address(0)) {
+            revert PoolNotRegistered(poolKeyHash);
+        }
+        // Check if the caller is the authorized updater
+        if (msg.sender != expectedUpdater) {
+            revert UnauthorizedUpdater(poolKeyHash, msg.sender, expectedUpdater);
+        }
+
+        // [TODO]: Implement the logic to calculate the new dynamic fee based on swapVolume.
+        // This might involve reading current fee, applying a formula, etc.
+        // For now, we'll just placeholder setting a fee and emitting an event.
+        // Ensure the calculated fee is valid before setting.
+
+        uint24 calculatedNewFee = 1000; // Placeholder: Replace with actual calculation
+        if (calculatedNewFee == 0) { // Example validation
+             revert InvalidDynamicFee(poolKeyHash, calculatedNewFee);
+        }
+
+        dynamicFees[poolKeyHash] = calculatedNewFee; // Use the calculated fee
+        emit DynamicFeeUpdated(poolKeyHash, msg.sender, calculatedNewFee); // Emit event with the new fee
+    }
+
+    /// @notice Registers a specific pool to use dynamic fees instead of a static configuration.
+    /// @dev Only callable by the owner. Sets an initial dynamic fee and an authorized updater address.
+    /// Reverts if the pool is already registered or if initial parameters are invalid.
+    /// @param key The PoolKey identifying the pool to register.
+    /// @param initialFee The initial dynamic fee for the pool. Must be non-zero.
+    /// @param updater The address authorized to call `updateFee` for this pool. Must be non-zero.
+    function registerDynamicFeePool(PoolKey calldata key, uint24 initialFee, address updater) external onlyOwner {
+        bytes32 poolKeyHash = keccak256(abi.encode(key));
+
+        if (initialFee == 0 || updater == address(0)) {
+            revert InvalidInitialFeeOrUpdater(poolKeyHash, initialFee, updater);
+        }
+        if (feeUpdaters[poolKeyHash] != address(0)) {
+            revert PoolAlreadyRegistered(poolKeyHash);
+        }
+
+        dynamicFees[poolKeyHash] = initialFee;
+        feeUpdaters[poolKeyHash] = updater;
+        emit DynamicFeePoolRegistered(poolKeyHash, initialFee, updater);
+    }
+
+    /// @notice Changes the authorized address that can update the dynamic fee for a specific pool.
+    /// @dev Only callable by the owner. Reverts if the pool is not registered, the new updater is invalid,
+    /// or the new updater is the same as the old one.
+    /// @param key The PoolKey identifying the pool.
+    /// @param newUpdater The new address authorized to update the fee. Must be non-zero and different from the current updater.
+    function setFeeUpdater(PoolKey calldata key, address newUpdater) external onlyOwner {
+        bytes32 poolKeyHash = keccak256(abi.encode(key));
+        address oldUpdater = feeUpdaters[poolKeyHash];
+
+        if (oldUpdater == address(0)) {
+            revert PoolNotRegistered(poolKeyHash);
+        }
+        if (newUpdater == address(0)) {
+            revert InvalidNewUpdater(poolKeyHash, newUpdater);
+        }
+        if (newUpdater == oldUpdater) {
+            revert NewUpdaterSameAsOld(poolKeyHash, newUpdater);
+        }
+
+        feeUpdaters[poolKeyHash] = newUpdater;
+        emit FeeUpdaterSet(poolKeyHash, oldUpdater, newUpdater);
     }
 }
