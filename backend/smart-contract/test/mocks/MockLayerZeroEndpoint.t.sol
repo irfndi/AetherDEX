@@ -96,8 +96,8 @@ contract MockLayerZeroEndpointTest is Test {
         token1 = new MockERC20("Token1", "TKN1", 18);
 
         // Deploy and initialize pool
-        AetherPool pool = new AetherPool(address(this));
-        pool.initialize(address(token0), address(token1), uint24(3000), address(this));
+        AetherPool pool = new AetherPool(address(this)); // Assuming factory address is 'this'
+        pool.initialize(address(token0), address(token1), uint24(3000)); // Removed last argument
 
         // Deploy LayerZero endpoint
         lzEndpoint = new MockLayerZeroEndpoint();
@@ -105,7 +105,7 @@ contract MockLayerZeroEndpointTest is Test {
         // Deploy pool manager first (needed for hook deployment)
         // Note: We pass a placeholder for the hook initially, or deploy the hook later if needed by manager constructor
         // Assuming MockPoolManager constructor doesn't strictly need the final hook address immediately
-        poolManager = new MockPoolManager(address(pool), address(0)); // Placeholder hook address
+        poolManager = new MockPoolManager(address(0)); // Pass only hook address
 
         // Deploy hooks, passing the actual poolManager address
         srcHook = new CrossChainLiquidityHook(address(poolManager), address(lzEndpoint));

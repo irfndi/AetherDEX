@@ -41,11 +41,11 @@ contract TWAPOracleHookTest is Test {
         twapHook = factory.deployTWAPHook(address(this), uint32(3600));
 
         // Deploy and initialize pool
-        AetherPool pool = new AetherPool(address(this));
-        pool.initialize(address(token0), address(token1), uint24(3000), address(this));
+        AetherPool pool = new AetherPool(address(this)); // Assuming factory address is 'this' for simplicity
+        pool.initialize(address(token0), address(token1), uint24(3000)); // Removed last argument
 
         // Deploy pool manager with pool and hook
-        poolManager = new MockPoolManager(address(pool), address(twapHook));
+        poolManager = new MockPoolManager(address(twapHook)); // Pass only hook address
 
         // Create pool key
         poolKey = PoolKey({

@@ -88,11 +88,11 @@ contract CrossChainLiquidityHookTest is Test {
         hook = factory.deployCrossChainHook(address(this), address(mockEndpoint));
         
         // Create and initialize pool
-        AetherPool pool = new AetherPool(address(this));
-        pool.initialize(address(token0), address(token1), uint24(3000), address(this));
-        
+        AetherPool pool = new AetherPool(address(this)); // Assuming factory address is 'this' for simplicity
+        pool.initialize(address(token0), address(token1), uint24(3000)); // Removed last argument
+
         // Set up mock pool manager with pool and hook
-        mockPoolManager = new MockPoolManager(address(pool), address(hook));
+        mockPoolManager = new MockPoolManager(address(hook)); // Pass only hook address
 
         // Verify hook flags match implemented permissions
         uint160 expectedFlags = uint160(Hooks.BEFORE_INITIALIZE_FLAG |

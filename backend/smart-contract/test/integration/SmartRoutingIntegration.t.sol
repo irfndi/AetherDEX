@@ -45,7 +45,7 @@ contract SmartRoutingIntegrationTest is Test {
         networks = new MockChainNetworks();
         ccipRouter = new MockCCIPRouter();
         hyperlane = new MockHyperlane();
-        feeRegistry = new FeeRegistry();
+        feeRegistry = new FeeRegistry(address(this)); // Pass initialOwner
 
         _setupInfrastructure();
         _fundTestUsers();
@@ -58,11 +58,8 @@ contract SmartRoutingIntegrationTest is Test {
         testChains[2] = networks.OPTIMISM_CHAIN_ID();
 
         // Create mock pool and poolManager for router initialization
-        AetherPool initialPool = new AetherPool(address(this));
-        MockPoolManager initialManager = new MockPoolManager(
-            address(initialPool), 
-            address(0)  // No hook for initial setup
-        );
+        AetherPool initialPool = new AetherPool(address(this)); // Assuming factory address is 'this'
+        MockPoolManager initialManager = new MockPoolManager(address(0)); // Pass only hook address
 
         // Deploy router with messaging integration
         router = new AetherRouter(
@@ -94,11 +91,11 @@ contract SmartRoutingIntegrationTest is Test {
         }
 
         // Deploy and initialize pool
-        AetherPool pool = new AetherPool(address(this));
-        pool.initialize(token0, token1, DEFAULT_FEE, address(this));
+        AetherPool pool = new AetherPool(address(this)); // Assuming factory address is 'this'
+        pool.initialize(token0, token1, DEFAULT_FEE); // Removed last argument
 
         // Deploy pool manager with initialized pool
-        MockPoolManager manager = new MockPoolManager(address(pool), address(0));  // No hook needed
+        MockPoolManager manager = new MockPoolManager(address(0));  // Pass only hook address
         poolManagers[chainId] = address(manager);
         pools[chainId] = address(pool);
 
@@ -147,13 +144,16 @@ contract SmartRoutingIntegrationTest is Test {
         MockERC20(params.token0).approve(address(router), SWAP_AMOUNT);
 
         vm.recordLogs();
+        // Correct executeRoute signature: (tokenIn, tokenOut, amountIn, amountOutMin, fee, deadline)
+        // Assuming amountOut is the minimum acceptable output for this test
+        // Assuming DEFAULT_FEE and block.timestamp for fee and deadline
         router.executeRoute(
-            params.token0, 
-            params.token1, 
-            params.amountIn, 
-            params.amountOut, 
-            params.chainId, 
-            params.routeData
+            params.token0,
+            params.token1,
+            params.amountIn,
+            params.amountOut, // Using amountOut as amountOutMin for this test
+            DEFAULT_FEE,      // Pass fee
+            block.timestamp   // Pass deadline
         );
 
         assertTrue(MockERC20(params.token0).balanceOf(alice) == 0, "Token0 not spent");
@@ -267,7 +267,9 @@ contract SmartRoutingIntegrationTest is Test {
         uint256 hyperlaneFee = hyperlane.quoteDispatch(dstChain, "");
 
         // Get route with bridge selection
-        (,, bool useCCIP) = router.getCrossChainRoute(address(0), address(0), SWAP_AMOUNT, srcChain, dstChain);
+        address mockTokenIn = networks.getNativeToken(srcChain);
+        address mockTokenOut = networks.getNativeToken(dstChain);
+        (,, bool useCCIP) = router.getCrossChainRoute(mockTokenIn, mockTokenOut, SWAP_AMOUNT, srcChain, dstChain);
 
         // Verify optimal bridge selection
         if (ccipFee <= hyperlaneFee) {

@@ -42,8 +42,8 @@ contract CrossChainIntegrationTest is Test {
             address token1 = address(new MockERC20("USDC", "USDC", 6));
 
             // Deploy and initialize pool
-            AetherPool pool = new AetherPool(address(this));
-            pool.initialize(token0, token1, uint24(3000), address(this));
+            AetherPool pool = new AetherPool(address(this)); // Assuming factory address is 'this' for simplicity
+            pool.initialize(token0, token1, uint24(3000)); // Removed last argument
 
             // Setup LayerZero endpoint
             MockLayerZeroEndpoint lzEndpoint = new MockLayerZeroEndpoint();
@@ -51,7 +51,7 @@ contract CrossChainIntegrationTest is Test {
 
             // Deploy pool manager first
             // Assuming MockPoolManager constructor doesn't strictly need the final hook address immediately
-            poolManagers[chainId] = new MockPoolManager(address(pool), address(0)); // Placeholder hook address
+            poolManagers[chainId] = new MockPoolManager(address(0)); // Pass only hook address
 
             // Deploy and configure hook, passing the actual poolManager address
             hooks[chainId] = new CrossChainLiquidityHook(address(poolManagers[chainId]), address(lzEndpoint));

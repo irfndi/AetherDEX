@@ -30,11 +30,11 @@ contract AetherVaultTest is Test {
         MockERC20 token1 = new MockERC20("USDC", "USDC", 6);
 
         // Create and initialize pool
-        AetherPool pool = new AetherPool(address(this));
-        pool.initialize(address(asset), address(token1), uint24(3000), address(this));
+        AetherPool pool = new AetherPool(address(this)); // Assuming factory address is 'this'
+        pool.initialize(address(asset), address(token1), uint24(3000)); // Removed last argument
 
         // Deploy mock pool manager with pool
-        poolManager = new MockPoolManager(address(pool), address(0)); // No hook needed
+        poolManager = new MockPoolManager(address(0)); // Pass only hook address
 
         // Set LZ endpoint
         lzEndpoint = address(0x3); // Mock LZ endpoint

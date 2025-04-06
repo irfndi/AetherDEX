@@ -160,12 +160,10 @@ contract AetherPool is IAetherPool {
         // --- Interactions (External calls last) ---
         // Transfer input tokens from the sender
         TransferHelper.safeTransferFrom(tokenIn, sender, address(this), amountIn); 
-        
+
         // Transfer output tokens to the recipient
         address tokenOut = isToken0In ? token1 : token0;
         TransferHelper.safeTransfer(tokenOut, to, amountOut);
-
-        emit Swap(sender, tokenIn, tokenOut, amountIn, amountOut);
     }
 
     // Internal functions

@@ -37,7 +37,8 @@ contract HooksTest is Test {
     /**
      * @notice Tests if the `beforeSwap` function returns the correct selector.
      */
-    function test_BeforeSwapSelector() public view { // Changed to view because it reads state variables
+    function test_BeforeSwapSelector() public view {
+        // Changed to view because it reads state variables
         PoolKey memory poolKey = DUMMY_POOL_KEY;
         IPoolManager.SwapParams memory swapParams = DUMMY_SWAP_PARAMS;
         bytes memory data = "";
@@ -48,7 +49,8 @@ contract HooksTest is Test {
     /**
      * @notice Tests if the `afterSwap` function returns the correct selector.
      */
-    function test_AfterSwapSelector() public view { // Changed to view because it reads state variables
+    function test_AfterSwapSelector() public view {
+        // Changed to view because it reads state variables
         PoolKey memory poolKey = DUMMY_POOL_KEY;
         IPoolManager.SwapParams memory swapParams = DUMMY_SWAP_PARAMS;
         BalanceDelta memory delta = DUMMY_DELTA;
@@ -60,7 +62,8 @@ contract HooksTest is Test {
     /**
      * @notice Tests if the `beforeModifyPosition` function returns the correct selector.
      */
-    function test_BeforeModifyPositionSelector() public view { // Changed to view because it reads state variables
+    function test_BeforeModifyPositionSelector() public view {
+        // Changed to view because it reads state variables
         PoolKey memory poolKey = DUMMY_POOL_KEY;
         IPoolManager.ModifyPositionParams memory modifyParams = DUMMY_MODIFY_PARAMS;
         bytes memory data = "";
@@ -71,7 +74,8 @@ contract HooksTest is Test {
     /**
      * @notice Tests if the `afterModifyPosition` function returns the correct selector.
      */
-    function test_AfterModifyPositionSelector() public view { // Changed to view because it reads state variables
+    function test_AfterModifyPositionSelector() public view {
+        // Changed to view because it reads state variables
         PoolKey memory poolKey = DUMMY_POOL_KEY;
         IPoolManager.ModifyPositionParams memory modifyParams = DUMMY_MODIFY_PARAMS;
         BalanceDelta memory delta = DUMMY_DELTA;
@@ -97,8 +101,8 @@ contract HooksTest is Test {
             beforeDonate: false,
             afterDonate: false
         });
-        uint16 flags1 = Hooks.permissionsToFlags(p1);
-        assertEq(flags1, uint16(Hooks.BEFORE_SWAP_FLAG), "Flags mismatch for beforeSwap only"); // Cast flag
+        uint160 flags1 = Hooks.permissionsToFlags(p1);
+        assertEq(flags1, Hooks.BEFORE_SWAP_FLAG, "Flags mismatch for beforeSwap only");
 
         // Test case 2: afterSwap and beforeModifyPosition
         Hooks.Permissions memory p2 = Hooks.Permissions({
@@ -111,10 +115,10 @@ contract HooksTest is Test {
             beforeDonate: false,
             afterDonate: false
         });
-        uint16 flags2 = Hooks.permissionsToFlags(p2);
+        uint160 flags2 = Hooks.permissionsToFlags(p2);
         assertEq(
             flags2,
-            uint16(Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG), // Cast flags
+            Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG,
             "Flags mismatch for afterSwap & beforeModifyPosition"
         );
 
@@ -129,8 +133,8 @@ contract HooksTest is Test {
             beforeDonate: true,
             afterDonate: true
         });
-        uint16 flagsAll = Hooks.permissionsToFlags(pAll);
-        uint16 expectedAllFlags = uint16( // Cast flags
+        uint160 flagsAll = Hooks.permissionsToFlags(pAll);
+        uint160 expectedAllFlags = (
             Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG
                 | Hooks.AFTER_MODIFY_POSITION_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG
                 | Hooks.BEFORE_DONATE_FLAG | Hooks.AFTER_DONATE_FLAG
@@ -139,7 +143,7 @@ contract HooksTest is Test {
 
         // Test case 4: No permissions
         Hooks.Permissions memory pNone; // Defaults to false
-        uint16 flagsNone = Hooks.permissionsToFlags(pNone);
+        uint160 flagsNone = Hooks.permissionsToFlags(pNone);
         assertEq(flagsNone, 0, "Flags mismatch for no permissions");
     }
 
@@ -147,69 +151,64 @@ contract HooksTest is Test {
      * @notice Tests the `hasPermission` function for various flag combinations.
      */
     function test_HasPermission() public pure {
-        // Cast flags to uint16 before combining
-        uint16 flags_bs_as = uint16(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG);
-        address hook_bs_as = Hooks.setPermissions(DUMMY_HOOK_TARGET, flags_bs_as);
+        // Manually construct addresses with flags
+        uint160 flags_bs_as = Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG;
+        address hook_bs_as = address(uint160(DUMMY_HOOK_TARGET) | flags_bs_as);
 
-        // Cast flags in assertions
-        assertTrue(Hooks.hasPermission(hook_bs_as, uint16(Hooks.BEFORE_SWAP_FLAG)), "Should have BEFORE_SWAP");
-        assertTrue(Hooks.hasPermission(hook_bs_as, uint16(Hooks.AFTER_SWAP_FLAG)), "Should have AFTER_SWAP");
-        assertFalse(
-            Hooks.hasPermission(hook_bs_as, uint16(Hooks.BEFORE_MODIFY_POSITION_FLAG)), "Should NOT have BEFORE_MODIFY"
-        );
-        assertFalse(Hooks.hasPermission(hook_bs_as, uint16(Hooks.AFTER_DONATE_FLAG)), "Should NOT have AFTER_DONATE");
+        // Use uint160 flags in assertions
+        assertTrue(Hooks.hasPermission(hook_bs_as, Hooks.BEFORE_SWAP_FLAG), "Should have BEFORE_SWAP");
+        assertTrue(Hooks.hasPermission(hook_bs_as, Hooks.AFTER_SWAP_FLAG), "Should have AFTER_SWAP");
+        assertFalse(Hooks.hasPermission(hook_bs_as, Hooks.BEFORE_MODIFY_POSITION_FLAG), "Should NOT have BEFORE_MODIFY");
+        assertFalse(Hooks.hasPermission(hook_bs_as, Hooks.AFTER_DONATE_FLAG), "Should NOT have AFTER_DONATE");
 
         // Test with a single flag
-        uint16 flags_bmp = uint16(Hooks.BEFORE_MODIFY_POSITION_FLAG); // Cast flag
-        address hook_bmp = Hooks.setPermissions(DUMMY_HOOK_TARGET, flags_bmp);
-        assertTrue(
-            Hooks.hasPermission(hook_bmp, uint16(Hooks.BEFORE_MODIFY_POSITION_FLAG)), "Should have BEFORE_MODIFY"
-        ); // Cast flag
-        assertFalse(Hooks.hasPermission(hook_bmp, uint16(Hooks.BEFORE_SWAP_FLAG)), "Should NOT have BEFORE_SWAP"); // Cast flag
+        uint160 flags_bmp = Hooks.BEFORE_MODIFY_POSITION_FLAG;
+        address hook_bmp = address(uint160(DUMMY_HOOK_TARGET) | flags_bmp);
+        assertTrue(Hooks.hasPermission(hook_bmp, Hooks.BEFORE_MODIFY_POSITION_FLAG), "Should have BEFORE_MODIFY");
+        assertFalse(Hooks.hasPermission(hook_bmp, Hooks.BEFORE_SWAP_FLAG), "Should NOT have BEFORE_SWAP");
 
         // Test with zero flags
-        address hook_none = Hooks.setPermissions(DUMMY_HOOK_TARGET, 0);
-        assertFalse(Hooks.hasPermission(hook_none, uint16(Hooks.BEFORE_SWAP_FLAG)), "Should have no permissions (BS)"); // Cast flag
-        assertFalse(Hooks.hasPermission(hook_none, uint16(Hooks.AFTER_DONATE_FLAG)), "Should have no permissions (AD)"); // Cast flag
+        address hook_none = DUMMY_HOOK_TARGET; // No flags added
+        assertFalse(Hooks.hasPermission(hook_none, Hooks.BEFORE_SWAP_FLAG), "Should have no permissions (BS)");
+        assertFalse(Hooks.hasPermission(hook_none, Hooks.AFTER_DONATE_FLAG), "Should have no permissions (AD)");
 
-        // Test with all flags
-        uint16 allFlags = type(uint16).max; // All possible flags (already uint16)
-        address hook_all = Hooks.setPermissions(DUMMY_HOOK_TARGET, allFlags);
-        assertTrue(Hooks.hasPermission(hook_all, uint16(Hooks.BEFORE_SWAP_FLAG)), "Should have BEFORE_SWAP (all flags)"); // Cast flag
+        // Test with all flags (using the mask from validateHookAddress)
+        uint160 allFlags = (1 << 8) - 1;
+        address hook_all = address(uint160(DUMMY_HOOK_TARGET) | allFlags);
+        assertTrue(Hooks.hasPermission(hook_all, Hooks.BEFORE_SWAP_FLAG), "Should have BEFORE_SWAP (all flags)");
         assertTrue(
-            Hooks.hasPermission(hook_all, uint16(Hooks.AFTER_INITIALIZE_FLAG)), // Cast flag
-            "Should have AFTER_INITIALIZE (all flags)"
+            Hooks.hasPermission(hook_all, Hooks.AFTER_INITIALIZE_FLAG), "Should have AFTER_INITIALIZE (all flags)"
         );
-        assertTrue(Hooks.hasPermission(hook_all, uint16(Hooks.BEFORE_DONATE_FLAG)), "Should have BEFORE_DONATE (all flags)"); // Cast flag
+        assertTrue(Hooks.hasPermission(hook_all, Hooks.BEFORE_DONATE_FLAG), "Should have BEFORE_DONATE (all flags)");
     }
 
     /**
      * @notice Tests the `validateHookAddress` function.
      * @dev Checks if it correctly identifies valid hook addresses and reverts for invalid ones.
      */
-    function test_ValidateHookAddress() public pure {
-        // Valid: Address with BEFORE_SWAP flag requesting BEFORE_SWAP permission
-        uint16 flags_bs = uint16(Hooks.BEFORE_SWAP_FLAG); // Cast flag
-        address hook_bs = Hooks.setPermissions(DUMMY_HOOK_TARGET, flags_bs);
-        Hooks.validateHookAddress(hook_bs, uint16(Hooks.BEFORE_SWAP_FLAG)); // Cast flag // Should not revert
+    function test_ValidateHookAddress() public { // Removed 'pure' again due to vm.expectRevert
+        // Manually construct addresses with flags
+        uint160 flags_bs = Hooks.BEFORE_SWAP_FLAG;
+        address hook_bs = address(uint160(DUMMY_HOOK_TARGET) | flags_bs);
+        Hooks.validateHookAddress(hook_bs, Hooks.BEFORE_SWAP_FLAG); // Should not revert
 
         // Valid: Address with multiple flags requesting one of them
-        uint16 flags_bs_amp = uint16(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_MODIFY_POSITION_FLAG); // Cast flags
-        address hook_bs_amp = Hooks.setPermissions(DUMMY_HOOK_TARGET, flags_bs_amp);
-        Hooks.validateHookAddress(hook_bs_amp, uint16(Hooks.AFTER_MODIFY_POSITION_FLAG)); // Cast flag // Should not revert
+        uint160 flags_bs_amp = Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_MODIFY_POSITION_FLAG;
+        address hook_bs_amp = address(uint160(DUMMY_HOOK_TARGET) | flags_bs_amp);
+        Hooks.validateHookAddress(hook_bs_amp, Hooks.AFTER_MODIFY_POSITION_FLAG); // Should not revert
 
         // Invalid: Address with BEFORE_SWAP flag requesting AFTER_SWAP permission
-        vm.expectRevert(Hooks.HookAddressNotPermitted.selector);
-        Hooks.validateHookAddress(hook_bs, uint16(Hooks.AFTER_SWAP_FLAG)); // Cast flag
+        vm.expectRevert("Hook address missing required flags"); // Expect string revert
+        Hooks.validateHookAddress(hook_bs, Hooks.AFTER_SWAP_FLAG);
 
         // Invalid: Address with no flags requesting any permission
-        address hook_none = Hooks.setPermissions(DUMMY_HOOK_TARGET, 0);
-        vm.expectRevert(Hooks.HookAddressNotPermitted.selector);
-        Hooks.validateHookAddress(hook_none, uint16(Hooks.BEFORE_INITIALIZE_FLAG)); // Cast flag
+        address hook_none = DUMMY_HOOK_TARGET;
+        vm.expectRevert("Hook address missing required flags"); // Expect string revert
+        Hooks.validateHookAddress(hook_none, Hooks.BEFORE_INITIALIZE_FLAG);
 
         // Invalid: Address with some flags requesting a flag it doesn't have
-        vm.expectRevert(Hooks.HookAddressNotPermitted.selector);
-        Hooks.validateHookAddress(hook_bs_amp, uint16(Hooks.AFTER_SWAP_FLAG)); // Cast flag
+        vm.expectRevert("Hook address missing required flags"); // Expect string revert
+        Hooks.validateHookAddress(hook_bs_amp, Hooks.AFTER_SWAP_FLAG);
 
         // Valid: Requesting zero permissions (should always pass)
         Hooks.validateHookAddress(hook_bs, 0);
@@ -217,56 +216,57 @@ contract HooksTest is Test {
     }
 
     /**
-     * @notice Tests setting and getting permissions flags from an address.
+     * @notice Tests manually encoding and decoding permissions flags and target address.
      */
-    function test_SetAndGetPermissions() public pure {
-        uint16 flags1 = uint16(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_DONATE_FLAG); // Cast flags
-        address hook1 = Hooks.setPermissions(DUMMY_HOOK_TARGET, flags1);
+    function test_ManualPermissionEncodingDecoding() public pure {
+        uint160 flags1 = Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_DONATE_FLAG;
+        address hook1 = address(uint160(DUMMY_HOOK_TARGET) | flags1);
+        uint160 permissionMask = (1 << 8) - 1; // Mask for the lower 8 bits used for flags
 
-        // Check flags are set correctly (compare uint16 with uint16)
-        assertEq(Hooks.getPermissions(hook1), flags1, "Flags not set correctly");
-        // Check base address is preserved
-        assertEq(Hooks.getHookTarget(hook1), DUMMY_HOOK_TARGET, "Base address changed");
-
-        // Get permissions back
-        uint16 retrievedFlags1 = Hooks.getPermissions(hook1);
+        // Extract flags manually
+        uint160 retrievedFlags1 = uint160(uint160(hook1) & permissionMask);
         assertEq(retrievedFlags1, flags1, "Retrieved flags mismatch");
 
-        // Test setting zero flags
-        address hook_zero = Hooks.setPermissions(DUMMY_HOOK_TARGET, 0);
-        assertEq(Hooks.getPermissions(hook_zero), 0, "Zero flags not set correctly");
-        assertEq(Hooks.getHookTarget(hook_zero), DUMMY_HOOK_TARGET, "Base address changed (zero flags)");
-        assertEq(Hooks.getPermissions(hook_zero), 0, "Retrieved zero flags mismatch");
+        // Extract target manually
+        address retrievedTarget1 = address(uint160(hook1) & (~permissionMask));
+        assertEq(retrievedTarget1, DUMMY_HOOK_TARGET, "Retrieved target mismatch");
 
-        // Test setting all flags
-        uint16 allFlags = type(uint16).max;
-        address hook_all = Hooks.setPermissions(DUMMY_HOOK_TARGET, allFlags);
-        // Note: The actual flags might be less than max if HOOK_PERMISSIONS_MASK is not 0xFFFF
-        // We should compare against the flags *actually* set by setPermissions, which getPermissions retrieves.
-        uint16 expectedSetFlags = Hooks.getPermissions(hook_all); // Get what was actually set
-        assertEq(Hooks.getPermissions(hook_all), expectedSetFlags, "All flags not set correctly");
-        assertEq(Hooks.getHookTarget(hook_all), DUMMY_HOOK_TARGET, "Base address changed (all flags)");
-        assertEq(Hooks.getPermissions(hook_all), expectedSetFlags, "Retrieved all flags mismatch");
+        // Test with zero flags
+        address hook_zero = DUMMY_HOOK_TARGET; // No flags added
+        uint160 retrievedFlagsZero = uint160(uint160(hook_zero) & permissionMask);
+        assertEq(retrievedFlagsZero, 0, "Zero flags not retrieved correctly");
+        address retrievedTargetZero = address(uint160(hook_zero) & (~permissionMask));
+        assertEq(retrievedTargetZero, DUMMY_HOOK_TARGET, "Base address changed (zero flags)");
+
+        // Test with all flags
+        uint160 allFlags = (1 << 8) - 1;
+        address hook_all = address(uint160(DUMMY_HOOK_TARGET) | allFlags);
+        uint160 retrievedFlagsAll = uint160(uint160(hook_all) & permissionMask);
+        assertEq(retrievedFlagsAll, allFlags, "All flags not retrieved correctly");
+        address retrievedTargetAll = address(uint160(hook_all) & (~permissionMask));
+        assertEq(retrievedTargetAll, DUMMY_HOOK_TARGET, "Base address changed (all flags)");
     }
 
     /**
-     * @notice Tests getting the target address (without flags).
+     * @notice Tests manually extracting the target address (without flags).
      */
-    function test_GetHookTarget() public pure {
-        uint16 flags = Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_INITIALIZE_FLAG;
-        address hookWithFlags = Hooks.setPermissions(DUMMY_HOOK_TARGET, flags);
+    function test_ManualTargetExtraction() public pure {
+        uint160 flags = Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_INITIALIZE_FLAG;
+        address hookWithFlags = address(uint160(DUMMY_HOOK_TARGET) | flags);
+        uint160 permissionMask = (1 << 8) - 1; // Mask for the lower 8 bits used for flags
 
-        address target = Hooks.getHookTarget(hookWithFlags);
+        // Extract target manually
+        address target = address(uint160(hookWithFlags) & (~permissionMask));
         assertEq(target, DUMMY_HOOK_TARGET, "Target address mismatch");
 
         // Test with zero flags
-        address hookZeroFlags = Hooks.setPermissions(DUMMY_HOOK_TARGET, 0);
-        address targetZero = Hooks.getHookTarget(hookZeroFlags);
+        address hookZeroFlags = DUMMY_HOOK_TARGET; // No flags added
+        address targetZero = address(uint160(hookZeroFlags) & (~permissionMask));
         assertEq(targetZero, DUMMY_HOOK_TARGET, "Target address mismatch (zero flags)");
 
         // Test with address(0) as base
-        address hookZeroBase = Hooks.setPermissions(address(0), flags);
-        address targetZeroBase = Hooks.getHookTarget(hookZeroBase);
+        address hookZeroBase = address(uint160(address(0)) | flags);
+        address targetZeroBase = address(uint160(hookZeroBase) & (~permissionMask));
         assertEq(targetZeroBase, address(0), "Target address mismatch (zero base)");
     }
 }

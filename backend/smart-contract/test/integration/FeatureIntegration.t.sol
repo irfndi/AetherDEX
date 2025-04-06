@@ -34,7 +34,7 @@ contract FeatureIntegrationTest is Test {
 
     function setUp() public {
         networks = new MockChainNetworks();
-        feeRegistry = new FeeRegistry();
+        feeRegistry = new FeeRegistry(address(this)); // Pass initialOwner
         // Deploy the hook, passing placeholder for poolManager and the actual feeRegistry
         dynamicFeeHook = new DynamicFeeHook(address(this), address(feeRegistry)); // Placeholder manager for hook deployment
         _setupTestEnvironment();
@@ -73,23 +73,28 @@ contract FeatureIntegrationTest is Test {
         // address encodedHookAddress = address(uint160(address(dynamicFeeHook)) | requiredFlags);
 
         // Create pool manager first, passing the direct hook address
-        MockPoolManager manager = new MockPoolManager(address(pool), address(dynamicFeeHook));
+        MockPoolManager manager = new MockPoolManager(address(dynamicFeeHook)); // Pass only hook address
         poolManagers[chainId] = manager;
 
         // Initialize pool with pool manager
-        pool.initialize(poolToken0, poolToken1, uint24(DEFAULT_FEE), address(manager));
+        pool.initialize(poolToken0, poolToken1, uint24(DEFAULT_FEE)); // Removed last argument
 
         // Add liquidity using the original (unsorted) token variables
         _addInitialLiquidity(chainId, token0, token1);
 
         // Configure fees using the sorted tokens
-        feeRegistry.setFeeConfig(
-            poolToken0, // Use sorted tokens for fee config key
-            poolToken1,
-            MAX_FEE,
-            MIN_FEE,
-            1 // 1 bps adjustment rate
-        );
+        // Replace setFeeConfig with addFeeConfiguration
+        int24 tickSpacing = 60; // Assuming tickSpacing 60 for DEFAULT_FEE 3000
+        if (!feeRegistry.isSupportedFeeTier(DEFAULT_FEE)) {
+             feeRegistry.addFeeConfiguration(DEFAULT_FEE, tickSpacing);
+        }
+        // Add configurations for MIN_FEE and MAX_FEE if needed for the test logic, assuming appropriate tick spacings
+        if (!feeRegistry.isSupportedFeeTier(MIN_FEE)) {
+             feeRegistry.addFeeConfiguration(MIN_FEE, 10); // Example tick spacing for MIN_FEE
+        }
+         if (!feeRegistry.isSupportedFeeTier(MAX_FEE)) {
+             feeRegistry.addFeeConfiguration(MAX_FEE, 200); // Example tick spacing for MAX_FEE
+        }
     }
 
     function _addInitialLiquidity(uint16 chainId, address token0, address token1) internal {
@@ -152,7 +157,7 @@ contract FeatureIntegrationTest is Test {
         address token1 = pool.token1();
 
         // Record initial fee
-        uint24 initialFee = feeRegistry.getFee(token0, token1);
+        uint24 initialFee = feeRegistry.getFee(PoolKey({token0: token0, token1: token1, fee: DEFAULT_FEE, tickSpacing: 60, hooks: address(0)})); // Use PoolKey
 
         // Perform high volume of swaps
         uint256 swapAmount = 10000 ether;
@@ -161,7 +166,7 @@ contract FeatureIntegrationTest is Test {
         }
 
         // Check fee adjustment
-        uint24 newFee = feeRegistry.getFee(token0, token1);
+        uint24 newFee = feeRegistry.getFee(PoolKey({token0: token0, token1: token1, fee: DEFAULT_FEE, tickSpacing: 60, hooks: address(0)})); // Use PoolKey
         assertTrue(newFee > initialFee, "Fee should increase with volume");
         assertTrue(newFee <= MAX_FEE, "Fee should not exceed maximum");
     }

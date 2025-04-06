@@ -68,10 +68,10 @@ contract CrossChainBenchmarkTest is Test {
         
         // Create a pool with the factory address (this test contract)
         AetherPool pool = new AetherPool(address(this));
-        pool.initialize(address(token0), address(token1), uint24(3000), address(this));
-        
+        pool.initialize(address(token0), address(token1), uint24(3000)); // Removed last argument
+
         // Setup pool manager with the initialized pool and no hook
-        MockPoolManager poolManager = new MockPoolManager(address(pool), address(0));
+        MockPoolManager poolManager = new MockPoolManager(address(0)); // Pass only hook address
         poolManagers[chainId] = poolManager;
 
         // Setup endpoint and vault

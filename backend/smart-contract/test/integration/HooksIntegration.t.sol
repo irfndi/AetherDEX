@@ -36,7 +36,7 @@ contract HooksIntegrationTest is Test {
         token1 = new MockERC20("Token1", "TKN1", 18);
 
         // Deploy fee registry and factory for hooks
-        feeRegistry = new FeeRegistry();
+        feeRegistry = new FeeRegistry(address(this)); // Pass initialOwner
         HookFactory factory = new HookFactory();
 
         // Deploy hooks through factory to ensure proper flag encoding
@@ -44,11 +44,11 @@ contract HooksIntegrationTest is Test {
         feeHook = factory.deployDynamicFeeHook(address(this), address(feeRegistry));
 
         // Create and initialize the pool
-        AetherPool pool = new AetherPool(address(this));
-        pool.initialize(address(token0), address(token1), uint24(3000), address(this));
+        AetherPool pool = new AetherPool(address(this)); // Assuming factory address is 'this' for simplicity
+        pool.initialize(address(token0), address(token1), uint24(3000)); // Removed last argument
 
         // Deploy pool manager with pool and TWAP hook
-        poolManager = new MockPoolManager(address(pool), address(twapHook));
+        poolManager = new MockPoolManager(address(twapHook)); // Pass only hook address
 
         // Setup pool key with TWAP hook
         poolKey = PoolKey({
@@ -66,14 +66,18 @@ contract HooksIntegrationTest is Test {
         // Initialize the TWAP oracle with a starting price
         twapHook.initializeOracle(poolKey, 1000);
 
-        // Configure fees in registry
-        feeRegistry.setFeeConfig(
-            address(token0),
-            address(token1),
-            3000, // max fee
-            1000, // min fee
-            100   // fee adjustment step
-        );
+        // Configure fees in registry using addFeeConfiguration
+        uint24 fee = 3000;
+        int24 tickSpacing = 60; // Assuming tickSpacing 60 for fee 3000
+        if (!feeRegistry.isSupportedFeeTier(fee)) {
+             feeRegistry.addFeeConfiguration(fee, tickSpacing);
+        }
+        // Add other tiers if needed by tests, e.g., minFee from old setFeeConfig
+        uint24 minFee = 1000;
+        int24 minTickSpacing = 20; // Example tick spacing
+         if (!feeRegistry.isSupportedFeeTier(minFee)) {
+             feeRegistry.addFeeConfiguration(minFee, minTickSpacing);
+        }
     }
 
     function test_TWAPHookBeforeSwap() public {
@@ -148,7 +152,8 @@ contract HooksIntegrationTest is Test {
 
         // Make sure the fee registry has the correct fee for this token pair
         // This ensures the fee in the registry matches the fee in the pool key (3000)
-        feeRegistry.setFeeConfig(address(token0), address(token1), 3000, 3000, 0);
+        // feeRegistry.setFeeConfig(address(token0), address(token1), 3000, 3000, 0); // Removed setFeeConfig
+        // Configuration is done in setUp using addFeeConfiguration
 
         // Setup swap parameters
         IPoolManager.SwapParams memory params =
@@ -178,7 +183,8 @@ contract HooksIntegrationTest is Test {
 
         // Make sure the fee registry has the correct fee for this token pair
         // This ensures the fee in the registry matches the fee in the pool key (3000)
-        feeRegistry.setFeeConfig(address(token0), address(token1), 3000, 3000, 0);
+        // feeRegistry.setFeeConfig(address(token0), address(token1), 3000, 3000, 0); // Removed setFeeConfig
+        // Configuration is done in setUp using addFeeConfiguration
 
         // Initialize the TWAP oracle for both pool keys
         // This is needed to prevent arithmetic overflow in the TWAP calculation

@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.29;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -9,8 +8,7 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ICCIPRouter} from "./interfaces/ICCIPRouter.sol";
 import {IHyperlane} from "./interfaces/IHyperlane.sol";
-// import {MockERC20} from "../test/mocks/MockERC20.sol"; // Removed mock dependency
-import {IPoolManager} from "./interfaces/IPoolManager.sol"; // Removed IPoolManager_SwapCallback
+import {IPoolManager} from "./interfaces/IPoolManager.sol";
 import {PoolKey} from "./types/PoolKey.sol";
 import {BalanceDelta} from "./types/BalanceDelta.sol";
 import {Hooks} from "./libraries/Hooks.sol";
@@ -40,7 +38,6 @@ error EOAOnly();
 error InvalidDeadline(uint256 deadline);
 error InvalidFeeTier(uint24 fee);
 error SwapFailed(string reason);
-
 
 /**
  * @title AetherRouter
@@ -161,8 +158,8 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
     // Cross-chain messaging contracts
     ICCIPRouter public immutable ccipRouter;
     IHyperlane public immutable hyperlane;
-    IERC20 public immutable linkToken; // Changed from MockERC20
-    IPoolManager public immutable poolManager; // Changed to immutable
+    IERC20 public immutable linkToken;
+    IPoolManager public immutable poolManager;
 
     // Fee tracking
     uint256 public totalFees;
@@ -232,9 +229,9 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
 
         ccipRouter = ICCIPRouter(_ccipRouter);
         hyperlane = IHyperlane(_hyperlane);
-        linkToken = IERC20(_linkToken); // Use IERC20
-        poolManager = IPoolManager(_poolManager); // Assign poolManager
-        MAX_SLIPPAGE = _maxSlippage; // Assign maxSlippage
+        linkToken = IERC20(_linkToken);
+        poolManager = IPoolManager(_poolManager);
+        MAX_SLIPPAGE = _maxSlippage;
     }
 
     /**
@@ -359,11 +356,10 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
     function executeRoute(
         address tokenIn,
         address tokenOut,
-        uint256 amountIn, // Removed duplicate
-        uint256 amountOutMin, // Removed duplicate
-        uint24 fee, // Added fee
+        uint256 amountIn,
+        uint256 amountOutMin,
+        uint24 fee,
         uint256 deadline
-        // bytes memory routeData // Removed for single swap
     ) external payable nonReentrant whenNotPaused returns (uint256 amountOut) {
         // --- Validation ---
         if (tokenIn == address(0) || tokenIn.code.length == 0) revert InvalidTokenAddress(tokenIn);
@@ -387,13 +383,8 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         IERC20(tokenIn).safeIncreaseAllowance(address(poolManager), amountIn);
 
         // --- Construct Swap Parameters ---
-        // [TODO]: Derive tickSpacing from fee tier (requires FeeRegistry or hardcoded map)
-        // Assuming a common mapping for now: 3000 -> 60, 500 -> 10, 100 -> 1
-        int24 tickSpacing;
-        if (fee == 3000) tickSpacing = 60;
-        else if (fee == 500) tickSpacing = 10;
-        else if (fee == 100) tickSpacing = 1;
-        else revert InvalidFeeTier(fee); // Or fetch from registry
+        // Derive tickSpacing from fee tier using a FeeRegistry or a predefined mapping
+        int24 tickSpacing = _getTickSpacingFromFee(fee);
 
         PoolKey memory key = PoolKey({
             token0: tokenIn, // Already validated tokenIn < tokenOut
@@ -423,30 +414,25 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         // --- Execute Swap ---
         BalanceDelta memory balanceDelta;
         try poolManager.swap(key, params, bytes("")) returns (BalanceDelta memory returnedDelta) {
-             balanceDelta = returnedDelta;
+            balanceDelta = returnedDelta;
         } catch Error(string memory reason) {
             revert SwapFailed(reason);
         } catch (bytes memory lowLevelData) {
             revert SwapFailed(string(lowLevelData)); // Or decode specific PoolManager errors
         }
 
-
         // --- Process Results ---
-        // BalanceDelta returns negative values for tokens *sent out* by the pool
-        int256 delta0 = balanceDelta.amount0;
-        int256 delta1 = balanceDelta.amount1;
-
-        // Since zeroForOne is true, we provided token0 (delta0 should be positive)
-        // and received token1 (delta1 should be negative)
-        if (delta0 < int256(amountIn)) {
-             // This shouldn't happen if swap didn't revert, but check for safety
-             revert SwapFailed("Pool did not take expected input amount");
+        // Since zeroForOne is true, we provided token0 (balanceDelta.amount0 should be positive)
+        // and received token1 (balanceDelta.amount1 should be negative)
+        if (balanceDelta.amount0 < int256(amountIn)) {
+            // This shouldn't happen if swap didn't revert, but check for safety
+            revert SwapFailed("Pool did not take expected input amount");
         }
-        if (delta1 >= 0) {
-             revert SwapFailed("Pool did not return output tokens");
+        if (balanceDelta.amount1 >= 0) {
+            revert SwapFailed("Pool did not return output tokens");
         }
 
-        amountOut = uint256(-delta1); // Amount of tokenOut received
+        amountOut = uint256(-balanceDelta.amount1); // Amount of tokenOut received
 
         // Check slippage against minimum output
         if (amountOut < amountOutMin) {
@@ -454,13 +440,10 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         }
 
         // --- Final Transfer ---
-        // Transfer received output tokens from router to the user
         TransferHelper.safeTransfer(tokenOut, msg.sender, amountOut);
 
         // --- Emit Event ---
-        // [TODO]: Decide if routeData hash is still relevant for single swaps
-        bytes32 routeHash = keccak256(abi.encode(key, params)); // Example hash for single swap
-        emit RouteExecuted(msg.sender, tokenIn, tokenOut, amountIn, amountOut, 0, routeHash); // Chain ID 0 for same-chain
+        emit RouteExecuted(msg.sender, tokenIn, tokenOut, amountIn, amountOut, 0, bytes32(0)); // Use zero hash
     }
 
     /**
@@ -660,12 +643,11 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         }
     }
 
-    function _refundExcessFee(uint256 actualFee, address sender) private {
-        uint256 excessFee = msg.value - actualFee;
-        if (excessFee > 0) {
-            payable(sender).transfer(excessFee);
-            emit ExcessFeeRefunded(sender, excessFee);
-        }
+    function _getTickSpacingFromFee(uint24 fee) private pure returns (int24 tickSpacing) {
+        if (fee == 3000) tickSpacing = 60;
+        else if (fee == 500) tickSpacing = 10;
+        else if (fee == 100) tickSpacing = 1;
+        else revert InvalidFeeTier(fee); // Or fetch from registry
     }
 
     /**
@@ -789,4 +771,11 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
     }
 
     receive() external payable {}
+
+    function _refundExcessFee(uint256 excessFee, address recipient) internal {
+        if (excessFee > 0) {
+            (bool success, ) = payable(recipient).call{value: excessFee}("");
+            require(success, "ETH_TRANSFER_FAILED");
+        }
+    }
 }

@@ -8,6 +8,8 @@ import {Hooks} from "../../src/libraries/Hooks.sol";
 import {PoolKey} from "../../src/types/PoolKey.sol";
 import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {TransferHelper} from "../../src/libraries/TransferHelper.sol";
+import {TickMath} from "../../lib/v4-core/src/libraries/TickMath.sol";
 
 contract MockPoolManager is IPoolManager {
     // AetherPool public immutable pool; // Make mutable to break constructor dependency
@@ -152,54 +154,48 @@ contract MockPoolManager is IPoolManager {
     mapping(bytes32 => uint160) public initialSqrtPriceX96;
     mapping(bytes32 => int24) public initialTick; // Store the initial tick
 
-    // Required interface stubs
-    function modifyPosition(PoolKey calldata, ModifyPositionParams calldata, bytes calldata)
+    /// @inheritdoc IPoolManager
+    function modifyPosition(PoolKey calldata key, ModifyPositionParams calldata params, bytes calldata /* hookData */)
         external
         override
-        returns (BalanceDelta memory)
+        returns (BalanceDelta memory delta)
     {
-        revert("MPM: Not implemented");
+        // Basic mock implementation: Assume adding liquidity
+        // Transfer tokens from caller to the pool based on some logic
+        // This is highly simplified and might need refinement based on actual tick logic if tests require it.
+        _validateKey(key); // Ensure the key matches the associated pool
+
+        // Simulate adding liquidity - transfer tokens from msg.sender to pool
+        // WARNING: This mock doesn't calculate amounts based on ticks/price.
+        // It assumes caller provides necessary tokens.
+        // We need *some* amount transferred to make swap possible.
+        // Let's use a fixed amount for simplicity in the mock, e.g., 100 tokens each.
+        // A better mock might try to estimate amounts based on liquidityDelta.
+        uint256 mockAmount0 = 100 ether;
+        uint256 mockAmount1 = 100 ether;
+
+        if (params.liquidityDelta > 0) { // Adding liquidity
+            TransferHelper.safeTransferFrom(key.token0, msg.sender, address(pool), mockAmount0);
+            TransferHelper.safeTransferFrom(key.token1, msg.sender, address(pool), mockAmount1);
+            // Return a positive delta indicating tokens received by the pool (from manager's perspective)
+            delta = BalanceDelta(int256(mockAmount0), int256(mockAmount1));
+        } else if (params.liquidityDelta < 0) { // Removing liquidity
+             // Simulate removing liquidity - transfer tokens from pool to msg.sender
+            TransferHelper.safeTransfer(key.token0, msg.sender, mockAmount0); 
+            TransferHelper.safeTransfer(key.token1, msg.sender, mockAmount1); 
+            // Return a negative delta indicating tokens sent from the pool
+            delta = BalanceDelta(-int256(mockAmount0), -int256(mockAmount1));
+        } else {
+             // liquidityDelta is zero, return zero delta
+             delta = BalanceDelta(0,0);
+        }
+
+        // Note: Real modifyPosition involves complex tick math.
+        // This mock bypasses that for basic testing.
     }
 
     function donate(PoolKey calldata, uint256, uint256, bytes calldata) external override {
         revert("MPM: Not implemented");
-    }
-
-    /// @inheritdoc IPoolManager
-    function initialize(PoolKey calldata key, uint160 sqrtPriceX96, bytes calldata hookData)
-        external
-        override
-    {
-        // Basic implementation for mock: store initialization status and parameters
-        bytes32 poolId = keccak256(abi.encode(key)); // Correctly calculate poolId hash
-        require(!initializedPools[poolId], "MPM: Pool already initialized");
-
-        initializedPools[poolId] = true;
-        initialSqrtPriceX96[poolId] = sqrtPriceX96;
-        // Simulate calculating tick from sqrtPriceX96 (can be simplified for mock)
-        // For simplicity, let's just use 0 or a fixed value.
-        // If tests require a specific tick calculation, this needs refinement.
-        int24 tick = 0; // Placeholder tick value, now a local variable
-        initialTick[poolId] = tick; // Store the mock tick
-
-        // Optionally, call hook if present and has permission
-        if (key.hooks != address(0) && Hooks.hasPermission(key.hooks, Hooks.AFTER_INITIALIZE_FLAG)) {
-            // Remove the 'tick' argument as BaseHook.afterInitialize expects only 4 arguments
-            try BaseHook(key.hooks).afterInitialize(msg.sender, key, sqrtPriceX96, hookData) returns (
-                bytes4 selector
-            ) {
-                require(selector == BaseHook.afterInitialize.selector, "MPM: Invalid afterInitialize hook selector");
-            } catch Error(string memory reason) {
-                // Handle or log hook error if necessary for testing
-                revert(reason);
-            }
-        }
-        // No revert needed here as we are implementing the function
-    }
-
-    function getPool(PoolKey calldata key) external view override returns (Pool memory) {
-        require(key.token0 == pool.token0() && key.token1 == pool.token1(), "MPM: Pool not found");
-        return Pool({token0: pool.token0(), token1: pool.token1(), fee: 3000, tickSpacing: 60, hooks: hookAddress});
     }
 
     function take(PoolKey calldata, address, uint256, uint256, bytes calldata) external override {
@@ -220,5 +216,47 @@ contract MockPoolManager is IPoolManager {
 
     function validateHookAddress(bytes32) external view override returns (bool) {
         return hookAddress != address(0);
+    }
+
+    /// @inheritdoc IPoolManager
+    function initialize(PoolKey calldata key, uint160 sqrtPriceX96, bytes calldata hookData)
+        external
+        override
+    {
+        // Basic implementation for mock: store initialization status and parameters
+        bytes32 poolId = keccak256(abi.encode(key)); // Correctly calculate poolId hash
+        require(!initializedPools[poolId], "MPM: Pool already initialized");
+
+        initializedPools[poolId] = true;
+        initialSqrtPriceX96[poolId] = sqrtPriceX96;
+        // Simulate calculating tick from sqrtPriceX96 (can be simplified for mock)
+        // For simplicity, let's just use 0 or a fixed value.
+        // If tests require a specific tick calculation, this needs refinement.
+        // int24 tick = 0; // Placeholder tick value, now a local variable
+        int24 tick = TickMath.getTickAtSqrtPrice(sqrtPriceX96); // Corrected function name
+        initialTick[poolId] = tick; // Store the mock tick
+
+        // Ensure the actual pool instance is initialized as well
+        require(address(pool) != address(0), "MPM: Pool not set");
+        pool.initialize(key.token0, key.token1, key.fee);
+
+        // Optionally, call hook if present and has permission
+        if (key.hooks != address(0) && Hooks.hasPermission(key.hooks, Hooks.AFTER_INITIALIZE_FLAG)) {
+            // Remove the 'tick' argument as BaseHook.afterInitialize expects only 4 arguments
+            try BaseHook(key.hooks).afterInitialize(msg.sender, key, sqrtPriceX96, hookData) returns (
+                bytes4 selector
+            ) {
+                require(selector == BaseHook.afterInitialize.selector, "MPM: Invalid afterInitialize hook selector");
+            } catch Error(string memory reason) {
+                // Handle or log hook error if necessary for testing
+                revert(reason);
+            }
+        }
+        // No revert needed here as we are implementing the function
+    }
+
+    function getPool(PoolKey calldata key) external view override returns (Pool memory) {
+        require(key.token0 == pool.token0() && key.token1 == pool.token1(), "MPM: Pool not found");
+        return Pool({token0: pool.token0(), token1: pool.token1(), fee: 3000, tickSpacing: 60, hooks: hookAddress});
     }
 }

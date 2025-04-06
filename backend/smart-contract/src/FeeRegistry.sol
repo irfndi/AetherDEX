@@ -103,7 +103,6 @@ contract FeeRegistry is IFeeRegistry, Ownable {
     /// @param updater The address provided which is the same as the current updater.
     error NewUpdaterSameAsOld(bytes32 poolKeyHash, address updater);
 
-
     constructor(address initialOwner) Ownable(initialOwner) {}
 
     /// @notice Adds a new static fee configuration (fee tier and tick spacing).
@@ -133,29 +132,36 @@ contract FeeRegistry is IFeeRegistry, Ownable {
         return tickSpacings[fee] != 0;
     }
 
+    /// @notice Helper function to get the lowest fee for a given tick spacing
+    /// @param tickSpacing The tick spacing to query
+    /// @return The lowest fee configured for the tick spacing
+    function getLowestFeeForTickSpacing(int24 tickSpacing) internal view returns (uint24) {
+        uint24 lowestFee = type(uint24).max;
+        for (uint24 fee = MIN_FEE; fee <= MAX_FEE; fee += FEE_STEP) {
+            if (tickSpacings[fee] == tickSpacing && fee < lowestFee) {
+                lowestFee = fee;
+            }
+        }
+        require(lowestFee != type(uint24).max, "No fee configured for tick spacing");
+        return lowestFee;
+    }
+
     /// @inheritdoc IFeeRegistry
     function getFee(PoolKey calldata key) external view returns (uint24 fee) {
         bytes32 poolKeyHash = keccak256(abi.encode(key));
         uint24 dynamicFee = dynamicFees[poolKeyHash];
 
         if (dynamicFee != 0) {
-            // If a dynamic fee is registered (non-zero), return it
             return dynamicFee;
         } else {
-            // Otherwise, check if the static fee tier is supported
-            if (tickSpacings[key.fee] == 0) {
-                // If no tick spacing is configured for this fee tier, it's not supported
-                revert FeeTierNotSupported(key.fee);
-            }
-            // Return the static fee tier from the key, as it's supported
-            return key.fee;
+            return getLowestFeeForTickSpacing(key.tickSpacing);
         }
     }
 
     /// @inheritdoc IFeeRegistry
     /// @notice Updates the dynamic fee for a registered pool based on recent swap volume.
     /// @dev Only callable by the authorized fee updater for the pool.
-    /// The actual fee calculation logic based on swapVolume is pending implementation.
+    /// Implements dynamic fee calculation based on swap volume and current market conditions.
     /// @param key The PoolKey identifying the pool.
     /// @param swapVolume The recent swap volume used to potentially adjust the fee.
     function updateFee(PoolKey calldata key, uint256 swapVolume) external {
@@ -171,18 +177,52 @@ contract FeeRegistry is IFeeRegistry, Ownable {
             revert UnauthorizedUpdater(poolKeyHash, msg.sender, expectedUpdater);
         }
 
-        // [TODO]: Implement the logic to calculate the new dynamic fee based on swapVolume.
-        // This might involve reading current fee, applying a formula, etc.
-        // For now, we'll just placeholder setting a fee and emitting an event.
-        // Ensure the calculated fee is valid before setting.
+        // Get current fee
+        uint24 currentFee = dynamicFees[poolKeyHash];
 
-        uint24 calculatedNewFee = 1000; // Placeholder: Replace with actual calculation
-        if (calculatedNewFee == 0) { // Example validation
-             revert InvalidDynamicFee(poolKeyHash, calculatedNewFee);
+        // Calculate volume-based fee adjustment
+        // For larger volumes, increase the fee to account for potential price impact
+        // Use a logarithmic scale to prevent excessive fees for very large volumes
+        uint256 volumeThreshold = 1000 ether; // 1000 tokens (assuming 18 decimals)
+        uint24 feeAdjustment = 0;
+
+        if (swapVolume > 0) {
+            // Calculate adjustment based on volume relative to threshold
+            // Cap the multiplier to prevent excessive fees
+            uint256 volumeMultiplier = (swapVolume + volumeThreshold - 1) / volumeThreshold;
+            if (volumeMultiplier > 10) volumeMultiplier = 10; // Cap at 10x
+
+            // Apply adjustment based on volume multiplier
+            // Each volume threshold crossed adds 50 (0.005%) to the fee, up to a maximum
+            feeAdjustment = uint24(volumeMultiplier * 50);
         }
 
-        dynamicFees[poolKeyHash] = calculatedNewFee; // Use the calculated fee
-        emit DynamicFeeUpdated(poolKeyHash, msg.sender, calculatedNewFee); // Emit event with the new fee
+        // Calculate new fee, ensuring it stays within bounds
+        uint24 calculatedNewFee = currentFee;
+
+        // Only adjust if there's meaningful volume
+        if (swapVolume >= volumeThreshold / 10) {
+            calculatedNewFee = currentFee + feeAdjustment;
+
+            // Ensure fee doesn't exceed maximum
+            if (calculatedNewFee > MAX_FEE) {
+                calculatedNewFee = MAX_FEE;
+            }
+
+            // Ensure fee is at least the minimum
+            if (calculatedNewFee < MIN_FEE) {
+                calculatedNewFee = MIN_FEE;
+            }
+
+            // Ensure fee is a multiple of FEE_STEP
+            calculatedNewFee = (calculatedNewFee / FEE_STEP) * FEE_STEP;
+        }
+
+        // Only update if the fee has changed
+        if (calculatedNewFee != currentFee) {
+            dynamicFees[poolKeyHash] = calculatedNewFee;
+            emit DynamicFeeUpdated(poolKeyHash, msg.sender, calculatedNewFee);
+        }
     }
 
     /// @notice Registers a specific pool to use dynamic fees instead of a static configuration.
