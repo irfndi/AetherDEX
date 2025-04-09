@@ -37,7 +37,6 @@ jobs:
   static-analysis:
     name: Static Analysis
     runs-on: ubuntu-latest
-    needs: test
     defaults:
       run:
         working-directory: backend/smart-contract
