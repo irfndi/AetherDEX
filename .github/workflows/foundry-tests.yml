@@ -3,12 +3,8 @@ name: Foundry Tests
 on:
   push:
     branches: [ main, master, develop ]
-    paths:
-      - 'backend/smart-contract/**'
   pull_request:
     branches: [ main, master, develop ]
-    paths:
-      - 'backend/smart-contract/**'
 
 jobs:
   test:
