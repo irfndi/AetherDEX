@@ -67,7 +67,8 @@ contract SmartRoutingIntegrationTest is Test {
             address(ccipRouter),
             address(hyperlane),
             address(new MockERC20("LINK", "LINK", 18)),
-            address(initialManager),
+            address(initialManager), // poolManager
+            address(this), // factory - using 'this' as placeholder
             500 // maxSlippage - 5%
         );
 

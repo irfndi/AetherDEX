@@ -80,13 +80,14 @@ contract AetherRouterTest is Test {
         linkToken = address(new MockERC20("LINK", "LINK", 18));
         console.log("Mock contracts deployed.");
         console.log("Deploying router with owner:", address(this));
-        // Corrected argument order: _owner, _ccipRouter, _hyperlane, _linkToken, _poolManager, _maxSlippage
+        // Updated argument order: _owner, _ccipRouter, _hyperlane, _linkToken, _poolManager, _factory, _maxSlippage
         router = new AetherRouter(
             address(this),            // _owner
             ccipRouter,               // _ccipRouter
             hyperlane,                // _hyperlane
             linkToken,                // _linkToken
             address(mockPoolManager), // _poolManager
+            address(factory),         // _factory (Add factory address)
             500                       // _maxSlippage
         );
         console.log("Router deployed at:", address(router));
@@ -109,8 +110,8 @@ contract AetherRouterTest is Test {
         address pool1 = factory.createPool(key1);
         console.log("WETH/USDC pool created at:", pool1);
         console.logBytes32(poolId1); // Use logBytes32
-        // Set pool in MockPoolManager (takes only pool address)
-        mockPoolManager.setPool(pool1);
+        // Set pool in MockPoolManager using poolId and address
+        mockPoolManager.setPool(poolId1, pool1);
         console.log("Pool 1 set in MockPoolManager.");
 
 
@@ -127,8 +128,8 @@ contract AetherRouterTest is Test {
         address pool2 = factory.createPool(key2);
         console.log("USDC/DAI pool created at:", pool2);
         console.logBytes32(poolId2); // Use logBytes32
-        // Set pool in MockPoolManager (takes only pool address)
-        mockPoolManager.setPool(pool2);
+        // Set pool in MockPoolManager using poolId and address
+        mockPoolManager.setPool(poolId2, pool2);
         console.log("Pool 2 set in MockPoolManager.");
 
 
@@ -261,12 +262,16 @@ contract AetherRouterTest is Test {
     function test_SwapExactETHForTokens() public {
         vm.startPrank(alice);
 
+        // This test should swap WETH for USDC, not native ETH
         uint256 aliceUsdcBefore = usdc.balanceOf(alice);
-        uint256 ethAmount = 1 ether;
+        uint256 wethAmount = 1 ether; // Amount of WETH to swap
 
-        address[] memory path = new address[](2);
-        path[0] = address(weth);
-        path[1] = address(usdc);
+        // Ensure Alice has WETH (already minted in setUp)
+        // Ensure Alice has approved the router for WETH (done in setUp)
+
+        // address[] memory path = new address[](2); // Path not directly used by executeRoute
+        // path[0] = address(weth);
+        // path[1] = address(usdc);
 
         // Define PoolKey parameters (assuming 3000 fee, 60 tickSpacing, no hooks)
         uint24 fee = 3000;
@@ -274,13 +279,13 @@ contract AetherRouterTest is Test {
         address hooks = address(0);
         address token0 = address(weth) < address(usdc) ? address(weth) : address(usdc);
         address token1 = address(weth) < address(usdc) ? address(usdc) : address(weth);
-        (PoolKey memory key, ) = _createPoolKeyAndId(token0, token1, fee, tickSpacing, hooks);
+        (PoolKey memory key, ) = _createPoolKeyAndId(token0, token1, fee, tickSpacing, hooks); // Keep key for fee/token info
 
-        // Use executeRoute with correct signature (token0, token1, amountIn, amountOutMin, fee, deadline)
-        router.executeRoute{value: ethAmount}(
-            token0,         // Use ordered token0
-            token1,         // Use ordered token1
-            ethAmount,      // amountIn
+        // Call executeRoute with WETH as tokenIn, amountIn, and NO msg.value
+        router.executeRoute(
+            token0,         // WETH (as token0)
+            token1,         // USDC (as token1)
+            wethAmount,     // amountIn (WETH amount)
             1,              // amountOutMin
             fee,            // fee tier
             block.timestamp // deadline
@@ -288,7 +293,9 @@ contract AetherRouterTest is Test {
 
         uint256 aliceUsdcAfter = usdc.balanceOf(alice);
         assertTrue(aliceUsdcAfter > aliceUsdcBefore, "USDC balance should increase");
-        assertEq(address(alice).balance, 99 ether, "ETH balance should decrease");
+        // Check WETH balance decrease, not ETH balance
+        // Alice starts with 100 WETH in setUp, swaps 1 WETH
+        assertEq(weth.balanceOf(alice), 99 ether, "WETH balance should decrease");
 
         vm.stopPrank();
     }
@@ -307,7 +314,7 @@ contract AetherRouterTest is Test {
         address hooks = address(0);
         address token0 = address(usdc) < address(dai) ? address(usdc) : address(dai);
         address token1 = address(usdc) < address(dai) ? address(dai) : address(usdc);
-        (PoolKey memory key, ) = _createPoolKeyAndId(token0, token1, fee, tickSpacing, hooks);
+        _createPoolKeyAndId(token0, token1, fee, tickSpacing, hooks); // Removed unused key and poolId variables
 
         // Use executeRoute with correct signature (token0, token1, amountIn, amountOutMin, fee, deadline)
         router.executeRoute(
@@ -338,7 +345,7 @@ contract AetherRouterTest is Test {
         address hooks = address(0);
         address token0 = address(weth) < address(usdc) ? address(weth) : address(usdc);
         address token1 = address(weth) < address(usdc) ? address(usdc) : address(weth);
-        (PoolKey memory key, ) = _createPoolKeyAndId(token0, token1, fee, tickSpacing, hooks);
+        _createPoolKeyAndId(token0, token1, fee, tickSpacing, hooks); // Removed unused key and poolId variables
 
         // Use executeRoute with correct signature (token0, token1, amountIn, amountOutMin, fee, deadline)
         vm.expectRevert("InsufficientOutputAmount"); // Expect InsufficientOutputAmount due to minAmountOut check
@@ -394,7 +401,7 @@ contract AetherRouterTest is Test {
         address hooks = address(0);
         address token0 = address(weth) < address(newToken) ? address(weth) : address(newToken);
         address token1 = address(weth) < address(newToken) ? address(newToken) : address(weth);
-        (PoolKey memory key, ) = _createPoolKeyAndId(token0, token1, fee, tickSpacing, hooks);
+        _createPoolKeyAndId(token0, token1, fee, tickSpacing, hooks); // Removed unused key and poolId variables
 
         // Use executeRoute with correct signature (token0, token1, amountIn, amountOutMin, fee, deadline)
         // Expect the swap within PoolManager to fail because the pool doesn't exist

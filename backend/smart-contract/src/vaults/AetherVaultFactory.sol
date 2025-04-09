@@ -3,6 +3,7 @@ pragma solidity ^0.8.29;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol"; // Import ReentrancyGuard
 import {AetherVault} from "./AetherVault.sol";
 import {HookFlags} from "../interfaces/HookFlags.sol";
 import {AetherStrategy} from "./AetherStrategy.sol";
@@ -14,7 +15,7 @@ import {ILayerZeroEndpoint} from "../interfaces/ILayerZeroEndpoint.sol";
  * @dev Factory contract for deploying AetherVault and AetherStrategy pairs
  * Manages deployment, initialization, and tracking of vaults across chains
  */
-contract AetherVaultFactory is Ownable {
+contract AetherVaultFactory is Ownable, ReentrancyGuard { // Inherit ReentrancyGuard
     IPoolManager public immutable poolManager;
     ILayerZeroEndpoint public immutable lzEndpoint;
 
@@ -57,11 +58,14 @@ contract AetherVaultFactory is Ownable {
     function deployVault(address asset, string memory name, string memory symbol)
         external
         onlyOwner
+        nonReentrant // Added nonReentrant modifier
         returns (address vault, address strategy)
     {
+        // --- Checks ---
         require(asset != address(0), "Invalid asset address");
         require(vaults[asset].vault == address(0), "Vault already exists");
 
+        // --- Interactions (Deploy contracts first) ---
         // Deploy vault
         vault = address(new AetherVault(IERC20(asset), name, symbol, poolManager));
 
@@ -76,9 +80,7 @@ contract AetherVaultFactory is Ownable {
             ) | uint160(HookFlags.Flags.AFTER_MODIFY_POSITION) | uint160(HookFlags.Flags.AFTER_SWAP)
         );
 
-        // Initialize vault with strategy
-        AetherVault(vault).setStrategy(strategy);
-
+        // --- Effects (Update state *before* external setStrategy call) ---
         // Store vault info
         vaults[asset] = VaultInfo({
             vault: vault,
@@ -88,10 +90,13 @@ contract AetherVaultFactory is Ownable {
             tvl: 0,
             deployedAt: block.timestamp
         });
-
         allVaults.push(vault);
+        emit VaultDeployed(vault, strategy, asset, name, symbol); // Emit event before external call
 
-        emit VaultDeployed(vault, strategy, asset, name, symbol);
+        // --- Interaction (Initialize vault with strategy) ---
+        AetherVault(vault).setStrategy(strategy);
+
+        // return vault, strategy; // Implicitly returned
     }
 
     /**

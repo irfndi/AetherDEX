@@ -127,8 +127,8 @@ contract MaliciousContract {
 }
 
 contract AetherRouterTest is Test, IEvents {
-    // Event definition for expectEmit
-    event PoolCreated(address indexed pool, PoolKey key);
+    // Event definition for expectEmit - Updated to match Factory
+    event PoolCreated(bytes32 indexed poolId, address indexed pool, PoolKey key);
 
     AetherRouter public router;
     AetherPool public pool;
@@ -164,8 +164,8 @@ contract AetherRouterTest is Test, IEvents {
         ccipRouter = address(new MockCCIPRouter());
         hyperlane = address(new MockHyperlane());
         linkToken = address(new MockToken("LINK", "LINK", 18));
-        // Pass factory address as pool manager
-        router = new AetherRouter(address(this), ccipRouter, hyperlane, linkToken, address(factory), 500);
+        // Pass factory address as pool manager AND as factory
+        router = new AetherRouter(address(this), ccipRouter, hyperlane, linkToken, address(factory), address(factory), 500);
         router.setTestMode(true); // Enable test mode for EOA checks
 
         // Add initial liquidity with proper token ordering
@@ -199,8 +199,8 @@ contract AetherRouterTest is Test, IEvents {
             vm.computeCreate2Address(poolId_AetherRouterTest, initCodeHash_AetherRouterTest, address(factory)); // Use Foundry cheatcode
 
         // Expect the PoolCreated event
-        vm.expectEmit(true, true, true, true, address(factory));
-        emit PoolCreated(expectedPoolAddress, key);
+        vm.expectEmit(true, true, true, true, address(factory)); // Check emitter and signature
+        emit PoolCreated(poolId_AetherRouterTest, expectedPoolAddress, key); // Use calculated poolId
 
         // Create pool via factory using PoolKey
         address poolAddress = factory.createPool(key);
@@ -267,7 +267,7 @@ contract AetherRouterTest is Test, IEvents {
 
         // Predict the actual output amount (this is approximate, real swap logic is complex)
         // For testing the revert, we just need a value lower than amountOutMin
-        uint256 predictedAmountOut = amountIn * 98 / 100; // Example: 2% slippage
+        // uint256 predictedAmountOut = amountIn * 98 / 100; // Example: 2% slippage
 
         // Simplify expectRevert to only check selector due to potential compiler issues with argument encoding
         vm.expectRevert(InsufficientOutputAmount.selector); // Line 265 (Modified)
@@ -721,8 +721,8 @@ contract AetherRouterTest is Test, IEvents {
 
 // Keep AetherTest contract minimal or remove if AetherRouterTest covers everything needed
 contract AetherTest is Test {
-    // Event definition for expectEmit
-    event PoolCreated(address indexed pool, PoolKey key);
+    // Event definition for expectEmit - Updated to match Factory
+    event PoolCreated(bytes32 indexed poolId, address indexed pool, PoolKey key);
 
     // Test setup and variables
     AetherRouter router;
@@ -754,8 +754,8 @@ contract AetherTest is Test {
         address mockCCIPRouter = address(new MockCCIPRouter());
         address mockHyperlane = address(new MockHyperlane());
         address mockLinkToken = address(new MockToken("LINK", "LINK", 18));
-        // Use factory address as pool manager for consistency
-        router = new AetherRouter(owner, mockCCIPRouter, mockHyperlane, mockLinkToken, address(factory), 500);
+        // Use factory address as pool manager AND as factory
+        router = new AetherRouter(owner, mockCCIPRouter, mockHyperlane, mockLinkToken, address(factory), address(factory), 500);
         router.setTestMode(true); // Enable test mode
         vm.stopPrank();
 
@@ -784,8 +784,8 @@ contract AetherTest is Test {
             vm.computeCreate2Address(poolId_AetherTest, initCodeHash_AetherTest, address(factory)); // Use Foundry cheatcode
 
         // Expect the PoolCreated event
-        vm.expectEmit(true, true, true, true, address(factory));
-        emit PoolCreated(expectedPoolAddress, key);
+        vm.expectEmit(true, true, true, true, address(factory)); // Check emitter and signature
+        emit PoolCreated(poolId_AetherTest, expectedPoolAddress, key); // Use calculated poolId
 
         // Create pool via factory using PoolKey
         address poolAddress = factory.createPool(key);

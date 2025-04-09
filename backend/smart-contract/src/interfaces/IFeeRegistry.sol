@@ -32,7 +32,14 @@ interface IFeeRegistry {
      * @notice Updates the fee for a pool based on swap activity.
      * @dev Called by the DynamicFeeHook after swaps to adjust fees based on market conditions.
      * @param key The PoolKey identifying the pool.
-     * @param swapVolume The volume of the swap that triggered this update.
-     */
+ * @param swapVolume The volume of the swap that triggered this update.
+ */
     function updateFee(PoolKey calldata key, uint256 swapVolume) external;
+
+    /**
+     * @notice Gets the tick spacing associated with a given fee tier.
+     * @param fee The fee tier (in hundredths of a basis point).
+     * @return tickSpacing The corresponding tick spacing, or 0 if the fee tier is not supported.
+     */
+    function getTickSpacing(uint24 fee) external view returns (int24);
 }

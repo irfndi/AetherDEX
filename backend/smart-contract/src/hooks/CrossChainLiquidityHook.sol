@@ -31,12 +31,12 @@ contract CrossChainLiquidityHook is BaseHook {
         remoteHooks[137] = address(0x0000000000000000000000000000000000000137); // Polygon
 
         // Validate hook flags match implemented permissions
-        uint160 requiredFlags = Hooks.BEFORE_INITIALIZE_FLAG |
-                              Hooks.AFTER_INITIALIZE_FLAG |
-                              Hooks.BEFORE_MODIFY_POSITION_FLAG |
-                              Hooks.AFTER_MODIFY_POSITION_FLAG |
-                              Hooks.BEFORE_SWAP_FLAG |
-                              Hooks.AFTER_SWAP_FLAG;
+        // uint160 requiredFlags = Hooks.BEFORE_INITIALIZE_FLAG |
+        //                       Hooks.AFTER_INITIALIZE_FLAG |
+        //                       Hooks.BEFORE_MODIFY_POSITION_FLAG |
+        //                       Hooks.AFTER_MODIFY_POSITION_FLAG |
+        //                       Hooks.BEFORE_SWAP_FLAG |
+        //                       Hooks.AFTER_SWAP_FLAG;
         // uint160 hookFlags = uint160(address(this)) & 0xFFFF; // Incorrect check based on address
         // require((hookFlags & requiredFlags) == requiredFlags, "Hook flags mismatch"); // Remove this check
     }

@@ -35,12 +35,12 @@ contract TWAPOracleHook is BaseHook {
         require(windowSize >= MIN_PERIOD, "Window too short");
 
         // Validate hook flags match implemented permissions
-        uint160 requiredFlags = Hooks.BEFORE_INITIALIZE_FLAG |
-                              Hooks.AFTER_INITIALIZE_FLAG |
-                              Hooks.BEFORE_MODIFY_POSITION_FLAG |
-                              Hooks.AFTER_MODIFY_POSITION_FLAG |
-                              Hooks.BEFORE_SWAP_FLAG |
-                              Hooks.AFTER_SWAP_FLAG;
+        // uint160 requiredFlags = Hooks.BEFORE_INITIALIZE_FLAG |
+        //                       Hooks.AFTER_INITIALIZE_FLAG |
+        //                       Hooks.BEFORE_MODIFY_POSITION_FLAG |
+        //                       Hooks.AFTER_MODIFY_POSITION_FLAG |
+        //                       Hooks.BEFORE_SWAP_FLAG |
+        //                       Hooks.AFTER_SWAP_FLAG;
         // uint160 hookFlags = uint160(address(this)) & 0xFFFF; // Incorrect check based on address
         // require((hookFlags & requiredFlags) == requiredFlags, "Hook flags mismatch"); // Remove this check
     }
@@ -106,7 +106,7 @@ contract TWAPOracleHook is BaseHook {
         }
     }
 
-    function _calculatePrice(bool zeroForOne, BalanceDelta memory delta) external view returns (uint64) {
+    function _calculatePrice(bool zeroForOne, BalanceDelta memory delta) external pure returns (uint64) {
         // Get absolute values and scale down
         uint256 amount0 = uint256(delta.amount0 >= 0 ? delta.amount0 : -delta.amount0) / AMOUNT_SCALE;
         uint256 amount1 = uint256(delta.amount1 >= 0 ? delta.amount1 : -delta.amount1) / AMOUNT_SCALE;

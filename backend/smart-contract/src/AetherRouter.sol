@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.29;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -9,6 +10,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ICCIPRouter} from "./interfaces/ICCIPRouter.sol";
 import {IHyperlane} from "./interfaces/IHyperlane.sol";
 import {IPoolManager} from "./interfaces/IPoolManager.sol";
+import {AetherFactory} from "./AetherFactory.sol"; // Import AetherFactory
 import {PoolKey} from "./types/PoolKey.sol";
 import {BalanceDelta} from "./types/BalanceDelta.sol";
 import {Hooks} from "./libraries/Hooks.sol";
@@ -160,6 +162,7 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
     IHyperlane public immutable hyperlane;
     IERC20 public immutable linkToken;
     IPoolManager public immutable poolManager;
+    AetherFactory public immutable factory; // Added factory state variable
 
     // Fee tracking
     uint256 public totalFees;
@@ -210,6 +213,7 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
      * @param _hyperlane Address of Hyperlane contract
      * @param _linkToken Address of LINK token for CCIP fees
      * @param _poolManager Address of pool manager contract
+     * @param _factory Address of the AetherFactory contract
      * @param _maxSlippage Maximum allowed slippage
      */
     constructor(
@@ -218,6 +222,7 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         address _hyperlane,
         address _linkToken,
         address _poolManager,
+        address _factory, // Added factory address parameter
         uint256 _maxSlippage
     ) Ownable(_owner) Pausable() {
         require(_owner != address(0), "Invalid owner");
@@ -225,12 +230,14 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         require(_hyperlane != address(0), "Invalid Hyperlane");
         require(_linkToken != address(0), "Invalid LINK token");
         require(_poolManager != address(0), "Invalid pool manager");
+        require(_factory != address(0), "Invalid factory"); // Validate factory address
         require(_maxSlippage <= 1000, "Max slippage too high"); // Max 10%
 
         ccipRouter = ICCIPRouter(_ccipRouter);
         hyperlane = IHyperlane(_hyperlane);
         linkToken = IERC20(_linkToken);
         poolManager = IPoolManager(_poolManager);
+        factory = AetherFactory(_factory); // Store factory address
         MAX_SLIPPAGE = _maxSlippage;
     }
 
@@ -257,10 +264,13 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
      * @dev Only callable by the contract owner
      * @param amount Amount to distribute
      */
-    function distributeFees(uint256 amount) external onlyOwner {
-        require(amount <= totalFees, "Insufficient fees");
-        totalFees -= amount;
-        payable(owner()).transfer(amount);
+    function distributeFees(uint256 amount) external onlyOwner nonReentrant {
+        // Added nonReentrant
+        require(amount <= totalFees, "Insufficient fees"); // Check
+        totalFees -= amount; // Effect
+        // Use call instead of transfer for better error handling and gas consistency
+        (bool success,) = payable(owner()).call{value: amount}(""); // Interaction
+        require(success, "ETH_TRANSFER_FAILED");
         emit FeeDistributed(amount);
     }
 
@@ -281,27 +291,19 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
      * @param operationId ID of the failed operation
      */
     function recoverFailedOperation(bytes32 operationId) external nonReentrant {
-        FailedOperation memory operation = failedOperations[operationId];
-        if (operation.user != msg.sender) revert UnauthorizedAccess(msg.sender);
-        if (operation.state == OperationState.Recovered) revert InvalidState();
+        // Use storage pointer to modify state directly
+        FailedOperation storage operation = failedOperations[operationId];
+        if (operation.user != msg.sender) revert UnauthorizedAccess(msg.sender); // Check
+        if (operation.state == OperationState.Recovered) revert InvalidState(); // Check
 
-        // Correct try/catch syntax for external call returning bool
-        try IERC20(operation.tokenIn).transfer(operation.user, operation.amount) returns (bool success) {
-            // Check the return value of transfer
-            if (!success) {
-                revert RecoveryFailed(); // Revert if transfer returned false
-            }
-            // Mark as recovered only if transfer succeeded
-            failedOperations[operationId].state = OperationState.Recovered; // Update state before emitting
-            delete failedOperations[operationId]; // Consider if deleting is appropriate or just updating state
-            emit StateRecovered(operation.user, operationId);
-        } catch Error(string memory /*reason*/) {
-            // Handle revert with string reason - Temporary string revert for debugging
-            revert("Recovery failed due to string error");
-        } catch (bytes memory /*lowLevelData*/) {
-            // Handle other reverts - Temporary string revert for debugging
-            revert("Recovery failed due to low-level data");
-        }
+        // Use SafeERC20.safeTransfer for safer token transfers (Interaction)
+        IERC20(operation.tokenIn).safeTransfer(operation.user, operation.amount);
+
+        // Effects after successful interaction
+        operation.state = OperationState.Recovered; // Effect
+        // Optionally delete if no longer needed, but updating state is often sufficient
+        // delete failedOperations[operationId];
+        emit StateRecovered(operation.user, operationId); // Effect (Event)
     }
 
     /**
@@ -375,16 +377,12 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
 
         // --- Prepare Swap ---
         // Transfer input tokens from user to this router
-        TransferHelper.safeTransferFrom(tokenIn, msg.sender, address(this), amountIn);
+        TransferHelper.safeTransferFrom(tokenIn, msg.sender, address(this), amountIn); // User -> Router
 
-        // Approve PoolManager to spend input tokens from this router
-        // Approval needed for each swap unless using permit2 or similar
-        // Use safeIncreaseAllowance as safeApprove is deprecated/removed
-        IERC20(tokenIn).safeIncreaseAllowance(address(poolManager), amountIn);
-
-        // --- Construct Swap Parameters ---
-        // Derive tickSpacing from fee tier using a FeeRegistry or a predefined mapping
-        int24 tickSpacing = _getTickSpacingFromFee(fee);
+        // --- Construct Swap Parameters (needed to find pool) ---
+        // Fetch tickSpacing from the FeeRegistry via the factory using the new interface function
+        int24 tickSpacing = factory.feeRegistry().getTickSpacing(fee);
+        if (tickSpacing == 0) revert InvalidFeeTier(fee); // Ensure fee tier is supported
 
         PoolKey memory key = PoolKey({
             token0: tokenIn, // Already validated tokenIn < tokenOut
@@ -393,6 +391,11 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
             tickSpacing: tickSpacing,
             hooks: address(0) // Assuming no hooks for basic swap
         });
+
+        // --- Approve Pool Manager ---
+        // Router approves the Pool Manager (mock)
+        // Although the simplified mock won't use this, keep it for potential future mock improvements
+        IERC20(tokenIn).safeIncreaseAllowance(address(poolManager), amountIn);
 
         // Determine swap direction and price limit
         bool zeroForOne = true; // Since tokenIn < tokenOut, we are selling token0 (tokenIn) for token1 (tokenOut)
@@ -512,21 +515,8 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         if (msg.value == 0) revert InvalidBridgeFee();
 
         // Execute the cross-chain route directly
-        _executeCrossChainRoute(CrossChainRouteParams({
-            tokenIn: tokenIn,
-            tokenOut: tokenOut,
-            amountIn: amountIn,
-            amountOutMin: amountOutMin,
-            recipient: recipient,
-            srcChain: srcChain,
-            dstChain: dstChain,
-            routeData: routeData
-        }));
-        bytes32 operationId = keccak256(abi.encodePacked(msg.sender, tokenIn, tokenOut, amountIn, block.timestamp));
-
-        try IERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn) returns (bool success) {
-            if (!success) revert OperationFailed("Transfer failed");
-            _executeCrossChainRoute(CrossChainRouteParams({
+        _executeCrossChainRoute(
+            CrossChainRouteParams({
                 tokenIn: tokenIn,
                 tokenOut: tokenOut,
                 amountIn: amountIn,
@@ -535,7 +525,24 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
                 srcChain: srcChain,
                 dstChain: dstChain,
                 routeData: routeData
-            }));
+            })
+        );
+        bytes32 operationId = keccak256(abi.encodePacked(msg.sender, tokenIn, tokenOut, amountIn, block.timestamp));
+
+        try IERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn) returns (bool success) {
+            if (!success) revert OperationFailed("Transfer failed");
+            _executeCrossChainRoute(
+                CrossChainRouteParams({
+                    tokenIn: tokenIn,
+                    tokenOut: tokenOut,
+                    amountIn: amountIn,
+                    amountOutMin: amountOutMin,
+                    recipient: recipient,
+                    srcChain: srcChain,
+                    dstChain: dstChain,
+                    routeData: routeData
+                })
+            );
         } catch Error(string memory reason) {
             failedOperations[operationId] = FailedOperation({
                 user: msg.sender,
@@ -606,7 +613,7 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         _validateCrossChainParams(params);
         _collectFees(params.dstChain);
         _transferTokens(params.tokenIn, params.amountIn);
-        
+
         uint256 bridgeAmount = params.amountIn * 98 / 100;
         bytes memory payload = abi.encode(params.tokenOut, bridgeAmount, params.recipient);
 
@@ -616,15 +623,25 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
 
         bytes32 routeHash = keccak256(params.routeData);
         emit CrossChainRouteExecuted(
-            msg.sender, params.tokenIn, params.tokenOut, params.amountIn, bridgeAmount, params.srcChain, params.dstChain, routeHash
+            msg.sender,
+            params.tokenIn,
+            params.tokenOut,
+            params.amountIn,
+            bridgeAmount,
+            params.srcChain,
+            params.dstChain,
+            routeHash
         );
     }
 
-    function _determineBridgeProtocol(uint16 dstChain, address recipient, bytes memory payload) 
-        private view returns (bool useCCIP, uint256 actualFee) {
+    function _determineBridgeProtocol(uint16 dstChain, address recipient, bytes memory payload)
+        private
+        view
+        returns (bool useCCIP, uint256 actualFee)
+    {
         uint256 ccipFee = ccipRouter.estimateFees(dstChain, recipient, payload);
         uint256 hyperlaneFee = hyperlane.quoteDispatch(dstChain, payload);
-        
+
         useCCIP = ccipFee <= hyperlaneFee;
         if (msg.value == ccipFee) {
             useCCIP = true;
@@ -634,7 +651,13 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         actualFee = useCCIP ? ccipFee : hyperlaneFee;
     }
 
-    function _sendCrossChainMessage(bool useCCIP, uint16 dstChain, address recipient, bytes memory payload, uint256 actualFee) private {
+    function _sendCrossChainMessage(
+        bool useCCIP,
+        uint16 dstChain,
+        address recipient,
+        bytes memory payload,
+        uint256 actualFee
+    ) private {
         require(msg.value >= actualFee, "Insufficient fee");
         if (useCCIP) {
             ccipRouter.sendMessage{value: actualFee}(dstChain, recipient, payload);
@@ -643,12 +666,7 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         }
     }
 
-    function _getTickSpacingFromFee(uint24 fee) private pure returns (int24 tickSpacing) {
-        if (fee == 3000) tickSpacing = 60;
-        else if (fee == 500) tickSpacing = 10;
-        else if (fee == 100) tickSpacing = 1;
-        else revert InvalidFeeTier(fee); // Or fetch from registry
-    }
+    // Removed internal _getTickSpacingFromFee helper function as tickSpacing is now fetched from FeeRegistry
 
     /**
      * @notice Gets multi-path route for a swap
@@ -744,9 +762,11 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
      * @dev Allows owner to withdraw tokens in case of emergency
      * @param token Token address to withdraw
      */
-    function emergencyWithdraw(address token) external onlyOwner {
+    function emergencyWithdraw(address token) external onlyOwner nonReentrant {
+        // Added nonReentrant for safety
         uint256 balance = IERC20(token).balanceOf(address(this));
-        IERC20(token).transfer(owner(), balance);
+        // Use safeTransfer for safer token transfers
+        IERC20(token).safeTransfer(owner(), balance);
     }
 
     /**
@@ -759,23 +779,28 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         MAX_SLIPPAGE = newMaxSlippage;
     }
 
-    /**
-     * @notice Handles failed operation
-     * @dev Internal function to handle failed operations
-     * @param failedOp Failed operation data
-     */
-    function _handleFailedOperation(FailedOperation memory failedOp) internal pure {
-        if (!failedOp.success) {
-            // Handle failure
-        }
-    }
+    // Removed dead code function _handleFailedOperation and its documentation
+    // function _handleFailedOperation(FailedOperation memory failedOp) internal pure {
+    //     if (!failedOp.success) {
+    //         // Handle failure
+    //     }
+    // }
 
     receive() external payable {}
 
+    /**
+     * @notice Internal function to safely refund excess ETH.
+     * @dev Uses low-level call and checks success.
+     * @param excessFee Amount of ETH to refund.
+     * @param recipient Address to receive the refund.
+     */
     function _refundExcessFee(uint256 excessFee, address recipient) internal {
         if (excessFee > 0) {
-            (bool success, ) = payable(recipient).call{value: excessFee}("");
-            require(success, "ETH_TRANSFER_FAILED");
+            // Check recipient is valid before sending
+            if (recipient == address(0)) revert InvalidRecipient(recipient);
+            (bool success,) = recipient.call{value: excessFee}(""); // Use recipient directly
+            // Explicitly check the success return value of the call
+            require(success, "ETH_REFUND_FAILED");
         }
     }
 }

@@ -43,13 +43,14 @@ contract InteroperabilityIntegrationTest is Test, IEvents {
         ccipRouter = new MockCCIPRouter();
         hyperlane = new MockHyperlane();
 
-        // Deploy router with proper hook flags
+        // Deploy router with proper hook flags, passing 'this' for mock manager and factory
         router = new AetherRouter(
             address(this), // owner
             address(ccipRouter),
             address(hyperlane),
             address(linkToken),
             address(this), // poolManager - using this contract as a mock
+            address(this), // factory - using this contract as a mock placeholder
             500 // maxSlippage - 5%
         );
 

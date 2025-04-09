@@ -268,4 +268,11 @@ contract FeeRegistry is IFeeRegistry, Ownable {
         feeUpdaters[poolKeyHash] = newUpdater;
         emit FeeUpdaterSet(poolKeyHash, oldUpdater, newUpdater);
     }
+
+    /// @inheritdoc IFeeRegistry
+    function getTickSpacing(uint24 fee) external view returns (int24) {
+        // The public mapping automatically creates a getter, but we implement
+        // the interface function explicitly for clarity and adherence to the interface.
+        return tickSpacings[fee];
+    }
 }

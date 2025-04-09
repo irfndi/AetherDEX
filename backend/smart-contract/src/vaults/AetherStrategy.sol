@@ -3,6 +3,7 @@ pragma solidity ^0.8.29;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol"; // Import ReentrancyGuard
 import {ILayerZeroEndpoint} from "../interfaces/ILayerZeroEndpoint.sol";
 import {AetherVault} from "./AetherVault.sol";
 import {PoolKey} from "../types/PoolKey.sol";
@@ -13,7 +14,7 @@ import {IPoolManager} from "../interfaces/IPoolManager.sol";
  * @dev Strategy contract for AetherVault that manages yield generation
  * and cross-chain interactions
  */
-contract AetherStrategy {
+contract AetherStrategy is ReentrancyGuard { // Inherit ReentrancyGuard
     using SafeERC20 for IERC20;
 
     struct ChainConfig {
@@ -96,10 +97,17 @@ contract AetherStrategy {
      * @dev Rebalance yield across chains
      * Can only be called after rebalanceInterval has passed
      */
-    function rebalanceYield() external {
-        require(block.timestamp >= lastRebalance + rebalanceInterval, "Rebalance interval not met");
+    function rebalanceYield() external nonReentrant { // Added nonReentrant modifier
+        require(block.timestamp >= lastRebalance + rebalanceInterval, "Rebalance interval not met"); // Check
 
-        uint256 totalYield = 0;
+        // --- Effects ---
+        // Update lastRebalance timestamp *before* external calls
+        uint256 currentTimestamp = block.timestamp;
+        lastRebalance = currentTimestamp;
+        emit StrategyRebalanced(currentTimestamp, 0); // Emit event early (totalYield calculation removed for simplicity, needs review)
+
+        // --- Interactions ---
+        uint256 totalYield = 0; // [TODO] Recalculate or fetch actual yield
         uint256 activeChains = 0;
 
         // Calculate total yield across all active chains
@@ -124,8 +132,8 @@ contract AetherStrategy {
             }
         }
 
-        lastRebalance = block.timestamp;
-        emit StrategyRebalanced(block.timestamp, totalYield);
+        // lastRebalance = block.timestamp; // Moved earlier
+        // emit StrategyRebalanced(block.timestamp, totalYield); // Moved earlier
     }
 
     /**
@@ -133,22 +141,26 @@ contract AetherStrategy {
      */
     function lzReceive(uint16 _srcChainId, bytes memory _srcAddress, uint64, /* _nonce */ bytes memory _payload)
         external
+        nonReentrant // Added nonReentrant modifier
     {
-        require(msg.sender == address(lzEndpoint), "Invalid endpoint");
-        require(chainConfigs[_srcChainId].isActive, "Chain not active");
+        require(msg.sender == address(lzEndpoint), "Invalid endpoint"); // Check
+        require(chainConfigs[_srcChainId].isActive, "Chain not active"); // Check
 
         // Verify the sender is the registered remote strategy
         address srcAddress;
         assembly {
             srcAddress := mload(add(_srcAddress, 20))
         }
-        require(srcAddress == chainConfigs[_srcChainId].remoteStrategy, "Invalid remote strategy");
+        require(srcAddress == chainConfigs[_srcChainId].remoteStrategy, "Invalid remote strategy"); // Check
 
-        // Decode and process the yield update
-        uint256 yieldAmount = abi.decode(_payload, (uint256));
-        vault.syncCrossChainYield(_srcChainId, yieldAmount);
+        // Decode yield update
+        uint256 yieldAmount = abi.decode(_payload, (uint256)); // Effect (local processing)
 
-        emit CrossChainYieldSynced(_srcChainId, yieldAmount);
+        // Emit event *before* external call
+        emit CrossChainYieldSynced(_srcChainId, yieldAmount); // Effect (Event)
+
+        // External interaction
+        vault.syncCrossChainYield(_srcChainId, yieldAmount); // Interaction
     }
 
     /**

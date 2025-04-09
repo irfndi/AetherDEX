@@ -2,6 +2,7 @@
 pragma solidity ^0.8.29;
 
 // import {console2} from "forge-std/console2.sol"; // Removed unused import
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol"; // Import ReentrancyGuard
 import "./AetherPool.sol";
 import {IFeeRegistry} from "./interfaces/IFeeRegistry.sol";
 import {PoolKey} from "./types/PoolKey.sol"; // Import PoolKey
@@ -11,7 +12,7 @@ import {PoolKey} from "./types/PoolKey.sol"; // Import PoolKey
  * @author AetherDEX
  * @notice Factory contract to deploy and manage AetherPool contracts using CREATE2.
  */
-contract AetherFactory {
+contract AetherFactory is ReentrancyGuard { // Inherit ReentrancyGuard
     /** @notice Address of the fee registry contract (optional, may not be needed if validation happens elsewhere) */
     IFeeRegistry public immutable feeRegistry; // Keep for potential future use or context, but not used in createPool
 
@@ -54,8 +55,8 @@ contract AetherFactory {
      *      or if a pool with the same PoolKey hash already exists.
      *      Assumes token0 < token1 in the provided key.
      */
-    function createPool(PoolKey memory key) external returns (address pool) {
-        // Input validation
+    function createPool(PoolKey memory key) external nonReentrant returns (address pool) { // Added nonReentrant modifier
+        // --- Checks ---
         require(key.token0 != key.token1, "IDENTICAL_ADDRESSES");
         require(key.token0 != address(0), "ZERO_ADDRESS_TOKEN0"); // Check token0 specifically
         // require(key.token1 != address(0), "ZERO_ADDRESS_TOKEN1"); // token1 implicitly checked by token0 < token1 convention
@@ -65,6 +66,12 @@ contract AetherFactory {
         bytes32 poolId = keccak256(abi.encode(key));
         require(getPool[poolId] == address(0), "POOL_EXISTS");
 
+        // --- Effects (Record state changes before interaction) ---
+        // Store a placeholder or mark as pending before deployment?
+        // For CREATE2, we know the address beforehand, but let's deploy first
+        // then update state *before* initialize call.
+
+        // --- Interaction (Deploy) ---
         // Prepare for CREATE2 deployment
         bytes memory bytecode = type(AetherPool).creationCode;
         // Pass the factory address to the AetherPool constructor
@@ -78,18 +85,18 @@ contract AetherFactory {
         }
         require(pool != address(0), "CREATE2_FAILED");
 
+        // --- Effects (Update state *before* external initialize call) ---
+        getPool[poolId] = pool;
+        allPools.push(pool);
+        emit PoolCreated(poolId, pool, key); // Emit event before external call
+
+        // --- Interaction (Initialize) ---
         // Initialize the newly created pool
         // Note: AetherPool.initialize currently only uses token0, token1, and fee.
         // It ignores tickSpacing and hooks from the PoolKey.
         AetherPool(pool).initialize(key.token0, key.token1, key.fee);
 
-        // Store pool address and update records
-        getPool[poolId] = pool;
-        allPools.push(pool);
-
-        emit PoolCreated(poolId, pool, key);
-
-        return pool;
+        // return pool; // Already defined in function signature
     }
 
     /**
