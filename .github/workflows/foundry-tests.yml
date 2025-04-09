@@ -33,3 +33,39 @@ jobs:
         env:
           FOUNDRY_PROFILE: ci
         run: forge test --via-ir -v
+
+  static-analysis:
+    name: Static Analysis
+    runs-on: ubuntu-latest
+    needs: test
+    defaults:
+      run:
+        working-directory: backend/smart-contract
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          submodules: 'recursive'
+          fetch-depth: 0
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Install dependencies
+        run: forge install
+
+      - name: Install Python and uv
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Install Slither
+        run: uv pip install slither-analyzer
+
+      - name: Run Slither
+        run: slither . --filter-paths "lib|test|script" --exclude naming-convention,solc-version,pragma,unused-state
