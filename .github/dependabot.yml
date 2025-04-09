@@ -1,11 +1,38 @@
 version: 2
 updates:
+  # JavaScript/TypeScript dependencies for web interface
   - package-ecosystem: "npm"
     directory: "/interface/web"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "frontend"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+
+  # GitHub Actions dependencies
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+
+  # Foundry/Forge dependencies (Git submodules)
+  - package-ecosystem: "gitsubmodule"
+    directory: "/backend/smart-contract"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "smart-contract"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
