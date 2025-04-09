@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # JavaScript/TypeScript dependencies for web interface
+  # JavaScript/TypeScript dependencies for web interface (using Bun)
   - package-ecosystem: "npm"
     directory: "/interface/web"
     schedule:
@@ -9,8 +9,9 @@ updates:
     labels:
       - "dependencies"
       - "frontend"
+      - "bun"
     commit-message:
-      prefix: "deps"
+      prefix: "deps(bun)"
       include: "scope"
 
   # GitHub Actions dependencies
