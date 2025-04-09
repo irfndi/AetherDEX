@@ -33,3 +33,8 @@ line_length = 120
 dictionary_weight = 80
 include_storage = true
 include_push_bytes = true
+
+[profile.ci]
+ffi = false
+no_match_test = "(Integration|Fork)"
+rpc_endpoints = {}
