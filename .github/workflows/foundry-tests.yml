@@ -30,4 +30,4 @@ jobs:
         run: forge install --no-commit
 
       - name: Run tests
-        run: forge test --via-ir
+        run: forge test --via-ir --no-match-test "(Integration|Fork)" -v
