@@ -26,6 +26,21 @@ jobs:
         with:
           version: nightly
 
+      - name: Cache Foundry dependencies
+        uses: actions/cache@v3
+        with:
+          path: |  
+            ~/.foundry/cache
+            ~/.cargo/bin
+            ~/.cargo/registry
+            ~/.cargo/git
+            backend/smart-contract/lib
+            backend/smart-contract/cache
+            backend/smart-contract/out
+          key: ${{ runner.os }}-foundry-${{ hashFiles('backend/smart-contract/foundry.toml', 'backend/smart-contract/lib/*/') }}
+          restore-keys: |
+            ${{ runner.os }}-foundry-
+
       - name: Install dependencies
         run: forge install
 
@@ -52,6 +67,21 @@ jobs:
         with:
           version: nightly
 
+      - name: Cache Foundry dependencies
+        uses: actions/cache@v3
+        with:
+          path: |  
+            ~/.foundry/cache
+            ~/.cargo/bin
+            ~/.cargo/registry
+            ~/.cargo/git
+            backend/smart-contract/lib
+            backend/smart-contract/cache
+            backend/smart-contract/out
+          key: ${{ runner.os }}-foundry-${{ hashFiles('backend/smart-contract/foundry.toml', 'backend/smart-contract/lib/*/') }}
+          restore-keys: |
+            ${{ runner.os }}-foundry-
+
       - name: Install dependencies
         run: forge install
 
@@ -59,9 +89,28 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
+          cache: 'pip'
+
+      - name: Cache uv
+        uses: actions/cache@v3
+        with:
+          path: |  
+            ~/.cache/uv
+            ~/.local/bin/uv
+          key: ${{ runner.os }}-uv-${{ hashFiles('**/requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
 
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Cache Python packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
 
       - name: Install Slither
         run: uv pip install --system slither-analyzer
