@@ -79,6 +79,22 @@ contract FeatureIntegrationTest is Test {
         // Initialize pool with pool manager
         pool.initialize(poolToken0, poolToken1, uint24(DEFAULT_FEE)); // Removed last argument
 
+        // Calculate poolId to register with the manager
+        PoolKey memory key = PoolKey({
+            token0: poolToken0,
+            token1: poolToken1,
+            fee: DEFAULT_FEE,
+            tickSpacing: 60, // Assuming tickSpacing 60 for DEFAULT_FEE 3000
+            hooks: address(dynamicFeeHook) // Use the actual hook address for the key
+        });
+        bytes32 poolId = keccak256(abi.encode(key));
+
+        // Register the pool with the manager
+        manager.setPool(poolId, address(pool));
+
+        // Register the pool for dynamic fees in the FeeRegistry, authorizing the hook
+        feeRegistry.registerDynamicFeePool(key, DEFAULT_FEE, address(dynamicFeeHook));
+
         // Add liquidity using the original (unsorted) token variables
         _addInitialLiquidity(chainId, token0, token1);
 
@@ -156,8 +172,17 @@ contract FeatureIntegrationTest is Test {
         address token0 = pool.token0();
         address token1 = pool.token1();
 
-        // Record initial fee
-        uint24 initialFee = feeRegistry.getFee(PoolKey({token0: token0, token1: token1, fee: DEFAULT_FEE, tickSpacing: 60, hooks: address(0)})); // Use PoolKey
+        // Construct the correct PoolKey (including hook address)
+        PoolKey memory key = PoolKey({
+            token0: token0,
+            token1: token1,
+            fee: DEFAULT_FEE,
+            tickSpacing: 60, // Assuming tickSpacing 60 from setup
+            hooks: address(dynamicFeeHook) // Use the actual hook address
+        });
+
+        // Record initial fee using the correct key
+        uint24 initialFee = feeRegistry.getFee(key);
 
         // Perform high volume of swaps
         uint256 swapAmount = 10000 ether;
@@ -165,8 +190,8 @@ contract FeatureIntegrationTest is Test {
             _performSwap(chainId, true, swapAmount);
         }
 
-        // Check fee adjustment
-        uint24 newFee = feeRegistry.getFee(PoolKey({token0: token0, token1: token1, fee: DEFAULT_FEE, tickSpacing: 60, hooks: address(0)})); // Use PoolKey
+        // Check fee adjustment using the correct key
+        uint24 newFee = feeRegistry.getFee(key);
         assertTrue(newFee > initialFee, "Fee should increase with volume");
         assertTrue(newFee <= MAX_FEE, "Fee should not exceed maximum");
     }
@@ -203,12 +228,13 @@ contract FeatureIntegrationTest is Test {
         MockERC20(tokenIn).approve(address(pool), amount);
 
         // Construct PoolKey and SwapParams for the manager call
+        // Ensure the key matches the one used for registration in setUp
         PoolKey memory key = PoolKey({
             token0: pool.token0(),
             token1: pool.token1(),
-            fee: 3000, // Use default fee for key consistency (mock doesn't use pool.fee())
-            tickSpacing: 60, // Use default tickSpacing
-            hooks: manager.hookAddress() // Get encoded hook address from manager
+            fee: DEFAULT_FEE, // Use the same fee as in setUp
+            tickSpacing: 60, // Use the same tickSpacing as assumed in setUp
+            hooks: address(dynamicFeeHook) // Use the actual hook address
         });
         IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
             zeroForOne: zeroForOne,
