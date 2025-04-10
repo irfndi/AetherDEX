@@ -90,7 +90,8 @@ contract MockPoolManager is IPoolManager {
     }
 
     // Execute swap against the specific pool for the key (SIMPLIFIED MOCK - DELTA ONLY)
-    function _executeSwap(PoolKey calldata key, SwapParams calldata params) internal view returns (BalanceDelta memory) { // Changed to view
+    // Marked as view as it doesn't modify state directly
+    function _executeSwap(PoolKey calldata key, SwapParams calldata params) internal view returns (BalanceDelta memory) {
         require(params.amountSpecified > 0, "MPM: Mock only supports exact input swaps");
 
         // address poolAddress = pools[keccak256(abi.encode(key))]; // No longer needed
@@ -199,23 +200,28 @@ contract MockPoolManager is IPoolManager {
         }
     }
 
-    function donate(PoolKey calldata, uint256, uint256, bytes calldata) external override {
+    // Marked as pure as they only revert
+    function donate(PoolKey calldata, uint256, uint256, bytes calldata) external pure override {
         revert("MPM: Not implemented");
     }
 
-    function take(PoolKey calldata, address, uint256, uint256, bytes calldata) external override {
+    // Marked as pure as they only revert
+    function take(PoolKey calldata, address, uint256, uint256, bytes calldata) external pure override {
         revert("MPM: Not implemented");
     }
 
-    function settle(address) external override returns (BalanceDelta memory, BalanceDelta memory) {
+    // Marked as pure as they only revert
+    function settle(address) external pure override returns (BalanceDelta memory, BalanceDelta memory) {
         revert("MPM: Not implemented");
     }
 
-    function mint(address, PoolKey calldata, uint256, uint256, bytes calldata) external override {
+    // Marked as pure as they only revert
+    function mint(address, PoolKey calldata, uint256, uint256, bytes calldata) external pure override {
         revert("MPM: Not implemented");
     }
 
-    function burn(address, PoolKey calldata, uint256, uint256, bytes calldata) external override {
+    // Marked as pure as they only revert
+    function burn(address, PoolKey calldata, uint256, uint256, bytes calldata) external pure override {
         revert("MPM: Not implemented");
     }
 
