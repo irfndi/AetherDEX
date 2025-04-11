@@ -185,8 +185,9 @@ contract AetherTest is
 
     function test_swapTokens() public {
         uint256 amountIn = 10 ether;
-        // Calculate expected amount using x*y=k formula
-        uint256 amountInWithFee = amountIn * 997 / 1000;
+        // Calculate expected amount using x*y=k formula and the actual pool fee
+        uint256 currentFee = pool.fee(); // Get actual fee from pool
+        uint256 amountInWithFee = (amountIn * (10000 - currentFee)) / 10000; // Use actual fee
         (uint256 reserve0, uint256 reserve1) = pool.getReserves();
         uint256 expectedAmountOut = (amountInWithFee * reserve1) / (reserve0 + amountInWithFee);
 
@@ -203,8 +204,8 @@ contract AetherTest is
         console2.log("Pool reserve0 before swap:", pool.reserve0());
         console2.log("Pool reserve1 before swap:", pool.reserve1());
 
-        // Execute swap
-        pool.swap(amountIn, address(tokenA), address(this), address(this));
+        // Execute swap (removed sender argument)
+        pool.swap(amountIn, address(tokenA), address(this));
         vm.stopPrank();
 
         // Check final state
@@ -236,8 +237,9 @@ contract AetherTest is
     function test_reverseSwapTokens() public {
         uint256 amountIn = 10 ether;
 
-        // Calculate expected amount using x*y=k formula
-        uint256 amountInWithFee = amountIn * 997 / 1000;
+        // Calculate expected amount using x*y=k formula and the actual pool fee
+        uint256 currentFee = pool.fee(); // Get actual fee from pool
+        uint256 amountInWithFee = (amountIn * (10000 - currentFee)) / 10000; // Use actual fee
         (uint256 reserve0, uint256 reserve1) = pool.getReserves();
         uint256 expectedAmountOut = (amountInWithFee * reserve0) / (reserve1 + amountInWithFee);
 
@@ -251,8 +253,8 @@ contract AetherTest is
         uint256 balanceBeforeSwap = tokenB.balanceOf(address(this));
         tokenB.approve(address(pool), amountIn);
 
-        // Execute swap
-        pool.swap(amountIn, address(tokenB), address(this), address(this));
+        // Execute swap (removed sender argument)
+        pool.swap(amountIn, address(tokenB), address(this));
         vm.stopPrank();
 
         // Check final state

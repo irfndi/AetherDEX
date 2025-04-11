@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.29;
 
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol"; // Import ReentrancyGuard
 import {BaseHook} from "./BaseHook.sol";
 import {IPoolManager} from "../interfaces/IPoolManager.sol";
 import {Hooks} from "../libraries/Hooks.sol";
@@ -13,7 +14,7 @@ import {BalanceDelta} from "../types/BalanceDelta.sol";
  * @notice Hook for dynamic fee adjustment based on pool activity
  * @dev Implements dynamic fee logic using FeeRegistry for cross-chain fee management
  */
-contract DynamicFeeHook is BaseHook {
+contract DynamicFeeHook is BaseHook, ReentrancyGuard { // Inherit ReentrancyGuard
     /// @notice Reference to the fee registry contract
     FeeRegistry public immutable feeRegistry;
 
@@ -27,7 +28,7 @@ contract DynamicFeeHook is BaseHook {
     /// @notice Minimum fee value (0.01%)
     uint24 public constant MIN_FEE = 100;
     /// @notice Maximum fee value (10%)
-    uint24 public constant MAX_FEE = 100000;
+    uint24 public constant MAX_FEE = 100_000;
     /// @notice Step size for fee adjustments (0.005%)
     uint24 public constant FEE_STEP = 50;
     /// @notice Volume threshold for fee scaling (1000 tokens)
@@ -107,7 +108,7 @@ contract DynamicFeeHook is BaseHook {
         IPoolManager.SwapParams calldata params,
         BalanceDelta memory delta,
         bytes calldata
-    ) external override returns (bytes4) {
+    ) external override nonReentrant returns (bytes4) { // Added nonReentrant modifier
         // Update fee based on swap volume
         int256 swapVolume = params.zeroForOne ? delta.amount0 : delta.amount1;
         if (swapVolume != 0) {

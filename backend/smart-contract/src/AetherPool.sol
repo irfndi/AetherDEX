@@ -36,14 +36,14 @@ contract AetherPool is IAetherPool, ReentrancyGuard { // Inherit ReentrancyGuard
     }
 
     function initialize(
-        address _token0,
+        address _token0, // Parameter names already use underscore convention
         address _token1,
-        uint24 fee_
+        uint24 _fee // Renamed fee_ to _fee to match interface
     ) external override {
         require(!initialized, "ALREADY_INITIALIZED");
         require(_token0 != address(0) && _token1 != address(0), "ZERO_TOKEN_ADDRESS");
         require(_token0 != _token1, "IDENTICAL_TOKENS");
-        require(fee_ <= 10000, "INVALID_FEE"); 
+        require(_fee <= 10000, "INVALID_FEE"); // Use _fee
 
         if (_token0 < _token1) {
             token0 = _token0;
@@ -53,7 +53,7 @@ contract AetherPool is IAetherPool, ReentrancyGuard { // Inherit ReentrancyGuard
             token1 = _token0;
         }
 
-        fee = fee_; 
+        fee = _fee; // Use _fee
         initialized = true;
     }
 
@@ -93,7 +93,8 @@ contract AetherPool is IAetherPool, ReentrancyGuard { // Inherit ReentrancyGuard
         // return liquidity; // Implicitly returned
     }
 
-    function burn(address to, uint256 liquidity) external override returns (uint256 amount0, uint256 amount1) {
+    function burn(address to, uint256 liquidity) external override nonReentrant returns (uint256 amount0, uint256 amount1) { // Added nonReentrant modifier
+        // --- Checks ---
         require(initialized, "NOT_INITIALIZED");
         require(to != address(0), "ZERO_ADDRESS");
         require(liquidity > 0, "INSUFFICIENT_LIQUIDITY_BURNED");
@@ -105,21 +106,24 @@ contract AetherPool is IAetherPool, ReentrancyGuard { // Inherit ReentrancyGuard
 
         require(amount0 > 0 && amount1 > 0, "INSUFFICIENT_LIQUIDITY_BURNED");
 
+        // --- Effects (Update state *before* external transfers) ---
         totalSupply -= liquidity;
         reserve0 = _reserve0 - amount0;
         reserve1 = _reserve1 - amount1;
+        emit LiquidityRemoved(to, amount0, amount1, liquidity); // Emit event before external calls
 
+        // --- Interactions (Transfer tokens after state updates) ---
         TransferHelper.safeTransfer(token0, to, amount0);
         TransferHelper.safeTransfer(token1, to, amount1);
 
-        emit LiquidityRemoved(to, amount0, amount1, liquidity);
+        // return amount0, amount1; // Implicitly returned
     }
 
     function swap(
         uint256 amountIn,
         address tokenIn,
-        address to,
-        address sender
+        address to
+        // address sender // Removed sender parameter
     ) external override returns (uint256 amountOut) {
         require(initialized, "NOT_INITIALIZED");
         require(tokenIn == token0 || tokenIn == token1, "INVALID_TOKEN_IN");
@@ -127,14 +131,25 @@ contract AetherPool is IAetherPool, ReentrancyGuard { // Inherit ReentrancyGuard
         require(amountIn > 0, "INSUFFICIENT_INPUT_AMOUNT");
 
         bool isToken0In = tokenIn == token0;
-        (uint256 _reserve0, uint256 _reserve1) = (reserve0, reserve1); 
+        (uint256 _reserve0, uint256 _reserve1) = (reserve0, reserve1); // Read from state
+        console2.log("Swap Debug: Read reserve0 from state", _reserve0);
+        console2.log("Swap Debug: Read reserve1 from state", _reserve1);
+        console2.log("Swap Debug: isToken0In", isToken0In);
         (uint256 reserveIn, uint256 reserveOut) = isToken0In ? 
             (_reserve0, _reserve1) : 
             (_reserve1, _reserve0);
+        console2.log("Swap Debug: Assigned reserveIn", reserveIn); // Log after assignment
+        console2.log("Swap Debug: Assigned reserveOut", reserveOut); // Log after assignment
 
-        uint256 currentFee = fee; 
+        uint256 currentFee = fee;
+        console2.log("Swap Debug: amountIn", amountIn);
+        console2.log("Swap Debug: currentFee", currentFee);
         uint256 amountInWithFee = (amountIn * (10000 - currentFee)) / 10000;
+        console2.log("Swap Debug: amountInWithFee", amountInWithFee);
+        console2.log("Swap Debug: reserveIn", reserveIn);
+        console2.log("Swap Debug: reserveOut", reserveOut);
         amountOut = (amountInWithFee * reserveOut) / (reserveIn + amountInWithFee);
+        console2.log("Swap Debug: calculated amountOut", amountOut);
         
         require(amountOut > 0, "INSUFFICIENT_OUTPUT_AMOUNT");
         require(amountOut <= reserveOut, "OUTPUT_EXCEEDS_RESERVE");
@@ -147,9 +162,13 @@ contract AetherPool is IAetherPool, ReentrancyGuard { // Inherit ReentrancyGuard
             reserve0 = reserveOut - amountOut;
         }
 
-        TransferHelper.safeTransferFrom(tokenIn, sender, address(this), amountIn); 
+        // Use msg.sender instead of the removed 'sender' parameter
+        TransferHelper.safeTransferFrom(tokenIn, msg.sender, address(this), amountIn);
         address tokenOut = isToken0In ? token1 : token0;
         TransferHelper.safeTransfer(tokenOut, to, amountOut);
+
+        // Emit Swap event (Consider adding this if not handled elsewhere)
+        // emit Swap(msg.sender, tokenIn, tokenOut, amountIn, amountOut);
     }
 
     function _sqrt(uint256 y) internal pure returns (uint256 z) {

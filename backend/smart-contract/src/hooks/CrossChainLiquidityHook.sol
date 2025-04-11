@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.29;
 
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol"; // Import ReentrancyGuard
 import {BaseHook} from "./BaseHook.sol";
 import {IPoolManager} from "../interfaces/IPoolManager.sol";
 import {ILayerZeroEndpoint} from "../interfaces/ILayerZeroEndpoint.sol";
@@ -13,7 +14,7 @@ import {BalanceDelta} from "../types/BalanceDelta.sol";
  * @notice Hook for managing liquidity across multiple chains
  * @dev Implements cross-chain communication using LayerZero
  */
-contract CrossChainLiquidityHook is BaseHook {
+contract CrossChainLiquidityHook is BaseHook, ReentrancyGuard { // Inherit ReentrancyGuard
     ILayerZeroEndpoint public immutable lzEndpoint;
 
     // Mapping to store remote chain hook addresses
@@ -76,7 +77,7 @@ contract CrossChainLiquidityHook is BaseHook {
         IPoolManager.ModifyPositionParams calldata params,
         BalanceDelta memory,
         bytes calldata
-    ) external override returns (bytes4) {
+    ) external override nonReentrant returns (bytes4) { // Added nonReentrant modifier
         validateHookAddress();
         // Only process non-zero liquidity changes
         if (params.liquidityDelta != 0) {
@@ -158,8 +159,6 @@ contract CrossChainLiquidityHook is BaseHook {
         return lzEndpoint.estimateFees(_chainId, address(this), payload, false, remoteAndLocalAddresses);
     }
 
-    /**
-     * @notice Allow the contract to receive ETH for gas fees
-     */
-    receive() external payable {}
+    // Removed receive() function as the contract does not handle ETH directly for LZ fees (lzEndpoint.send called with value: 0)
+    // receive() external payable {}
 }

@@ -38,6 +38,7 @@ contract AetherStrategy is ReentrancyGuard { // Inherit ReentrancyGuard
     event ChainConfigUpdated(uint16 chainId, address remoteStrategy, bool isActive);
     event YieldRateUpdated(uint256 oldRate, uint256 newRate);
     event CrossChainYieldSynced(uint16 chainId, uint256 amount);
+    event RebalanceIntervalUpdated(uint256 oldInterval, uint256 newInterval); // Added event
 
     /**
      * @notice Sync cross-chain yield from a remote chain
@@ -45,10 +46,11 @@ contract AetherStrategy is ReentrancyGuard { // Inherit ReentrancyGuard
      * @param amount The amount of yield to sync
      */
     function syncCrossChainYield(uint16 chainId, uint256 amount) external onlyVault {
-        require(chainConfigs[chainId].isActive, "Chain not configured");
+        require(chainConfigs[chainId].isActive, "Chain not configured"); // Check
+        // Emit event *before* external call
+        emit CrossChainYieldSynced(chainId, amount); // Effect (Event)
         // Update the vault with the cross-chain yield
-        vault.syncCrossChainYield(chainId, amount);
-        emit CrossChainYieldSynced(chainId, amount);
+        vault.syncCrossChainYield(chainId, amount); // Interaction
     }
 
     event StrategyRebalanced(uint256 timestamp, uint256 totalYield);
@@ -86,11 +88,13 @@ contract AetherStrategy is ReentrancyGuard { // Inherit ReentrancyGuard
      * @dev Update the base yield rate
      * @param newRate New yield rate (per second, scaled by YIELD_RATE_PRECISION)
      */
-    function updateBaseYieldRate(uint256 newRate) external onlyVault {
-        uint256 oldRate = baseYieldRate;
-        baseYieldRate = newRate;
-        vault.updateYieldRate(newRate);
-        emit YieldRateUpdated(oldRate, newRate);
+    function updateBaseYieldRate(uint256 newRate) external onlyVault nonReentrant { // Added nonReentrant modifier
+        uint256 oldRate = baseYieldRate; // Effect (Read state)
+        baseYieldRate = newRate; // Effect (Write state)
+        // Emit event *before* external call
+        emit YieldRateUpdated(oldRate, newRate); // Effect (Event)
+        // External interaction
+        vault.updateYieldRate(newRate); // Interaction
     }
 
     /**
@@ -109,9 +113,10 @@ contract AetherStrategy is ReentrancyGuard { // Inherit ReentrancyGuard
         // --- Interactions ---
         uint256 totalYield = 0; // [TODO] Recalculate or fetch actual yield
         uint256 activeChains = 0;
+        uint256 numSupportedChains = supportedChains.length; // Cache array length
 
         // Calculate total yield across all active chains
-        for (uint256 i = 0; i < supportedChains.length; i++) {
+        for (uint256 i = 0; i < numSupportedChains; i++) { // Use cached length
             uint16 chainId = supportedChains[i];
             if (chainConfigs[chainId].isActive) {
                 // In a real implementation, we would fetch actual yield data
@@ -124,7 +129,7 @@ contract AetherStrategy is ReentrancyGuard { // Inherit ReentrancyGuard
             // Distribute yield evenly across active chains
             uint256 yieldPerChain = totalYield / activeChains;
 
-            for (uint256 i = 0; i < supportedChains.length; i++) {
+            for (uint256 i = 0; i < numSupportedChains; i++) { // Use cached length
                 uint16 chainId = supportedChains[i];
                 if (chainConfigs[chainId].isActive) {
                     _sendYieldUpdate(chainId, yieldPerChain);
@@ -196,7 +201,9 @@ contract AetherStrategy is ReentrancyGuard { // Inherit ReentrancyGuard
      * @dev Update the rebalance interval
      */
     function setRebalanceInterval(uint256 _interval) external onlyVault {
-        rebalanceInterval = _interval;
+        uint256 oldInterval = rebalanceInterval; // Read old value
+        rebalanceInterval = _interval; // Update state
+        emit RebalanceIntervalUpdated(oldInterval, _interval); // Emit event
     }
 
     /**

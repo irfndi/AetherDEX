@@ -52,13 +52,45 @@ contract MockPoolManager is IPoolManager {
         // Handle pre-swap hook
         _handleBeforeSwapHook(key, params, hookData);
 
-        // Execute swap (simplified mock) and get delta
-        delta = _executeSwap(key, params);
+        // --- Execute Swap on the actual pool ---
+        address poolAddress = pools[keccak256(abi.encode(key))];
+        require(poolAddress != address(0), "MPM: Pool not found for swap");
+        AetherPool targetPool = AetherPool(poolAddress);
+
+        // Determine tokenIn and amountIn
+        address tokenIn = params.zeroForOne ? key.token0 : key.token1;
+        uint256 amountIn = uint256(params.amountSpecified);
+        require(amountIn > 0, "MPM: Invalid swap amount");
+
+        // 1. Transfer tokenIn from original caller (msg.sender) to this mock manager
+        // Note: The caller (test contract) must have approved this mock manager beforehand.
+        TransferHelper.safeTransferFrom(tokenIn, msg.sender, address(this), amountIn);
+
+        // 2. Approve the actual pool to take tokenIn from this mock manager
+        IERC20(tokenIn).approve(poolAddress, amountIn);
+
+        // 3. Call the actual pool's swap function (manager is msg.sender for the pool)
+        // The pool will pull tokenIn from this manager contract and send tokenOut to msg.sender (original caller).
+        uint256 amountOut = targetPool.swap(amountIn, tokenIn, msg.sender); // Call actual swap
+
+        // 4. Calculate BalanceDelta based on actual in/out
+        int256 amount0Change;
+        int256 amount1Change;
+        if (params.zeroForOne) { // Selling token0 (tokenIn) for token1 (tokenOut)
+            amount0Change = int256(amountIn);      // Positive: Pool received token0
+            amount1Change = -int256(amountOut);    // Negative: Pool sent token1
+        } else { // Selling token1 (tokenIn) for token0 (tokenOut)
+            amount1Change = int256(amountIn);      // Positive: Pool received token1
+            amount0Change = -int256(amountOut);    // Negative: Pool sent token0
+        }
+        delta = BalanceDelta(amount0Change, amount1Change);
 
         // Handle post-swap hook
         _handleAfterSwapHook(key, params, delta, hookData);
 
         return delta;
+        // Note: The pool's swap now sends tokenOut directly to the recipient (msg.sender).
+        // No need for the manager to transfer tokenOut back.
     }
 
     // Validate against the specific pool associated with the key
@@ -74,7 +106,6 @@ contract MockPoolManager is IPoolManager {
         require(key.hooks == hookAddress, "MPM: Invalid hook address");
     }
 
-
     function _handleBeforeSwapHook(PoolKey calldata key, SwapParams calldata params, bytes calldata hookData)
         internal
     {
@@ -89,33 +120,7 @@ contract MockPoolManager is IPoolManager {
         }
     }
 
-    // Execute swap against the specific pool for the key (SIMPLIFIED MOCK - DELTA ONLY)
-    // Marked as view as it doesn't modify state directly
-    function _executeSwap(PoolKey calldata key, SwapParams calldata params) internal view returns (BalanceDelta memory) {
-        require(params.amountSpecified > 0, "MPM: Mock only supports exact input swaps");
-
-        // address poolAddress = pools[keccak256(abi.encode(key))]; // No longer needed
-        // require(poolAddress != address(0), "MPM: Pool not found for swap"); // No longer needed
-
-        uint256 amountIn = uint256(params.amountSpecified);
-
-        // --- Simplified Mock Swap Logic: Calculate Delta Only ---
-        // Assume input amount is consumed and calculate a simple output amount (e.g., 2% fee/slippage)
-        uint256 amountOut = (amountIn * 98) / 100; // Simulate 2% fee/slippage
-        // NOTE: This mock does NOT interact with pool balances or perform transfers.
-        // Tests relying on pool state changes after manager swap might fail.
-
-        int256 amount0Change;
-        int256 amount1Change;
-        if (params.zeroForOne) { // Selling token0 for token1
-            amount0Change = int256(amountIn);      // Positive: Pool received token0 (conceptually)
-            amount1Change = -int256(amountOut);    // Negative: Pool sent token1 (conceptually)
-        } else { // Selling token1 for token0
-            amount1Change = int256(amountIn);      // Positive: Pool received token1 (conceptually)
-            amount0Change = -int256(amountOut);    // Negative: Pool sent token0 (conceptually)
-        }
-        return BalanceDelta(amount0Change, amount1Change);
-    }
+    // Removed unused _executeSwap function
 
     function _calculateDelta(
         bool zeroForOne,
@@ -170,7 +175,7 @@ contract MockPoolManager is IPoolManager {
     mapping(bytes32 => int24) public initialTick; // Store the initial tick
 
     /// @inheritdoc IPoolManager
-    function modifyPosition(PoolKey calldata key, ModifyPositionParams calldata params, bytes calldata /* hookData */)
+    function modifyPosition(PoolKey calldata key, ModifyPositionParams calldata params, bytes calldata /* hookData */ )
         external
         override
         returns (BalanceDelta memory delta)
@@ -230,10 +235,7 @@ contract MockPoolManager is IPoolManager {
     }
 
     /// @inheritdoc IPoolManager
-    function initialize(PoolKey calldata key, uint160 sqrtPriceX96, bytes calldata hookData)
-        external
-        override
-    {
+    function initialize(PoolKey calldata key, uint160 sqrtPriceX96, bytes calldata hookData) external override {
         // Basic implementation for mock: store initialization status and parameters
         bytes32 poolId = keccak256(abi.encode(key));
         require(!initializedPools[poolId], "MPM: Pool already initialized");
@@ -256,9 +258,7 @@ contract MockPoolManager is IPoolManager {
         // Optionally, call hook if present and has permission
         if (key.hooks != address(0) && Hooks.hasPermission(key.hooks, Hooks.AFTER_INITIALIZE_FLAG)) {
             // Remove the 'tick' argument as BaseHook.afterInitialize expects only 4 arguments
-            try BaseHook(key.hooks).afterInitialize(msg.sender, key, sqrtPriceX96, hookData) returns (
-                bytes4 selector
-            ) {
+            try BaseHook(key.hooks).afterInitialize(msg.sender, key, sqrtPriceX96, hookData) returns (bytes4 selector) {
                 require(selector == BaseHook.afterInitialize.selector, "MPM: Invalid afterInitialize hook selector");
             } catch Error(string memory reason) {
                 // Handle or log hook error if necessary for testing

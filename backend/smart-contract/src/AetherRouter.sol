@@ -194,7 +194,7 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
     uint256 public MAX_SLIPPAGE = 500; // 5% max slippage
     uint256 public constant MIN_FEE = 0.1 ether;
     uint256 public constant MAX_FEE = 1 ether;
-    uint256 public constant MAX_CHAIN_ID = 100000; // Maximum supported chain ID (increased to support Arbitrum)
+    uint256 public constant MAX_CHAIN_ID = 100_000; // Maximum supported chain ID (increased to support Arbitrum)
 
     modifier validSlippage(uint256 slippage) {
         require(slippage <= MAX_SLIPPAGE, "Slippage too high");
@@ -280,9 +280,12 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
      * @param amount Amount to refund
      */
     function refundExcessFee(uint256 amount) external nonReentrant {
-        require(amount <= address(this).balance, "Insufficient balance");
-        payable(msg.sender).transfer(amount);
-        emit ExcessFeeRefunded(msg.sender, amount);
+        require(amount <= address(this).balance, "Insufficient balance"); // Check
+        // Emit event *before* external call
+        emit ExcessFeeRefunded(msg.sender, amount); // Effect (Event)
+        // External interaction using .call for better robustness
+        (bool success,) = payable(msg.sender).call{value: amount}(""); // Interaction
+        require(success, "ETH_REFUND_FAILED"); // Check success
     }
 
     /**
@@ -354,7 +357,9 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
      * @return amountOut Actual output tokens received
      * @custom:security Reentrancy protection via ReentrancyGuard
      * @custom:security Pausable protection via whenNotPaused
+     * @custom:complexity High (18) - Consider refactoring for clarity if maintenance becomes difficult.
      */
+    // [TODO]: Refactor executeRoute for lower cyclomatic complexity if needed in the future.
     function executeRoute(
         address tokenIn,
         address tokenOut,
@@ -362,7 +367,7 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         uint256 amountOutMin,
         uint24 fee,
         uint256 deadline
-    ) external payable nonReentrant whenNotPaused returns (uint256 amountOut) {
+    ) external /* payable */ nonReentrant whenNotPaused returns (uint256 amountOut) { // Removed payable
         // --- Validation ---
         if (tokenIn == address(0) || tokenIn.code.length == 0) revert InvalidTokenAddress(tokenIn);
         if (tokenOut == address(0) || tokenOut.code.length == 0) revert InvalidTokenAddress(tokenOut);
@@ -660,8 +665,10 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
     ) private {
         require(msg.value >= actualFee, "Insufficient fee");
         if (useCCIP) {
+            // [TODO]: Consider checking the return value of sendMessage for immediate failures, although reverts are implicitly handled.
             ccipRouter.sendMessage{value: actualFee}(dstChain, recipient, payload);
         } else {
+            // [TODO]: Consider checking the return value of dispatch for immediate failures, although reverts are implicitly handled.
             hyperlane.dispatch{value: actualFee}(dstChain, abi.encodePacked(recipient), payload);
         }
     }
@@ -747,8 +754,10 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
 
             // Alternate between CCIP and Hyperlane for testing
             if (i % 2 == 0) {
+                 // [TODO]: Consider checking the return value of sendMessage for immediate failures, although reverts are implicitly handled.
                 ccipRouter.sendMessage{value: 0.1 ether}(path[i + 1], recipient, payload);
             } else {
+                 // [TODO]: Consider checking the return value of dispatch for immediate failures, although reverts are implicitly handled.
                 hyperlane.dispatch{value: 0.1 ether}(path[i + 1], abi.encodePacked(recipient), payload);
             }
         }

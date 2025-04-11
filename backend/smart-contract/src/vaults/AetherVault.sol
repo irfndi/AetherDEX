@@ -25,6 +25,7 @@ contract AetherVault is ERC4626 {
     event YieldGenerated(uint256 amount, uint256 timestamp);
     event StrategyUpdated(address oldStrategy, address newStrategy);
     event CrossChainYieldSynced(uint16 srcChain, uint256 yieldAmount);
+    event YieldRateUpdated(uint256 oldRate, uint256 newRate); // Added event
 
     modifier onlyStrategy() {
         require(msg.sender == strategy, "AetherVault: caller is not the strategy");
@@ -53,9 +54,11 @@ contract AetherVault is ERC4626 {
      * @param _strategy New strategy address
      */
     function setStrategy(address _strategy) external {
-        require(strategy == address(0), "Strategy already set");
+        require(strategy == address(0), "Strategy already set"); // Ensure strategy can only be set once
+        require(_strategy != address(0), "ZERO_STRATEGY_ADDRESS"); // Add zero-address check
+        address oldStrategy = strategy; // Store old strategy (which is address(0) here)
         strategy = _strategy;
-        emit StrategyUpdated(address(0), _strategy);
+        emit StrategyUpdated(oldStrategy, _strategy); // Emit with old and new
     }
 
     /**
@@ -103,7 +106,9 @@ contract AetherVault is ERC4626 {
     function updateYieldRate(uint256 _newRate) external onlyStrategy {
         // Accrue any pending yield before updating rate
         _accruePendingYield();
-        yieldRate = _newRate;
+        uint256 oldRate = yieldRate; // Read old value
+        yieldRate = _newRate; // Update state
+        emit YieldRateUpdated(oldRate, _newRate); // Emit event
     }
 
     /**

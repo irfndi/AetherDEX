@@ -494,8 +494,8 @@ contract AetherPoolTest is Test {
 
         // Expect revert from AetherPool's swap function due to INVALID_TOKEN_IN
         vm.expectRevert(bytes("INVALID_TOKEN_IN"));
-        // Call swap directly on the pool instance, passing the invalid token address
-        localTestPool.swap(10 ether, invalidToken, bob, bob);
+        // Call swap directly on the pool instance, passing the invalid token address (removed sender arg)
+        localTestPool.swap(10 ether, invalidToken, bob);
         vm.stopPrank();
     }
 

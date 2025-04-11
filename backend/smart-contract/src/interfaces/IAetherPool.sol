@@ -2,7 +2,7 @@
 pragma solidity ^0.8.29;
 
 interface IAetherPool {
-    function initialize(address token0, address token1, uint24 fee) external; // Removed unused poolManager parameter
+    function initialize(address _token0, address _token1, uint24 _fee) external; // Added underscores to params
 
     function mint(address recipient, uint256 amount0Desired, uint256 amount1Desired)
         external
@@ -14,7 +14,7 @@ interface IAetherPool {
     function token1() external view returns (address);
     function fee() external view returns (uint24);
 
-    function swap(uint256 amountIn, address tokenIn, address recipient, address sender)
+    function swap(uint256 amountIn, address tokenIn, address recipient /*, address sender */) // Removed sender parameter
         external
         returns (uint256 amountOut);
 }

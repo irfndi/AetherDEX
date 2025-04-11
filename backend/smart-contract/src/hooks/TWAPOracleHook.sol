@@ -21,7 +21,7 @@ contract TWAPOracleHook is BaseHook {
     uint64 private constant BASE_PRICE = 1000;     // Reduced from 1e6
     uint256 private constant SCALE = 1000;         // Reduced from 1e6
     uint256 private constant AMOUNT_SCALE = 1e15;  // Reduced from 1e18
-    uint256 private constant MAX_PRICE = 1000000;  // More conservative max price
+    uint256 private constant MAX_PRICE = 1_000_000;  // More conservative max price
 
     error InsufficientObservations();
     error PeriodTooShort();
@@ -106,21 +106,21 @@ contract TWAPOracleHook is BaseHook {
         }
     }
 
-    function _calculatePrice(bool zeroForOne, BalanceDelta memory delta) external pure returns (uint64) {
-        // Get absolute values and scale down
-        uint256 amount0 = uint256(delta.amount0 >= 0 ? delta.amount0 : -delta.amount0) / AMOUNT_SCALE;
-        uint256 amount1 = uint256(delta.amount1 >= 0 ? delta.amount1 : -delta.amount1) / AMOUNT_SCALE;
+    function _calculatePrice(bool /* zeroForOne */, BalanceDelta memory delta) external pure returns (uint64) {
+        // Get absolute values (without scaling down initially)
+        uint256 absAmount0 = uint256(delta.amount0 >= 0 ? delta.amount0 : -delta.amount0);
+        uint256 absAmount1 = uint256(delta.amount1 >= 0 ? delta.amount1 : -delta.amount1);
 
-        if (amount0 == 0 || amount1 == 0) revert Insufficient_Liquidity();
+        if (absAmount0 == 0 || absAmount1 == 0) revert Insufficient_Liquidity();
 
-        uint256 price;
-        if (zeroForOne) {
-            price = (amount1 * SCALE) / amount0;
-        } else {
-            price = (amount0 * SCALE) / amount1;
-        }
+        // Calculate price = (amount1 * SCALE) / amount0 to maintain precision
+        // Perform multiplication before division
+        uint256 price = (absAmount1 * SCALE) / absAmount0;
+
+        // The zeroForOne flag is implicitly handled because price is always token1/token0
 
         if (price == 0 || price > MAX_PRICE) revert InvalidPrice();
+        // Final price is scaled by SCALE
         return uint64(price);
     }
 

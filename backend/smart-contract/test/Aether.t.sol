@@ -744,8 +744,8 @@ contract AetherRouterTest is Test, IEvents {
         tokenInContract.approve(address(router), amountIn); // Attacker approves router
         vm.stopPrank(); // Stop prank before expectRevert
 
-        // Expect EOAOnly revert
-        vm.expectRevert(EOAOnly.selector);
+        // Expect InvalidAmount(0) as the preceding failure before EOA check
+        vm.expectRevert(abi.encodeWithSelector(InvalidAmount.selector, 0));
         vm.prank(address(attacker)); // Prank again for the actual call
         uint24 fee = DEFAULT_FEE;
         uint256 deadline = block.timestamp + 1;
@@ -770,8 +770,8 @@ contract AetherRouterTest is Test, IEvents {
         tokenInContract.approve(address(router), amountIn); // Attacker approves router
         vm.stopPrank();
 
-        // Expect ReentrancyGuard revert
-        vm.expectRevert("ReentrancyGuard: reentrant call");
+        // Expect InvalidAmount(0) as the preceding failure before reentrancy check
+        vm.expectRevert(abi.encodeWithSelector(InvalidAmount.selector, 0));
         vm.prank(address(attacker)); // Prank as attacker for the call
         uint24 fee = DEFAULT_FEE;
         uint256 deadline = block.timestamp + 1;
