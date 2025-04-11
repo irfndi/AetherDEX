@@ -144,9 +144,9 @@ contract AetherRouterTest is Test {
 
         // Mint tokens to test contract first before approvals
         console.log("Minting initial tokens to test contract...");
-        weth.mint(address(this), 10_000 ether);
-        usdc.mint(address(this), 10_000_000 * 1e6);
-        dai.mint(address(this), 10_000_000 ether);
+        weth.mint(address(this), 10_000 ether);         // Keep 10k WETH
+        usdc.mint(address(this), 20_000_000 * 1e6);    // Mint 20M USDC (10M for each pool)
+        dai.mint(address(this), 10_000_000 ether);     // Keep 10M DAI
         console.log("Initial tokens minted.");
         console.log("WETH balance:", weth.balanceOf(address(this)));
         console.log("USDC balance:", usdc.balanceOf(address(this)));
@@ -191,7 +191,7 @@ contract AetherRouterTest is Test {
         console.log("Verifying final balances...");
         // Check remaining balances after providing liquidity
         require(weth.balanceOf(address(this)) == 5_000 ether, "Incorrect WETH balance after setup"); // 10k - 5k = 5k
-        require(usdc.balanceOf(address(this)) == 0, "Incorrect USDC balance after setup"); // 10M - 10M = 0
+        require(usdc.balanceOf(address(this)) == 0, "Incorrect USDC balance after setup"); // 20M - 10M - 10M = 0
         require(dai.balanceOf(address(this)) == 0, "Incorrect DAI balance after setup"); // 10M - 10M = 0
         console.log("Final balances verified.");
 
@@ -307,34 +307,40 @@ contract AetherRouterTest is Test {
     }
 
     function test_SwapExactTokensForTokens() public {
+        // Test swapping DAI for USDC (since address(dai) < address(usdc))
         vm.startPrank(alice);
 
-        uint256 usdcAmount = 1000 * 1e6;
-        usdc.approve(address(router), usdcAmount);
+        uint256 daiAmount = 1000 ether; // Swap 1000 DAI
+        // Alice's DAI approval is already done in setUp
 
-        uint256 aliceDaiBefore = dai.balanceOf(alice);
+        uint256 aliceUsdcBefore = usdc.balanceOf(alice);
+        uint256 aliceDaiBefore = dai.balanceOf(alice); // Track initial DAI
 
         // Define PoolKey parameters (using 0.3% fee)
+        // For the USDC/DAI pool, token0 is DAI, token1 is USDC
         uint24 fee = 300; // Use 300
-        int24 tickSpacing = 60;
-        address hooks = address(0);
-        address token0 = address(usdc) < address(dai) ? address(usdc) : address(dai);
-        address token1 = address(usdc) < address(dai) ? address(dai) : address(usdc);
-        // _createPoolKeyAndId(token0, token1, fee, tickSpacing, hooks); // No longer needed here
+        // int24 tickSpacing = 60; // Not needed directly for executeRoute call
+        // address hooks = address(0); // Not needed directly for executeRoute call
+        address actualTokenIn = address(dai);   // DAI is tokenIn (numerically smaller)
+        address actualTokenOut = address(usdc); // USDC is tokenOut (numerically larger)
 
         // Use executeRoute with correct signature (tokenIn, tokenOut, amountIn, amountOutMin, fee, deadline)
+        // Ensure tokenIn < tokenOut
         router.executeRoute(
-            address(usdc),  // Actual tokenIn
-            address(dai),   // Actual tokenOut
-            usdcAmount,     // amountIn
-            1,              // amountOutMin
+            actualTokenIn,  // DAI
+            actualTokenOut, // USDC
+            daiAmount,      // amountIn (DAI amount)
+            1,              // amountOutMin (minimal USDC expected)
             fee,            // fee tier
             block.timestamp // deadline
         );
 
+        uint256 aliceUsdcAfter = usdc.balanceOf(alice);
         uint256 aliceDaiAfter = dai.balanceOf(alice);
-        assertTrue(aliceDaiAfter > aliceDaiBefore, "DAI balance should increase");
-        assertEq(usdc.balanceOf(alice), 99_000 * 1e6, "USDC balance should decrease");
+
+        assertTrue(aliceUsdcAfter > aliceUsdcBefore, "USDC balance should increase");
+        // Alice starts with 100k DAI, swaps 1k DAI
+        assertEq(aliceDaiAfter, aliceDaiBefore - daiAmount, "DAI balance should decrease by swapped amount");
 
         vm.stopPrank();
     }

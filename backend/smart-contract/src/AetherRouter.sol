@@ -280,12 +280,18 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
      * @param amount Amount to refund
      */
     function refundExcessFee(uint256 amount) external nonReentrant {
-        require(amount <= address(this).balance, "Insufficient balance"); // Check
-        // Emit event *before* external call
-        emit ExcessFeeRefunded(msg.sender, amount); // Effect (Event)
-        // External interaction using .call for better robustness
-        (bool success,) = payable(msg.sender).call{value: amount}(""); // Interaction
-        require(success, "ETH_REFUND_FAILED"); // Check success
+        // --- Checks ---
+        require(amount > 0, "Invalid refund amount"); // Ensure amount is positive
+        require(amount <= address(this).balance, "Insufficient contract balance"); // Check contract balance
+
+        // --- Effects ---
+        // Emit event *before* the external call (Interaction)
+        emit ExcessFeeRefunded(msg.sender, amount);
+
+        // --- Interaction ---
+        // Use low-level call for robustness and check success
+        (bool success,) = payable(msg.sender).call{value: amount}("");
+        require(success, "ETH_REFUND_FAILED");
     }
 
     /**

@@ -65,7 +65,8 @@ contract DynamicFeeHookTest is Test {
             tickSpacing: 60,
             hooks: address(hook)
         });
-        feeRegistry.registerDynamicFeePool(key, initialFee, address(this));
+        // Register the pool for dynamic fees with the *hook* as the updater
+        feeRegistry.registerDynamicFeePool(key, initialFee, address(hook)); // Use hook address as updater
 
         // Verify hook flags
         uint160 expectedFlags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG);

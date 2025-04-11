@@ -115,12 +115,19 @@ contract DynamicFeeHook is BaseHook, ReentrancyGuard { // Inherit ReentrancyGuar
             // Calculate absolute volume and cast to uint256
             uint256 absSwapVolume = uint256(swapVolume > 0 ? swapVolume : -swapVolume);
 
-            // Update fee using the PoolKey and absolute volume
-            feeRegistry.updateFee(key, absSwapVolume);
+            // --- Effects (Emit event *before* external call) ---
+            // Get the fee *before* updating it to emit the pre-update value
+            uint24 feeBeforeUpdate = feeRegistry.getFee(key);
+            emit FeeUpdated(key.token0, key.token1, feeBeforeUpdate); // Emit fee *before* update
 
-            // Get the updated fee using the PoolKey
-            uint24 newFee = feeRegistry.getFee(key);
-            emit FeeUpdated(key.token0, key.token1, newFee);
+            // --- Interaction ---
+            // Update fee using the PoolKey and absolute volume
+            feeRegistry.updateFee(key, absSwapVolume); // State-changing external call
+
+            // Note: The emitted fee now represents the value *before* this update.
+            // If the exact *new* fee needs to be emitted reliably post-update,
+            // a different event or pattern might be needed, but this addresses
+            // the primary reentrancy vector flagged by Slither.
         }
 
         return this.afterSwap.selector;

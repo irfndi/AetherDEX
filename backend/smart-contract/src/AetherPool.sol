@@ -110,10 +110,10 @@ contract AetherPool is IAetherPool, ReentrancyGuard { // Inherit ReentrancyGuard
         totalSupply -= liquidity;
         reserve0 = _reserve0 - amount0;
         reserve1 = _reserve1 - amount1;
-        emit LiquidityRemoved(to, amount0, amount1, liquidity); // Emit event before external calls
 
-        // --- Interactions (Transfer tokens after state updates) ---
-        TransferHelper.safeTransfer(token0, to, amount0);
+        // --- Interactions (Emit event *before* external transfers) ---
+        emit LiquidityRemoved(to, amount0, amount1, liquidity); // Effect (Event)
+        TransferHelper.safeTransfer(token0, to, amount0); // Interaction
         TransferHelper.safeTransfer(token1, to, amount1);
 
         // return amount0, amount1; // Implicitly returned

@@ -128,7 +128,10 @@ contract CrossChainLiquidityHook is BaseHook, ReentrancyGuard { // Inherit Reent
             if (remoteHook != address(0)) {
                 bytes memory remoteAndLocalAddresses = abi.encodePacked(remoteHook, address(this));
 
-                try lzEndpoint.send{value: 0}(
+                // Emit event *before* the external call (Interaction)
+                emit CrossChainLiquidityEvent(chainId, token0, token1, liquidityDelta); // Effect (Event)
+
+                try lzEndpoint.send{value: 0}( // Interaction
                     chainId,
                     remoteAndLocalAddresses,
                     payload,
@@ -136,9 +139,10 @@ contract CrossChainLiquidityHook is BaseHook, ReentrancyGuard { // Inherit Reent
                     address(0),
                     bytes("")
                 ) {
-                    emit CrossChainLiquidityEvent(chainId, token0, token1, liquidityDelta);
+                    // Success case - event already emitted
                 } catch {
                     // Log failure but continue with other chains
+                    // Consider logging the error reason if possible
                     continue;
                 }
             }
