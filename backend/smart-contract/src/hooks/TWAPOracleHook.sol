@@ -20,7 +20,6 @@ contract TWAPOracleHook is BaseHook {
     // Constants for price calculation - reduced scaling factors
     uint64 private constant BASE_PRICE = 1000;     // Reduced from 1e6
     uint256 private constant SCALE = 1000;         // Reduced from 1e6
-    uint256 private constant AMOUNT_SCALE = 1e15;  // Reduced from 1e18
     uint256 private constant MAX_PRICE = 1_000_000;  // More conservative max price
 
     error InsufficientObservations();
@@ -47,12 +46,12 @@ contract TWAPOracleHook is BaseHook {
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
-            beforeInitialize: true,
-            afterInitialize: true,
-            beforeModifyPosition: true,
-            afterModifyPosition: true,
-            beforeSwap: true,
-            afterSwap: true,
+            beforeInitialize: true,  // Implemented
+            afterInitialize: false, // Not implemented
+            beforeModifyPosition: false, // Not implemented
+            afterModifyPosition: false, // Not implemented
+            beforeSwap: false,     // Logic only in afterSwap
+            afterSwap: true,      // Implemented
             beforeDonate: false,
             afterDonate: false
         });

@@ -13,7 +13,6 @@ contract FeeRegistry is IFeeRegistry, Ownable {
     uint24 private constant MIN_FEE = 100; // 0.01%
     uint24 private constant MAX_FEE = 10000; // 1.00% (Adjusted from 10% for realism)
     uint24 private constant FEE_STEP = 50; // 0.005%
-    uint256 private constant VOLUME_THRESHOLD = 1000 ether; // 1000 tokens (assuming 18 decimals)
 
     // --- State Variables ---
 

@@ -84,6 +84,7 @@ contract AetherFactory is ReentrancyGuard { // Inherit ReentrancyGuard
             pool := create2(0, add(deploymentCode, 0x20), mload(deploymentCode), salt)
         }
         require(pool != address(0), "CREATE2_FAILED");
+        require(pool != address(0), "Pool deployment failed"); // <-- Add deployment check
 
         // --- Effects (Update state *before* external initialize call) ---
         getPool[poolId] = pool;

@@ -52,7 +52,7 @@ This process is iterative. Expect to cycle through these steps multiple times as
 
 ### 3. Static Analysis (Early and Often)
 - **Run Static Analysis:**
-  - Command: `slither . --root ./backend/smart-contract/`
+  - Command: `uvx --from slither-analyzer slither .`
     *(Optional: Integrate additional tools like Mythril or Securify for broader coverage).*
 - **Actions:**
   - Perform analysis periodically (not just at the end) to catch issues early.
@@ -60,7 +60,7 @@ This process is iterative. Expect to cycle through these steps multiple times as
   - Fix `.sol` files based on findings.
   - Re-run tests (Step 2) to ensure no regressions.
 - **Documentation:**
-  - Log high/medium severity issues in `./docs/security-analysis.md` with resolutions or justifications (e.g., `[TODO]: Document Slither findings in /docs`).
+  - Log high/medium severity issues in `./docs/security-analysis-log.md` with resolutions or justifications (e.g., `[TODO]: Document Slither findings in /docs`).
 
 ---
 
@@ -78,7 +78,7 @@ This process is iterative. Expect to cycle through these steps multiple times as
   - Re-run `forge test` to confirm all tests pass.
 - **Iterate:**
   - Aim for >95% coverage as a guideline, prioritizing security-sensitive areas.
-  - Update `./docs/test-coverage.md` with coverage goals and results (e.g., `[TODO]: Add coverage report summary to /docs`).
+  - Update `./docs/test-coverage-report.md` with coverage goals and results (e.g., `[TODO]: Add coverage report summary to /docs`).
 
 ---
 

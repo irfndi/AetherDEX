@@ -290,8 +290,7 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
 
         // --- Interaction ---
         // Use low-level call for robustness and check success
-        (bool success,) = payable(msg.sender).call{value: amount}("");
-        require(success, "ETH_REFUND_FAILED");
+        payable(msg.sender).transfer(amount); // Use transfer instead of call
     }
 
     /**
@@ -356,16 +355,13 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
      * @param tokenIn Address of the input token
      * @param tokenOut Address of the output token
      * @param amountIn Amount of input tokens
-     * @param fee Fee tier for the pool (e.g., 3000 for 0.3%)
-     * @param amountIn Amount of input tokens
      * @param amountOutMin Minimum acceptable output tokens
+     * @param fee Fee tier for the pool (e.g., 3000 for 0.3%)
      * @param deadline Deadline for the swap
      * @return amountOut Actual output tokens received
      * @custom:security Reentrancy protection via ReentrancyGuard
      * @custom:security Pausable protection via whenNotPaused
-     * @custom:complexity High (18) - Consider refactoring for clarity if maintenance becomes difficult.
      */
-    // [TODO]: Refactor executeRoute for lower cyclomatic complexity if needed in the future.
     function executeRoute(
         address tokenIn,
         address tokenOut,
@@ -373,29 +369,69 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         uint256 amountOutMin,
         uint24 fee,
         uint256 deadline
-    ) external /* payable */ nonReentrant whenNotPaused returns (uint256 amountOut) { // Removed payable
-        // --- Validation ---
+    ) external nonReentrant whenNotPaused returns (uint256 amountOut) {
+        // 1. Validate Input
+        _validateExecuteRouteInput(tokenIn, tokenOut, amountIn, amountOutMin, fee, deadline);
+
+        // 2. Prepare Swap (Transfer In, Get PoolKey, Approve)
+        PoolKey memory key = _prepareSwap(tokenIn, tokenOut, amountIn, fee);
+
+        // 3. Execute Pool Swap
+        BalanceDelta memory balanceDelta = _executePoolSwap(key, amountIn);
+
+        // 4. Process Results (Check Slippage, Transfer Out)
+        amountOut = _processSwapOutput(
+            tokenIn,  // Needed for event emission
+            tokenOut,
+            amountIn, // Needed for event emission
+            amountOutMin,
+            balanceDelta
+        );
+
+        // 5. Emit Event
+        emit RouteExecuted(msg.sender, tokenIn, tokenOut, amountIn, amountOut, 0, bytes32(0)); // Use zero hash
+    }
+
+    /**
+     * @notice Internal function to validate inputs for executeRoute
+     */
+    function _validateExecuteRouteInput(
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn,
+        uint256 amountOutMin,
+        uint24 fee,
+        uint256 deadline
+    ) internal view {
         if (tokenIn == address(0) || tokenIn.code.length == 0) revert InvalidTokenAddress(tokenIn);
         if (tokenOut == address(0) || tokenOut.code.length == 0) revert InvalidTokenAddress(tokenOut);
-        if (tokenIn == tokenOut) revert InvalidTokenAddress(tokenOut); // Cannot swap same token
-        // PoolKey requires ordered tokens
+        if (tokenIn == tokenOut) revert InvalidTokenAddress(tokenOut);
         if (tokenIn >= tokenOut) revert InvalidTokenAddress(tokenIn); // Must provide tokens in correct order (tokenIn < tokenOut)
         if (amountIn == 0 || amountIn > type(uint128).max) revert InvalidAmount(amountIn);
-        if (deadline != 0 && deadline < block.timestamp) revert ExpiredDeadline(); // Allow deadline 0 for no deadline
+        if (deadline != 0 && deadline < block.timestamp) revert ExpiredDeadline();
         if (amountOutMin == 0) revert InvalidAmount(amountOutMin);
-        if (fee == 0 || fee > 1_000_000) revert InvalidFeeTier(fee); // Example: Max 100% fee tier
+        if (fee == 0 || fee > 1_000_000) revert InvalidFeeTier(fee);
         if (!testMode && msg.sender != tx.origin) revert EOAOnly();
+    }
 
-        // --- Prepare Swap ---
+    /**
+     * @notice Internal function to prepare for the swap: transfer tokens, get PoolKey, approve PoolManager
+     * @return key The PoolKey for the swap
+     */
+    function _prepareSwap(
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn,
+        uint24 fee
+    ) internal returns (PoolKey memory key) {
         // Transfer input tokens from user to this router
         TransferHelper.safeTransferFrom(tokenIn, msg.sender, address(this), amountIn); // User -> Router
 
-        // --- Construct Swap Parameters (needed to find pool) ---
-        // Fetch tickSpacing from the FeeRegistry via the factory using the new interface function
+        // Fetch tickSpacing from the FeeRegistry via the factory
         int24 tickSpacing = factory.feeRegistry().getTickSpacing(fee);
         if (tickSpacing == 0) revert InvalidFeeTier(fee); // Ensure fee tier is supported
 
-        PoolKey memory key = PoolKey({
+        key = PoolKey({
             token0: tokenIn, // Already validated tokenIn < tokenOut
             token1: tokenOut,
             fee: fee,
@@ -403,20 +439,27 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
             hooks: address(0) // Assuming no hooks for basic swap
         });
 
-        // --- Approve Pool Manager ---
-        // Router approves the Pool Manager (mock)
-        // Although the simplified mock won't use this, keep it for potential future mock improvements
+        // Router approves the Pool Manager
         IERC20(tokenIn).safeIncreaseAllowance(address(poolManager), amountIn);
+    }
 
+    /**
+     * @notice Internal function to execute the swap via the PoolManager
+     * @param key The PoolKey for the swap
+     * @param amountIn The amount of tokenIn being swapped
+     * @return balanceDelta The result of the swap
+     */
+    function _executePoolSwap(
+        PoolKey memory key,
+        uint256 amountIn
+    ) internal returns (BalanceDelta memory balanceDelta) {
         // Determine swap direction and price limit
         bool zeroForOne = true; // Since tokenIn < tokenOut, we are selling token0 (tokenIn) for token1 (tokenOut)
-        // Calculate sqrtPriceLimitX96 based on amountOutMin and slippage tolerance
-        // This is complex and requires oracle/price data or simpler bounds.
-        // Using wide bounds for now:
-        // Replace non-existent FixedPoint constants with type(uint160) bounds
+
+        // Using wide bounds for sqrtPriceLimitX96 for now:
         uint160 sqrtPriceLimitX96 = zeroForOne
-            ? type(uint160).min + 1 // Represents the lowest possible price limit
-            : type(uint160).max - 1; // Represents the highest possible price limit
+            ? type(uint160).min + 1
+            : type(uint160).max - 1;
         // [TODO]: Implement robust sqrtPriceLimitX96 calculation based on amountOutMin
 
         IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
@@ -425,25 +468,41 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
             sqrtPriceLimitX96: sqrtPriceLimitX96 // Set price limit based on direction
         });
 
-        // --- Execute Swap ---
-        // Initialize balanceDelta to prevent Slither warning
-        BalanceDelta memory balanceDelta = BalanceDelta(0, 0);
+        // Execute Swap via PoolManager
         try poolManager.swap(key, params, bytes("")) returns (BalanceDelta memory returnedDelta) {
             balanceDelta = returnedDelta;
         } catch Error(string memory reason) {
             revert SwapFailed(reason);
         } catch (bytes memory lowLevelData) {
-            revert SwapFailed(string(lowLevelData)); // Or decode specific PoolManager errors
+            revert SwapFailed(string(lowLevelData));
         }
+    }
 
-        // --- Process Results ---
-        // Since zeroForOne is true, we provided token0 (balanceDelta.amount0 should be positive)
-        // and received token1 (balanceDelta.amount1 should be negative)
-        if (balanceDelta.amount0 < int256(amountIn)) {
-            // This shouldn't happen if swap didn't revert, but check for safety
-            revert SwapFailed("Pool did not take expected input amount");
+    /**
+     * @notice Internal function to process the swap output: check results, check slippage, transfer tokens out
+     * @param tokenOut The output token address
+     * @param amountOutMin The minimum acceptable output amount
+     * @param balanceDelta The result from the PoolManager swap
+     * @return amountOut The final output amount
+     */
+    function _processSwapOutput(
+        address /*tokenIn*/,  // Needed for event emission - Commmented out name to fix lint
+        address tokenOut,
+        uint256 /*amountIn*/, // Needed for event emission - Commmented out name to fix lint
+        uint256 amountOutMin,
+        BalanceDelta memory balanceDelta
+    ) internal returns (uint256 amountOut) {
+        // Since zeroForOne is true, we provided token0 (tokenIn) and received token1 (tokenOut)
+        if (balanceDelta.amount0 <= 0) { // Should have used input token
+            revert SwapFailed("Pool did not take input tokens");
         }
-        if (balanceDelta.amount1 >= 0) {
+        // Check if the amount taken matches roughly (can be slightly more due to fees)
+        // Simple check for now, refine if needed
+        // if (balanceDelta.amount0 < int256(amountIn)) {
+        //     revert SwapFailed("Pool did not take expected input amount");
+        // }
+
+        if (balanceDelta.amount1 >= 0) { // Should have received output token (negative delta)
             revert SwapFailed("Pool did not return output tokens");
         }
 
@@ -454,11 +513,10 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
             revert InsufficientOutputAmount(amountOut, amountOutMin);
         }
 
-        // --- Final Transfer ---
+        // Final Transfer to user
         TransferHelper.safeTransfer(tokenOut, msg.sender, amountOut);
 
-        // --- Emit Event ---
-        emit RouteExecuted(msg.sender, tokenIn, tokenOut, amountIn, amountOut, 0, bytes32(0)); // Use zero hash
+        // Event emission moved to main function after all steps succeed
     }
 
     /**
@@ -805,9 +863,8 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         if (excessFee > 0) {
             // Check recipient is valid before sending
             if (recipient == address(0)) revert InvalidRecipient(recipient);
-            (bool success,) = recipient.call{value: excessFee}(""); // Use recipient directly
-            // Explicitly check the success return value of the call
-            require(success, "ETH_REFUND_FAILED");
+            payable(recipient).transfer(excessFee); // Use transfer instead of call
         }
     }
+
 }

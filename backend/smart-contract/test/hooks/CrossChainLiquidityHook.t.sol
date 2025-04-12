@@ -2,12 +2,15 @@
 pragma solidity ^0.8.29;
 
 import {Test} from "forge-std/Test.sol";
+import {stdError} from "forge-std/StdError.sol";
+import "forge-std/console.sol"; // Import console for logging
+
 import {CrossChainLiquidityHook} from "../../src/hooks/CrossChainLiquidityHook.sol";
 import {ILayerZeroEndpoint} from "../../src/interfaces/ILayerZeroEndpoint.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {IPoolManager} from "../../src/interfaces/IPoolManager.sol";
-import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
 import {PoolKey} from "../../src/types/PoolKey.sol";
+import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
 import {Hooks} from "../../src/libraries/Hooks.sol";
 import {MockPoolManager} from "../mocks/MockPoolManager.sol";
 import {HookFactory} from "../utils/HookFactory.sol";
@@ -25,9 +28,9 @@ contract MockLayerZeroEndpoint is ILayerZeroEndpoint {
         uint16 _dstChainId,
         bytes calldata _destination,
         bytes calldata _payload,
-        address payable _refundAddress,
-        address _zroPaymentAddress,
-        bytes calldata _adapterParams
+        address payable /*_refundAddress*/,
+        address /*_zroPaymentAddress*/,
+        bytes calldata /*_adapterParams*/
     ) external payable {
         emit MessageSent(_dstChainId, _destination, _payload);
     }
@@ -36,14 +39,14 @@ contract MockLayerZeroEndpoint is ILayerZeroEndpoint {
         uint16 _srcChainId,
         bytes memory _srcAddress,
         address _dstAddress,
-        uint64 _nonce,
+        uint64 /*_nonce*/,
         bytes memory _payload
     ) external {
         require(trustedRemotes[msg.sender], "Untrusted remote");
-        emit MessageReceived(_srcChainId, _srcAddress, _dstAddress, _nonce, _payload);
+        emit MessageReceived(_srcChainId, _srcAddress, _dstAddress, 0, _payload);
     }
 
-    function estimateFees(uint16, address, bytes calldata, bool, bytes calldata)
+    function estimateFees(uint16 /*_dstChainId*/, address /*_userApplication*/, bytes calldata /*_payload*/, bool /*useZro*/, bytes calldata /*_adapterParam*/)
         external
         pure
         returns (uint256 nativeFee, uint256 zroFee)
@@ -66,7 +69,9 @@ contract CrossChainLiquidityHookTest is Test {
     MockLayerZeroEndpoint public mockEndpoint;
     MockERC20 public token0;
     MockERC20 public token1;
-    HookFactory public factory;
+    HookFactory public hookFactory;
+    AetherPool public mockPool;
+    PoolKey public key;
 
     uint16 public constant REMOTE_CHAIN_ID = 123;
     address public constant REMOTE_HOOK = address(0x4567);
@@ -74,70 +79,60 @@ contract CrossChainLiquidityHookTest is Test {
     event CrossChainLiquidityEvent(uint16 chainId, address token0, address token1, int256 liquidityDelta);
 
     function setUp() public {
-        // Deploy mock tokens first
-        token0 = new MockERC20("Token0", "T0", 18);
-        token1 = new MockERC20("Token1", "T1", 18);
-        
-        // Set up mock endpoint
+        // Deploy Mock contracts
+        token0 = new MockERC20("Token0", "T0", 18); // Add decimals back
+        token1 = new MockERC20("Token1", "T1", 18); // Add decimals back
         mockEndpoint = new MockLayerZeroEndpoint();
+        hookFactory = new HookFactory();
 
-        // Create factory for proper hook deployment
-        factory = new HookFactory();
+        // Deploy AetherPool (needed for PoolKey context)
+        mockPool = new AetherPool(address(this)); // Pool manager is 'this' for initialization purposes
+        mockPool.initialize(address(token0), address(token1), 3000);
 
-        // Deploy hook with proper address using factory
-        hook = factory.deployCrossChainHook(address(this), address(mockEndpoint));
-        
-        // Create and initialize pool
-        AetherPool pool = new AetherPool(address(this)); // Assuming factory address is 'this' for simplicity
-        pool.initialize(address(token0), address(token1), uint24(3000)); // Removed last argument
+        // Deploy the actual Pool Manager mock AFTER other mocks
+        mockPoolManager = new MockPoolManager(address(0)); // Pass address(0) as initial hook address
 
-        // Set up mock pool manager with pool and hook
-        mockPoolManager = new MockPoolManager(address(hook)); // Pass only hook address
+        // --- Deploy the Hook with the CORRECT Pool Manager --- 
+        // The hook needs to know the address of the *actual* manager it should trust
+        hook = hookFactory.deployCrossChainHook(address(mockPoolManager), address(mockEndpoint));
+
+        // Define PoolKey
+        key = PoolKey({token0: address(token0), token1: address(token1), fee: 3000, tickSpacing: 60, hooks: address(hook)});
 
         // Verify hook flags match implemented permissions
-        uint160 expectedFlags = uint160(Hooks.BEFORE_INITIALIZE_FLAG |
-                                       Hooks.AFTER_INITIALIZE_FLAG |
-                                       Hooks.BEFORE_MODIFY_POSITION_FLAG |
-                                       Hooks.AFTER_MODIFY_POSITION_FLAG |
-                                       Hooks.BEFORE_SWAP_FLAG |
-                                       Hooks.AFTER_SWAP_FLAG);
-        // uint160 actualFlags = uint160(address(hook)) & 0xFFFF; // Incorrect check
+        uint160 expectedFlags = uint160(Hooks.AFTER_MODIFY_POSITION_FLAG);
+
         uint160 actualFlags = Hooks.permissionsToFlags(hook.getHookPermissions()); // Correct check
         require((actualFlags & expectedFlags) == expectedFlags, "Hook flags mismatch");
 
-        // Set trusted remote for the hook
+        // Set trusted remote on the LayerZero endpoint mock
         mockEndpoint.setTrustedRemote(address(hook), true);
+
+        // Configure the remote hook for the test chain ID on the hook itself
+        // This allows the hook to know which addresses are valid sources for messages
+        vm.prank(address(mockPoolManager)); // Prank as the correct manager
+        hook.setRemoteHook(REMOTE_CHAIN_ID, REMOTE_HOOK); // This call requires the prank
+
+        // No stopPrank needed here as the setUp function ends
     }
 
     function test_HookInitialization() public view {
         // Verify hook flags match implemented permissions
-        uint160 expectedFlags = uint160(Hooks.BEFORE_INITIALIZE_FLAG |
-                                      Hooks.AFTER_INITIALIZE_FLAG |
-                                      Hooks.BEFORE_MODIFY_POSITION_FLAG |
-                                      Hooks.AFTER_MODIFY_POSITION_FLAG |
-                                      Hooks.BEFORE_SWAP_FLAG |
-                                      Hooks.AFTER_SWAP_FLAG);
-        // uint160 actualFlags = uint160(address(hook)) & 0xFFFF; // Incorrect check
+        uint160 expectedFlags = uint160(Hooks.AFTER_MODIFY_POSITION_FLAG);
+
         uint160 actualFlags = Hooks.permissionsToFlags(hook.getHookPermissions()); // Correct check
         assertEq((actualFlags & expectedFlags), expectedFlags);
     }
 
     function test_CrossChainLiquiditySync() public {
-        PoolKey memory key = PoolKey({
-            token0: address(token0),
-            token1: address(token1),
-            fee: 3000,
-            tickSpacing: 60,
-            hooks: address(hook)
-        });
-
         IPoolManager.ModifyPositionParams memory params =
             IPoolManager.ModifyPositionParams({tickLower: -100, tickUpper: 100, liquidityDelta: 1000});
 
-        hook.afterModifyPosition(address(this), key, params, BalanceDelta(100, 200), "");
-
         vm.expectEmit(true, true, true, true);
         emit CrossChainLiquidityEvent(REMOTE_CHAIN_ID, address(token0), address(token1), 1000);
+
+        vm.prank(address(mockPoolManager));
+        hook.afterModifyPosition(address(this), key, params, BalanceDelta(100, 200), "");
     }
 
     function test_CrossChainMessageReceive() public {
@@ -157,32 +152,26 @@ contract CrossChainLiquidityHookTest is Test {
     }
 
     function test_CrossChainLiquidityRebalance() public {
-        PoolKey memory key = PoolKey({
-            token0: address(token0),
-            token1: address(token1),
-            fee: 3000,
-            tickSpacing: 60,
-            hooks: address(hook)
-        });
-
         // Add liquidity
         IPoolManager.ModifyPositionParams memory addParams =
             IPoolManager.ModifyPositionParams({tickLower: -100, tickUpper: 100, liquidityDelta: 1000});
+        vm.prank(address(mockPoolManager));
         hook.afterModifyPosition(address(this), key, addParams, BalanceDelta(100, 200), "");
 
         // Remove some liquidity
         IPoolManager.ModifyPositionParams memory removeParams =
             IPoolManager.ModifyPositionParams({tickLower: -100, tickUpper: 100, liquidityDelta: -500});
-        hook.afterModifyPosition(address(this), key, removeParams, BalanceDelta(-50, -100), "");
 
-        // Verify net liquidity change is reflected
         vm.expectEmit(true, true, true, true);
         emit CrossChainLiquidityEvent(
             REMOTE_CHAIN_ID,
             address(token0),
             address(token1),
-            500 // Net liquidity change
+            -500 // Expect the delta from the second call
         );
+
+        vm.prank(address(mockPoolManager));
+        hook.afterModifyPosition(address(this), key, removeParams, BalanceDelta(-50, -100), "");
     }
 
     function test_EstimateCrossChainMessageFees() public view {
@@ -196,18 +185,10 @@ contract CrossChainLiquidityHookTest is Test {
     }
 
     function test_RevertOnUnauthorizedCall() public {
-        PoolKey memory key = PoolKey({
-            token0: address(token0),
-            token1: address(token1),
-            fee: 3000,
-            tickSpacing: 60,
-            hooks: address(hook)
-        });
-
         IPoolManager.ModifyPositionParams memory params =
             IPoolManager.ModifyPositionParams({tickLower: -100, tickUpper: 100, liquidityDelta: 1000});
 
-        vm.expectRevert("Unauthorized");
+        vm.expectRevert("Only pool manager"); // Expect correct revert message
         hook.afterModifyPosition(address(0x1234), key, params, BalanceDelta(100, 200), "");
 
         // Verify hook still works with authorized call

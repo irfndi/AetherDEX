@@ -7,13 +7,13 @@ import {AetherPool} from "src/AetherPool.sol"; // Explicit import
 import {AetherFactory} from "src/AetherFactory.sol"; // Explicit import
 import {FeeRegistry} from "src/FeeRegistry.sol"; // Import FeeRegistry (Removed FeeParameters)
 import {PoolKey} from "src/types/PoolKey.sol"; // Import PoolKey
-// Removed: import {PoolAddress} from "src/libraries/PoolAddress.sol";
-// Removed: import {IHooks} from "src/interfaces/IHooks.sol";
-import "src/libraries/TransferHelper.sol";
-import {IPoolManager} from "src/interfaces/IPoolManager.sol"; // Added import
+import {IPoolManager} from "src/interfaces/IPoolManager.sol"; // Keep this standard import
 import {MockPoolManager} from "./mocks/MockPoolManager.sol"; // Import MockPoolManager
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol"; // Import Ownable for error
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol"; // Import Pausable for error
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol"; // Import ReentrancyGuard for the error
+import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol"; // Import TickMath
+import "src/libraries/TransferHelper.sol";
 
 error InvalidAmount(uint256 amount);
 error InvalidTokenAddress(address token);
@@ -104,30 +104,39 @@ contract MockHyperlane {
 
 contract MaliciousContract {
     AetherRouter public router;
+    address public tokenA_addr;
+    address public tokenB_addr;
+    uint24 public fee_val;
 
-    constructor(address _router) {
-        router = AetherRouter(payable(_router));
+    event FallbackCalled(); // Event to signal fallback execution
+
+    // MODIFIED Constructor to accept token addresses and fee
+    constructor(AetherRouter _router, address _tokenA, address _tokenB, uint24 _fee) {
+        router = _router;
+        tokenA_addr = _tokenA;
+        tokenB_addr = _tokenB;
+        fee_val = _fee;
     }
 
-    function attack() public {
-        // Assuming fee 500 for the attack scenario, adjust if needed
-        // Deadline 1
-        router.executeRoute(address(this), address(this), 100 * 10 ** 18, 98 * 10 ** 18, 500, 1);
+    // Function to initiate the first swap (called by the test)
+    function startAttack(address _tokenIn, address _tokenOut, uint256 amountIn, uint256 amountOutMin, uint24 _fee, uint256 deadline) external {
+        // Approval happens in the test context before this call
+        router.executeRoute(
+            _tokenIn,
+            _tokenOut,
+            amountIn,
+            amountOutMin,
+            _fee,
+            deadline
+        );
     }
 
-    // This function in the malicious contract likely needs updating too if it's meant to call the new signature
-    function executeRoute(
-        address tokenIn,
-        address tokenOut,
-        uint256 amountIn,
-        uint256 amountOutMin,
-        uint24 fee, // Added fee
-        uint256 deadline
-    )
-        // bytes memory routeData // Removed routeData
-        external
-    {
-        router.executeRoute(tokenIn, tokenOut, amountIn, amountOutMin, fee, deadline);
+    // Fallback function attempts the reentrant call
+    fallback() external payable {
+        emit FallbackCalled(); // Emit event when fallback is triggered
+        // Attempt to call back into the router via executeRoute with VALID parameters
+        // Swap 100 wei of tokenA for tokenB - ensuring it uses the stored addresses/fee.
+        router.executeRoute(tokenA_addr, tokenB_addr, 100, 0, fee_val, block.timestamp); // Valid reentrant call using stored values
     }
 }
 
@@ -135,50 +144,56 @@ contract AetherRouterTest is Test, IEvents {
     // Event definition for expectEmit - Updated to match Factory
     event PoolCreated(bytes32 indexed poolId, address indexed pool, PoolKey key);
 
+    // Ensure all necessary state variables are declared publicly
     AetherRouter public router;
     AetherPool public pool;
     AetherFactory public factory;
-    FeeRegistry public feeRegistry; // Add FeeRegistry state variable
-    MockPoolManager public mockPoolManager; // Add MockPoolManager state variable
+    FeeRegistry public feeRegistry;
+    MockPoolManager public mockPoolManager;
     MockToken public tokenA;
     MockToken public tokenB;
-    address public ccipRouter;
-    address public hyperlane;
-    address public linkToken;
-    address public owner;
-    address public addr1;
-    address public addr2;
-    address public tokenAAddr;
-    address public tokenBAddr;
-    address public routerAddr;
-    uint256 public testValue;
+    address public owner = address(1); // Make owner public for potential inspection
+    address public user = address(2); // Make user public for potential inspection
     uint24 public constant DEFAULT_FEE = 500; // Define default fee
 
     function setUp() public {
+        // Assign owner address first
+        owner = address(1);
+
         // Deploy tokens
         tokenA = new MockToken("TokenA", "TKNA", 18);
         tokenB = new MockToken("TokenB", "TKNB", 18);
 
-        // Deploy FeeRegistry and add the default fee tier
-        feeRegistry = new FeeRegistry(address(this)); // Deploy FeeRegistry, assuming 'this' is owner initially
-        feeRegistry.addFeeConfiguration(DEFAULT_FEE, 10); // Add the 500 fee tier with tickSpacing 10
-
-        // Deploy factory with FeeRegistry address
-        factory = new AetherFactory(address(feeRegistry));
-
-        // Deploy router with mock cross-chain contracts
-        ccipRouter = address(new MockCCIPRouter());
-        hyperlane = address(new MockHyperlane());
-        linkToken = address(new MockToken("LINK", "LINK", 18));
-
-        // Deploy MockPoolManager (initially with no hook)
+        // Deploy MockPoolManager (owner doesn't matter)
+        // Assign to the state variable, not a local one
         mockPoolManager = new MockPoolManager(address(0));
 
-        // Deploy router with MockPoolManager address as _poolManager and factory address as _factory
+        // Deploy owner-controlled contracts under a single prank
+        vm.startPrank(owner);
+
+        // Deploy FeeRegistry and add fee tier
+        feeRegistry = new FeeRegistry(owner);
+        feeRegistry.addFeeConfiguration(DEFAULT_FEE, 10);
+
+        // Deploy factory
+        factory = new AetherFactory(address(feeRegistry));
+
+        // Deploy router
+        address mockCCIPRouter = address(new MockCCIPRouter());
+        address mockHyperlane = address(new MockHyperlane());
+        address mockLinkToken = address(new MockToken("LINK", "LINK", 18));
         router = new AetherRouter(
-            address(this), ccipRouter, hyperlane, linkToken, address(mockPoolManager), address(factory), 500
+            owner,
+            mockCCIPRouter,
+            mockHyperlane,
+            mockLinkToken,
+            address(mockPoolManager), // Use state variable address
+            address(factory),
+            500 // Default max slippage
         );
-        router.setTestMode(true); // Enable test mode for EOA checks
+        router.setTestMode(true); // Enable test mode
+
+        vm.stopPrank(); // End owner actions prank
 
         // Add initial liquidity with proper token ordering
         uint256 amountA_ = 1000 * 10 ** 18; // Original amount for tokenA
@@ -186,48 +201,54 @@ contract AetherRouterTest is Test, IEvents {
         tokenA.mint(address(this), amountA_); // Mint to the test contract
         tokenB.mint(address(this), amountB_); // Mint to the test contract
 
-        // Create pool via factory
-        address tokenAAddr_ = address(tokenA);
-        address tokenBAddr_ = address(tokenB);
-        uint24 fee = DEFAULT_FEE; // Use defined constant
-        if (tokenAAddr_ > tokenBAddr_) (tokenAAddr_, tokenBAddr_) = (tokenBAddr_, tokenAAddr_);
+        // Create PoolKey with correct token ordering
+        address token0Addr;
+        address token1Addr;
+        if (address(tokenA) < address(tokenB)) {
+            token0Addr = address(tokenA);
+            token1Addr = address(tokenB);
+        } else {
+            token0Addr = address(tokenB);
+            token1Addr = address(tokenA);
+        }
 
-        // Construct PoolKey
-        int24 tickSpacing_ = feeRegistry.tickSpacings(fee); // Get tickSpacing directly from mapping
-        require(tickSpacing_ != 0, "Fee tier not supported in FeeRegistry"); // Add check
-        PoolKey memory key = PoolKey({
-            token0: tokenAAddr_,
-            token1: tokenBAddr_,
-            fee: fee,
-            tickSpacing: tickSpacing_, // Use directly fetched tickSpacing
-            hooks: address(0) // No hooks for this basic setup, field is address type
+        PoolKey memory key_AetherTest = PoolKey({
+            token0: token0Addr,
+            token1: token1Addr,
+            fee: DEFAULT_FEE, // Use defined constant
+            tickSpacing: 10, // Use correct tickSpacing - MAKE SURE THIS MATCHES FEE CONFIG
+            hooks: address(0)
         });
 
-        // Predict the pool address using CREATE2 logic from AetherFactory
-        bytes32 poolId_AetherRouterTest = keccak256(abi.encode(key)); // Calculate poolId (salt)
-        bytes32 initCodeHash_AetherRouterTest =
+        // Predict pool address and create pool via factory
+        bytes32 poolId_AetherTest =
+            keccak256(abi.encode(key_AetherTest)); // Calculate poolId (salt)
+        bytes32 initCodeHash_AetherTest =
             keccak256(abi.encodePacked(type(AetherPool).creationCode, abi.encode(address(factory)))); // Calculate init code hash
         address expectedPoolAddress =
-            vm.computeCreate2Address(poolId_AetherRouterTest, initCodeHash_AetherRouterTest, address(factory)); // Use Foundry cheatcode
+            vm.computeCreate2Address(poolId_AetherTest, initCodeHash_AetherTest, address(factory)); // Use Foundry cheatcode
 
         // Expect the PoolCreated event
+        // IMPORTANT: Prank as the factory owner (which is our test 'owner') for pool creation
+        vm.startPrank(owner);
         vm.expectEmit(true, true, true, true, address(factory)); // Check emitter and signature
-        emit PoolCreated(poolId_AetherRouterTest, expectedPoolAddress, key); // Use calculated poolId
+        emit PoolCreated(poolId_AetherTest, expectedPoolAddress, key_AetherTest); // Use calculated poolId
 
-        // Create pool via factory using PoolKey
-        address poolAddress = factory.createPool(key);
-        require(poolAddress != address(0), "Factory failed to create pool");
-        require(poolAddress == expectedPoolAddress, "Pool address mismatch"); // Verify CREATE2 address
-        pool = AetherPool(payable(poolAddress)); // Get the created pool instance
+        address poolAddress = factory.createPool(key_AetherTest); // Create pool via factory using PoolKey
+        require(poolAddress == expectedPoolAddress, "Pool address mismatch");
+        vm.stopPrank(); // Stop factory owner prank
 
-        // Register the created pool with the MockPoolManager
-        mockPoolManager.setPool(poolId_AetherRouterTest, poolAddress);
+        pool = AetherPool(payable(poolAddress)); // Assign the created pool address to the state variable
 
-        // Determine amounts corresponding to sorted token0 and token1 for the created pool
+        // Set the created pool in MockPoolManager
+        // IMPORTANT: Prank as the PoolManager owner if necessary (depends on Mock implementation)
+        // Assuming MockPoolManager allows anyone to setPool for testing
+        mockPoolManager.setPool(poolId_AetherTest, poolAddress); // Add pool to mock manager using poolId
+
+        // Approve and Mint liquidity (amounts need to be sorted)
         uint256 amount0;
         uint256 amount1;
-        // Now pool.token0() will return the correct address set by the factory
-        if (address(tokenA) == pool.token0()) {
+        if (address(tokenA) < address(tokenB)) {
             // tokenA is token0
             amount0 = amountA_;
             amount1 = amountB_;
@@ -237,11 +258,15 @@ contract AetherRouterTest is Test, IEvents {
             amount1 = amountA_;
         }
 
-        // Approve the *created* pool for the correct amounts
+        // Approve the *created* pool for the correct amounts (from test contract)
         tokenA.approve(address(pool), amountA_); // Approve original tokenA amount
         tokenB.approve(address(pool), amountB_); // Approve original tokenB amount
 
-        // Mint liquidity to the *created* pool from the test contract itself using sorted amounts
+        // IMPORTANT: Need to initialize the pool first before minting
+        vm.startPrank(owner); // Pool initialization might be restricted
+        pool.initialize(token0Addr, token1Addr, DEFAULT_FEE); // Pass correct args: token0, token1, fee
+        vm.stopPrank();
+
         pool.mint(address(this), amount0, amount1);
     }
 
@@ -282,7 +307,7 @@ contract AetherRouterTest is Test, IEvents {
         // 2. User (this contract) approves router
         tokenInContract.approve(address(router), amountIn);
         // 3. Mint expected tokenOut to router address to simulate pool transfer
-        tokenOutContract.mint(address(router), expectedAmountOut);
+        // tokenOutContract.mint(address(router), expectedAmountOut); // Removed: Router doesn't hold liquidity, pool does.
 
         uint24 fee = DEFAULT_FEE; // Use fee defined in setUp
         uint256 deadline = block.timestamp + 1; // Use current block timestamp + 1
@@ -302,7 +327,7 @@ contract AetherRouterTest is Test, IEvents {
         // Setup balances and approvals
         tokenInContract.mint(address(this), amountIn);
         tokenInContract.approve(address(router), amountIn);
-        tokenOutContract.mint(address(router), expectedAmountOut); // Router needs tokens to attempt transfer
+        // tokenOutContract.mint(address(router), expectedAmountOut); // Removed: Router doesn't hold liquidity, pool does.
 
         uint24 fee = DEFAULT_FEE; // Use fee defined in setUp
         uint256 deadline = block.timestamp + 1; // Use current block timestamp + 1
@@ -429,7 +454,8 @@ contract AetherRouterTest is Test, IEvents {
         // });
         // Need a way to set this state in the router, perhaps via a test-only function or direct storage manipulation (vm.store)
         // For now, we can't directly test recovery without setting the state.
-        // vm.store(address(router), keccak256(abi.encode(operationId, 4)), bytes32(uint256(uint160(address(this)))))); // Example vm.store, needs correct slot
+        // vm.store(address(router), keccak256(abi.encode(operationId, 4)), bytes32(uint256(uint160(address(this)))))); // Store user
+        // ... store other fields ...
 
         // Recover failed operation - This will likely fail as the state isn't properly set
         // vm.mockCall(address(tokenA), abi.encodeWithSelector(tokenA.transfer.selector), abi.encode(true)); // Clear mock for recovery attempt
@@ -450,7 +476,7 @@ contract AetherRouterTest is Test, IEvents {
 
         tokenInContract.mint(address(this), amountIn);
         tokenInContract.approve(address(router), amountIn);
-        tokenOutContract.mint(address(router), expectedAmountOut); // Mint tokenOut to router
+        // tokenOutContract.mint(address(router), expectedAmountOut); // Removed: Router doesn't hold liquidity, pool does.
 
         uint24 fee = DEFAULT_FEE;
         uint256 deadline = block.timestamp + 1;
@@ -491,7 +517,7 @@ contract AetherRouterTest is Test, IEvents {
 
         tokenInContract.mint(address(this), amountIn);
         tokenInContract.approve(address(router), amountIn); // User approves router
-        tokenOutContract.mint(address(router), expectedAmountOut); // Mint expected tokenOut to router
+        // tokenOutContract.mint(address(router), expectedAmountOut); // Removed: Router doesn't hold liquidity, pool does.
 
         uint24 fee = DEFAULT_FEE;
         uint256 deadline = block.timestamp + 1;
@@ -529,7 +555,7 @@ contract AetherRouterTest is Test, IEvents {
         tokenInContract.approve(address(router), amountIn); // User approves router
         vm.stopPrank(); // Stop prank before minting to router
 
-        tokenOutContract.mint(address(router), expectedAmountOut); // Mint tokenOut to router
+        // tokenOutContract.mint(address(router), expectedAmountOut); // Removed: Router doesn't hold liquidity, pool does.
 
         vm.startPrank(address(this)); // Start prank again for the call
         uint24 fee = DEFAULT_FEE;
@@ -550,7 +576,7 @@ contract AetherRouterTest is Test, IEvents {
 
         tokenInContract.mint(address(this), amountIn);
         tokenInContract.approve(address(router), amountIn); // User approves router
-        tokenOutContract.mint(address(router), expectedAmountOut); // Mint tokenOut to router
+        // tokenOutContract.mint(address(router), expectedAmountOut); // Removed: Router doesn't hold liquidity, pool does.
 
         uint24 fee = DEFAULT_FEE;
         uint256 deadline = block.timestamp + 1;
@@ -591,34 +617,78 @@ contract AetherRouterTest is Test, IEvents {
 
     // Security tests
     function test_reentrancyProtection() public {
-        // Setup malicious contract
-        MaliciousContract malicious = new MaliciousContract(address(router));
+        // Setup for executeRoute reentrancy using MaliciousContract and MockPoolManager
         (address _tokenIn, address _tokenOut) = _getSortedTokens(); // Ensure correct order
-        MockToken tokenInContract = (_tokenIn == address(tokenA)) ? tokenA : tokenB;
-        MockToken tokenOutContract = (_tokenOut == address(tokenA)) ? tokenA : tokenB;
-        uint256 amountIn = 100 * 10 ** 18;
-        uint256 expectedAmountOut = amountIn * 98 / 100;
 
-        // Malicious contract needs tokenIn and needs to approve router
-        tokenInContract.mint(address(malicious), amountIn);
-        vm.prank(address(malicious));
-        tokenInContract.approve(address(router), amountIn);
+        // 1. Deploy a new AetherPool instance for this test
+        // The AetherPool needs the factory address for configuration, even if not created *by* it here
+        AetherPool testPool = new AetherPool(address(factory));
+
+        // 2. Define PoolKey
+        int24 tickSpacing = feeRegistry.tickSpacings(DEFAULT_FEE);
+        require(tickSpacing != 0, "Fee tier not supported");
+        PoolKey memory key = PoolKey({
+            token0: address(tokenA),
+            token1: address(tokenB),
+            fee: DEFAULT_FEE,
+            tickSpacing: tickSpacing, // Use fetched tickSpacing (10)
+            hooks: address(0)        // No hooks for this test
+        });
+
+        // 3. Calculate poolId
+        bytes32 poolId = keccak256(abi.encode(key));
+
+        // 4. Link Pool in MockPoolManager
+        mockPoolManager.setPool(poolId, address(testPool));
+
+        // 5. Initialize Pool via MockPoolManager (1:1 price)
+        // sqrt(1) * 2^96 = 1 * 2^96
+        uint160 initialSqrtPriceX96 = uint160(1) << 96;
+        mockPoolManager.initialize(key, initialSqrtPriceX96, "");
+
+        // 6. Add Liquidity via MockPoolManager (Full Range)
+        uint256 liquidityAmount = 1_000_000 * 10 ** 18; // Example liquidity amount
+        tokenA.mint(address(this), liquidityAmount);
+        tokenB.mint(address(this), liquidityAmount);
+        vm.startPrank(address(this));
+        tokenA.approve(address(mockPoolManager), type(uint256).max);
+        tokenB.approve(address(mockPoolManager), type(uint256).max);
+        IPoolManager.ModifyPositionParams memory params = IPoolManager.ModifyPositionParams({
+            tickLower: TickMath.MIN_TICK,
+            tickUpper: TickMath.MAX_TICK,
+            liquidityDelta: int256(liquidityAmount) // Add positive liquidity
+        });
+        mockPoolManager.modifyPosition(key, params, "");
         vm.stopPrank();
 
-        // Router needs tokenOut to send in the final step (which the malicious contract tries to reenter before)
-        tokenOutContract.mint(address(router), expectedAmountOut);
+        // 7. Setup Malicious Contract
+        MaliciousContract malicious = new MaliciousContract(
+            router,
+            address(tokenA),
+            address(tokenB),
+            DEFAULT_FEE
+        );
+        uint256 attackAmount = 1_000 * 10 ** 18; // Use a larger amount for the initial attack
+        tokenA.mint(address(malicious), attackAmount);
 
-        // Attempt reentrant call
-        // Expect ReentrancyGuard revert now that transfer issues might be resolved
+        vm.startPrank(address(malicious));
+        tokenA.approve(address(router), attackAmount);
+        vm.stopPrank();
+
+        // Expect the ReentrancyGuard revert
         vm.expectRevert("ReentrancyGuard: reentrant call");
-        vm.prank(address(malicious)); // Prank as the malicious contract
 
-        // Malicious contract calls executeRoute
-        uint24 fee = DEFAULT_FEE;
-        uint256 deadline = block.timestamp + 1;
-        // Call router directly as the malicious contract
-        router.executeRoute(_tokenIn, _tokenOut, amountIn, expectedAmountOut, fee, deadline);
-
+        // Start the attack from the malicious contract's context
+        vm.startPrank(address(malicious));
+        // Malicious contract calls executeRoute, triggering its own fallback during the swap
+        malicious.startAttack(
+            address(tokenA),
+            address(tokenB),
+            attackAmount,
+            0, // amountOutMin = 0 for simplicity in this test
+            DEFAULT_FEE,
+            block.timestamp // Use current block timestamp for deadline
+        );
         vm.stopPrank();
     }
 
@@ -716,7 +786,14 @@ contract AetherRouterTest is Test, IEvents {
         vm.expectRevert(abi.encodeWithSelector(InvalidTokenAddress.selector, address(0)));
         uint24 fee = DEFAULT_FEE;
         uint256 deadline = block.timestamp + 1;
-        router.executeRoute(address(0), address(tokenB), 100 * 10 ** 18, 0, fee, deadline);
+        router.executeRoute(
+            address(0), // Invalid token
+            address(tokenB),
+            100 * 10 ** 18,
+            0,
+            fee,
+            deadline
+        );
 
         // Test with invalid tokenOut (need a valid tokenIn)
         (address _tokenIn,) = _getSortedTokens();
@@ -733,12 +810,17 @@ contract AetherRouterTest is Test, IEvents {
         MockToken tokenInContract = (_tokenIn == address(tokenA)) ? tokenA : tokenB;
         MockToken tokenOutContract = (_tokenOut == address(tokenA)) ? tokenA : tokenB; // Needed for minting
 
-        MaliciousContract attacker = new MaliciousContract(address(router));
+        MaliciousContract attacker = new MaliciousContract(
+            router,
+            address(tokenA),
+            address(tokenB),
+            DEFAULT_FEE
+        );
         uint256 amountIn = 100 * 10 ** 18;
         uint256 expectedAmountOut = amountIn * 98 / 100;
 
         tokenInContract.mint(address(attacker), amountIn); // Mint to attacker
-        tokenOutContract.mint(address(router), expectedAmountOut); // Mint tokenOut to router
+        // tokenOutContract.mint(address(router), expectedAmountOut); // Removed: Router doesn't hold liquidity, pool does.
 
         vm.prank(address(attacker));
         tokenInContract.approve(address(router), amountIn); // Attacker approves router
@@ -759,17 +841,27 @@ contract AetherRouterTest is Test, IEvents {
         MockToken tokenInContract = (_tokenIn == address(tokenA)) ? tokenA : tokenB;
         MockToken tokenOutContract = (_tokenOut == address(tokenA)) ? tokenA : tokenB; // Needed for minting
 
-        MaliciousContract attacker = new MaliciousContract(address(router));
+        MaliciousContract attacker = new MaliciousContract(
+            router,
+            address(tokenA),
+            address(tokenB),
+            DEFAULT_FEE
+        );
         uint256 amountIn = 100 * 10 ** 18;
         uint256 expectedAmountOut = amountIn * 98 / 100;
 
         // Setup: Attacker needs tokenIn, Router needs tokenOut
         tokenInContract.mint(address(attacker), amountIn);
-        tokenOutContract.mint(address(router), expectedAmountOut);
+        // tokenOutContract.mint(address(router), expectedAmountOut); // Removed: Router doesn't hold liquidity, pool does.
+
         vm.prank(address(attacker));
         tokenInContract.approve(address(router), amountIn); // Attacker approves router
         vm.stopPrank();
 
+        // Router needs tokenOut to send in the final step (which the malicious contract tries to reenter before)
+        // tokenOutContract.mint(address(router), expectedAmountOut); // Removed: Router doesn't hold liquidity, pool does.
+
+        // Attempt reentrant call
         // Expect InvalidAmount(0) as the preceding failure before reentrancy check
         vm.expectRevert(abi.encodeWithSelector(InvalidAmount.selector, 0));
         vm.prank(address(attacker)); // Prank as attacker for the call
@@ -795,18 +887,19 @@ contract AetherRouterTest is Test, IEvents {
 
     // Fuzz tests
     function testFuzz_executeRoute_Revised(uint128 amountIn) public {
-        // Use uint128 for amountIn
+        // Use uint128
         (address _tokenIn, address _tokenOut) = _getSortedTokens(); // Ensure correct order
         MockToken tokenInContract = (_tokenIn == address(tokenA)) ? tokenA : tokenB;
         MockToken tokenOutContract = (_tokenOut == address(tokenA)) ? tokenA : tokenB;
 
         vm.assume(amountIn > 0); // amountIn must be > 0
         // Mock outputs 98%, handle potential zero output if amountIn is very small
-        uint256 expectedAmountOut = uint256(amountIn) * 98 / 100;
+        uint256 expectedAmountOut = uint256(amountIn) * 98 / 100; // Mock logic
+        uint256 amountOutMin = expectedAmountOut; // Set min to expected
 
         tokenInContract.mint(address(this), amountIn);
         tokenInContract.approve(address(router), amountIn); // User approves router
-        tokenOutContract.mint(address(router), expectedAmountOut); // Mint expected tokenOut to router
+        // tokenOutContract.mint(address(router), expectedAmountOut); // Removed: Router doesn't hold liquidity, pool does.
 
         uint24 fee = DEFAULT_FEE;
         uint256 deadline = block.timestamp + 1;
@@ -863,7 +956,7 @@ contract AetherRouterTest is Test, IEvents {
 
         tokenInContract.mint(address(this), amountIn);
         tokenInContract.approve(address(router), amountIn); // User approves router
-        tokenOutContract.mint(address(router), expectedAmountOut); // Mint expected tokenOut to router
+        // tokenOutContract.mint(address(router), expectedAmountOut); // Removed: Router doesn't hold liquidity, pool does.
 
         uint24 fee = DEFAULT_FEE;
         uint256 deadline = block.timestamp + 1;
@@ -885,12 +978,17 @@ contract AetherRouterTest is Test, IEvents {
         MockToken tokenInContract = (_tokenIn == address(tokenA)) ? tokenA : tokenB;
         MockToken tokenOutContract = (_tokenOut == address(tokenA)) ? tokenA : tokenB; // Needed for minting
 
-        MaliciousContract attacker = new MaliciousContract(address(router));
+        MaliciousContract attacker = new MaliciousContract(
+            router,
+            address(tokenA),
+            address(tokenB),
+            DEFAULT_FEE
+        );
         uint256 amountIn = 100 * 10 ** 18;
         uint256 expectedAmountOut = amountIn * 98 / 100;
 
         tokenInContract.mint(address(attacker), amountIn); // Mint to attacker
-        tokenOutContract.mint(address(router), expectedAmountOut); // Mint tokenOut to router
+        // tokenOutContract.mint(address(router), expectedAmountOut); // Removed: Router doesn't hold liquidity, pool does.
 
         vm.prank(address(attacker));
         tokenInContract.approve(address(router), amountIn); // Attacker approves router
@@ -922,85 +1020,130 @@ contract AetherTest is Test {
     // Event definition for expectEmit - Updated to match Factory
     event PoolCreated(bytes32 indexed poolId, address indexed pool, PoolKey key);
 
-    // Test setup and variables
-    AetherRouter router;
-    AetherFactory factory;
-    FeeRegistry feeRegistry; // Add FeeRegistry state variable
-    MockToken tokenA;
-    MockToken tokenB;
-    address owner = address(1);
-    address user = address(2);
+    // Ensure all necessary state variables are declared publicly
+    AetherRouter public router;
+    AetherPool public pool;
+    AetherFactory public factory;
+    FeeRegistry public feeRegistry;
+    MockPoolManager public mockPoolManager;
+    MockToken public tokenA;
+    MockToken public tokenB;
+    address public owner = address(1); // Make owner public for potential inspection
+    address public user = address(2); // Make user public for potential inspection
     uint24 public constant DEFAULT_FEE = 500; // Define default fee
 
     function setUp() public {
+        // Assign owner address first
+        owner = address(1);
+
         // Deploy tokens
         tokenA = new MockToken("TokenA", "TKNA", 18);
         tokenB = new MockToken("TokenB", "TKNB", 18);
 
-        // Deploy FeeRegistry and add fee tier
-        feeRegistry = new FeeRegistry(owner); // Deploy FeeRegistry with owner
-        vm.prank(owner);
-        feeRegistry.addFeeConfiguration(DEFAULT_FEE, 10); // Add the 500 fee tier with tickSpacing 10
-        vm.stopPrank();
+        // Deploy MockPoolManager (owner doesn't matter)
+        // Assign to the state variable, not a local one
+        mockPoolManager = new MockPoolManager(address(0));
 
-        // Deploy factory with FeeRegistry address
+        // Deploy owner-controlled contracts under a single prank
+        vm.startPrank(owner);
+
+        // Deploy FeeRegistry and add fee tier
+        feeRegistry = new FeeRegistry(owner);
+        feeRegistry.addFeeConfiguration(DEFAULT_FEE, 10);
+
+        // Deploy factory
         factory = new AetherFactory(address(feeRegistry));
 
         // Deploy router
-        vm.startPrank(owner);
         address mockCCIPRouter = address(new MockCCIPRouter());
         address mockHyperlane = address(new MockHyperlane());
         address mockLinkToken = address(new MockToken("LINK", "LINK", 18));
-        // Use factory address as pool manager AND as factory
         router = new AetherRouter(
-            owner, mockCCIPRouter, mockHyperlane, mockLinkToken, address(factory), address(factory), 500
+            owner,
+            mockCCIPRouter,
+            mockHyperlane,
+            mockLinkToken,
+            address(mockPoolManager), // Use state variable address
+            address(factory),
+            500 // Default max slippage
         );
         router.setTestMode(true); // Enable test mode
-        vm.stopPrank();
 
-        // Create pool via factory
-        address tokenAAddr = address(tokenA);
-        address tokenBAddr = address(tokenB);
-        uint24 fee = DEFAULT_FEE; // Use defined constant
-        if (tokenAAddr > tokenBAddr) (tokenAAddr, tokenBAddr) = (tokenBAddr, tokenAAddr);
+        vm.stopPrank(); // End owner actions prank
 
-        // Construct PoolKey
-        int24 tickSpacing_AetherTest = feeRegistry.tickSpacings(fee); // Get tickSpacing directly from mapping
-        require(tickSpacing_AetherTest != 0, "Fee tier not supported in FeeRegistry"); // Add check
-        PoolKey memory key = PoolKey({
-            token0: tokenAAddr,
-            token1: tokenBAddr,
-            fee: fee,
-            tickSpacing: tickSpacing_AetherTest, // Use directly fetched tickSpacing
-            hooks: address(0) // No hooks for this basic setup, field is address type
+        // Add initial liquidity with proper token ordering
+        uint256 amountA_ = 1000 * 10 ** 18; // Original amount for tokenA
+        uint256 amountB_ = 10000 * 10 ** 18; // Original amount for tokenB
+        tokenA.mint(address(this), amountA_); // Mint to the test contract
+        tokenB.mint(address(this), amountB_); // Mint to the test contract
+
+        // Create PoolKey with correct token ordering
+        address token0Addr;
+        address token1Addr;
+        if (address(tokenA) < address(tokenB)) {
+            token0Addr = address(tokenA);
+            token1Addr = address(tokenB);
+        } else {
+            token0Addr = address(tokenB);
+            token1Addr = address(tokenA);
+        }
+
+        PoolKey memory key_AetherTest = PoolKey({
+            token0: token0Addr,
+            token1: token1Addr,
+            fee: DEFAULT_FEE, // Use defined constant
+            tickSpacing: 10, // Use correct tickSpacing - MAKE SURE THIS MATCHES FEE CONFIG
+            hooks: address(0)
         });
 
-        // Predict the pool address using CREATE2 logic from AetherFactory
-        bytes32 poolId_AetherTest = keccak256(abi.encode(key)); // Calculate poolId (salt)
+        // Predict pool address and create pool via factory
+        bytes32 poolId_AetherTest =
+            keccak256(abi.encode(key_AetherTest)); // Calculate poolId (salt)
         bytes32 initCodeHash_AetherTest =
             keccak256(abi.encodePacked(type(AetherPool).creationCode, abi.encode(address(factory)))); // Calculate init code hash
         address expectedPoolAddress =
             vm.computeCreate2Address(poolId_AetherTest, initCodeHash_AetherTest, address(factory)); // Use Foundry cheatcode
 
         // Expect the PoolCreated event
-        vm.expectEmit(true, true, true, true, address(factory)); // Check emitter and signature
-        emit PoolCreated(poolId_AetherTest, expectedPoolAddress, key); // Use calculated poolId
-
-        // Create pool via factory using PoolKey
-        address poolAddress = factory.createPool(key);
-        require(poolAddress != address(0), "Pool creation failed");
-        require(poolAddress == expectedPoolAddress, "Pool address mismatch"); // Verify CREATE2 address
-        AetherPool pool = AetherPool(payable(poolAddress));
-
-        // Mint tokens and add liquidity
-        tokenA.mint(owner, 1000 * 10 ** 18);
-        tokenB.mint(owner, 1000 * 10 ** 18);
+        // IMPORTANT: Prank as the factory owner (which is our test 'owner') for pool creation
         vm.startPrank(owner);
-        tokenA.approve(address(pool), type(uint256).max);
-        tokenB.approve(address(pool), type(uint256).max);
-        // Use 'owner' as recipient for minting shares
-        pool.mint(owner, 1000 * 10 ** 18, 1000 * 10 ** 18);
+        vm.expectEmit(true, true, true, true, address(factory)); // Check emitter and signature
+        emit PoolCreated(poolId_AetherTest, expectedPoolAddress, key_AetherTest); // Use calculated poolId
+
+        address poolAddress = factory.createPool(key_AetherTest); // Create pool via factory using PoolKey
+        require(poolAddress == expectedPoolAddress, "Pool address mismatch");
+        vm.stopPrank(); // Stop factory owner prank
+
+        pool = AetherPool(payable(poolAddress)); // Assign the created pool address to the state variable
+
+        // Set the created pool in MockPoolManager
+        // IMPORTANT: Prank as the PoolManager owner if necessary (depends on Mock implementation)
+        // Assuming MockPoolManager allows anyone to setPool for testing
+        mockPoolManager.setPool(poolId_AetherTest, poolAddress); // Add pool to mock manager using poolId
+
+        // Approve and Mint liquidity (amounts need to be sorted)
+        uint256 amount0;
+        uint256 amount1;
+        if (address(tokenA) < address(tokenB)) {
+            // tokenA is token0
+            amount0 = amountA_;
+            amount1 = amountB_;
+        } else {
+            // tokenB is token0
+            amount0 = amountB_;
+            amount1 = amountA_;
+        }
+
+        // Approve the *created* pool for the correct amounts (from test contract)
+        tokenA.approve(address(pool), amountA_); // Approve original tokenA amount
+        tokenB.approve(address(pool), amountB_); // Approve original tokenB amount
+
+        // IMPORTANT: Need to initialize the pool first before minting
+        vm.startPrank(owner); // Pool initialization might be restricted
+        pool.initialize(token0Addr, token1Addr, DEFAULT_FEE); // Pass correct args: token0, token1, fee
         vm.stopPrank();
+
+        pool.mint(address(this), amount0, amount1);
     }
 
     // Write your tests here

@@ -19,37 +19,31 @@ contract CrossChainLiquidityHook is BaseHook, ReentrancyGuard { // Inherit Reent
 
     // Mapping to store remote chain hook addresses
     mapping(uint16 => address) public remoteHooks;
+    // Track configured chains explicitly to avoid large loops
+    uint16[] public configuredChainIds;
+    mapping(uint16 => uint256) private chainIdToIndex; // Maps chainId to its index in configuredChainIds
+    mapping(uint16 => bool) private isChainConfigured;  // Quick check if chainId is in configuredChainIds
 
     event CrossChainLiquidityEvent(uint16 chainId, address token0, address token1, int256 liquidityDelta);
+    event RemoteHookSet(uint16 indexed chainId, address indexed hookAddress);
 
     constructor(address _poolManager, address _lzEndpoint)
         BaseHook(_poolManager)
     {
         lzEndpoint = ILayerZeroEndpoint(_lzEndpoint);
-        // Initialize with default chain IDs
-        remoteHooks[1] = address(0x0000000000000000000000000000000000000001); // Ethereum
-        remoteHooks[56] = address(0x0000000000000000000000000000000000000056); // BSC
-        remoteHooks[137] = address(0x0000000000000000000000000000000000000137); // Polygon
+        // Removed initialization of default remoteHooks here, should be set via setRemoteHook
 
-        // Validate hook flags match implemented permissions
-        // uint160 requiredFlags = Hooks.BEFORE_INITIALIZE_FLAG |
-        //                       Hooks.AFTER_INITIALIZE_FLAG |
-        //                       Hooks.BEFORE_MODIFY_POSITION_FLAG |
-        //                       Hooks.AFTER_MODIFY_POSITION_FLAG |
-        //                       Hooks.BEFORE_SWAP_FLAG |
-        //                       Hooks.AFTER_SWAP_FLAG;
-        // uint160 hookFlags = uint160(address(this)) & 0xFFFF; // Incorrect check based on address
-        // require((hookFlags & requiredFlags) == requiredFlags, "Hook flags mismatch"); // Remove this check
+        // Validate hook flags match implemented permissions - Removed check based on address
     }
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
-            beforeInitialize: true,
-            afterInitialize: true,
-            beforeModifyPosition: true,
-            afterModifyPosition: true,
-            beforeSwap: true,
-            afterSwap: true,
+            beforeInitialize: false, // Not implemented
+            afterInitialize: false, // Not implemented
+            beforeModifyPosition: false, // Not implemented
+            afterModifyPosition: true,  // Implemented
+            beforeSwap: false,     // Not implemented
+            afterSwap: false,     // Not implemented
             beforeDonate: false,
             afterDonate: false
         });
@@ -78,6 +72,7 @@ contract CrossChainLiquidityHook is BaseHook, ReentrancyGuard { // Inherit Reent
         BalanceDelta memory,
         bytes calldata
     ) external override nonReentrant returns (bytes4) { // Added nonReentrant modifier
+        require(msg.sender == address(poolManager), "Only pool manager");
         validateHookAddress();
         // Only process non-zero liquidity changes
         if (params.liquidityDelta != 0) {
@@ -89,17 +84,53 @@ contract CrossChainLiquidityHook is BaseHook, ReentrancyGuard { // Inherit Reent
     /**
      * @notice Configure remote hook address for a chain
      * @param chainId LayerZero chain ID
-     * @param hookAddress Address of the hook on the remote chain
+     * @param hookAddress Address of the hook on the remote chain (set to address(0) to remove)
      */
     function setRemoteHook(uint16 chainId, address hookAddress) external {
-        require(msg.sender == address(poolManager), "Only pool manager");
-        remoteHooks[chainId] = hookAddress;
+        require(msg.sender == address(poolManager), "Only pool manager"); // Reverted to only allow poolManager
+
+        bool currentlyConfigured = isChainConfigured[chainId];
+
+        if (hookAddress != address(0)) {
+            // Adding or updating a remote hook
+            if (!currentlyConfigured) {
+                // Adding new chain
+                isChainConfigured[chainId] = true;
+                chainIdToIndex[chainId] = configuredChainIds.length;
+                configuredChainIds.push(chainId);
+            }
+            // Update the address (works for both add and update)
+            remoteHooks[chainId] = hookAddress;
+            emit RemoteHookSet(chainId, hookAddress);
+
+        } else if (currentlyConfigured) {
+            // Removing an existing remote hook
+            uint256 indexToRemove = chainIdToIndex[chainId];
+            uint256 lastIndex = configuredChainIds.length - 1;
+
+            if (indexToRemove != lastIndex) {
+                // Move the last element to the place of the one being removed
+                uint16 lastChainId = configuredChainIds[lastIndex];
+                configuredChainIds[indexToRemove] = lastChainId;
+                chainIdToIndex[lastChainId] = indexToRemove;
+            }
+
+            // Remove the last element (which is either the one we wanted to remove or the one we moved)
+            configuredChainIds.pop();
+
+            // Clean up state for the removed chain ID
+            delete chainIdToIndex[chainId];
+            isChainConfigured[chainId] = false;
+            remoteHooks[chainId] = address(0);
+            emit RemoteHookSet(chainId, address(0));
+        }
+        // If hookAddress is address(0) and not currently configured, do nothing.
     }
 
     /**
      * @notice Handle incoming LayerZero messages
      */
-    function lzReceive(uint16 _srcChainId, bytes memory _srcAddress, uint64, bytes memory _payload) external {
+    function lzReceive(uint16 _srcChainId, bytes memory _srcAddress, uint64, bytes memory _payload) external nonReentrant {
         require(msg.sender == address(lzEndpoint), "Unauthorized");
         require(remoteHooks[_srcChainId] != address(0), "Chain not configured");
 
@@ -122,29 +153,30 @@ contract CrossChainLiquidityHook is BaseHook, ReentrancyGuard { // Inherit Reent
     function _sendCrossChainLiquidityUpdate(address token0, address token1, int256 liquidityDelta) internal {
         bytes memory payload = abi.encode(token0, token1, liquidityDelta);
 
-        // Send update to all configured chains
-        for (uint16 chainId = 1; chainId < 65535; chainId++) {
-            address remoteHook = remoteHooks[chainId];
-            if (remoteHook != address(0)) {
-                bytes memory remoteAndLocalAddresses = abi.encodePacked(remoteHook, address(this));
+        // Send update only to explicitly configured chains
+        uint256 configuredCount = configuredChainIds.length;
+        for (uint256 i = 0; i < configuredCount; i++) {
+            uint16 chainId = configuredChainIds[i];
+            address remoteHook = remoteHooks[chainId]; // Already checked != address(0) during setRemoteHook
 
-                // Emit event *before* the external call (Interaction)
-                emit CrossChainLiquidityEvent(chainId, token0, token1, liquidityDelta); // Effect (Event)
+            bytes memory remoteAndLocalAddresses = abi.encodePacked(remoteHook, address(this));
 
-                try lzEndpoint.send{value: 0}( // Interaction
-                    chainId,
-                    remoteAndLocalAddresses,
-                    payload,
-                    payable(msg.sender),
-                    address(0),
-                    bytes("")
-                ) {
-                    // Success case - event already emitted
-                } catch {
-                    // Log failure but continue with other chains
-                    // Consider logging the error reason if possible
-                    continue;
-                }
+            // Emit event *before* the external call (Interaction)
+            emit CrossChainLiquidityEvent(chainId, token0, token1, liquidityDelta); // Effect (Event)
+
+            try lzEndpoint.send{value: 0}( // Interaction
+                chainId,
+                remoteAndLocalAddresses,
+                payload,
+                payable(msg.sender), // This might need adjustment depending on fee payment mechanism
+                address(0),
+                bytes("")
+            ) {
+                // Success case - event already emitted
+            } catch {
+                // Log failure but continue with other chains
+                // Consider adding a specific event for failed sends
+                continue;
             }
         }
     }
@@ -163,6 +195,13 @@ contract CrossChainLiquidityHook is BaseHook, ReentrancyGuard { // Inherit Reent
         // Capture and return the estimated fees
         (nativeFee, zroFee) = lzEndpoint.estimateFees(_chainId, address(this), payload, false, remoteAndLocalAddresses);
         // No need for an explicit return statement here as the named return variables are automatically returned.
+    }
+
+    /**
+    * @notice Returns the number of configured remote chains.
+    */
+    function getConfiguredChainCount() external view returns (uint256) {
+        return configuredChainIds.length;
     }
 
     // Removed receive() function as the contract does not handle ETH directly for LZ fees (lzEndpoint.send called with value: 0)
