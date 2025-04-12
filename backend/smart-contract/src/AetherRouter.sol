@@ -426,7 +426,8 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         });
 
         // --- Execute Swap ---
-        BalanceDelta memory balanceDelta;
+        // Initialize balanceDelta to prevent Slither warning
+        BalanceDelta memory balanceDelta = BalanceDelta(0, 0);
         try poolManager.swap(key, params, bytes("")) returns (BalanceDelta memory returnedDelta) {
             balanceDelta = returnedDelta;
         } catch Error(string memory reason) {
@@ -515,17 +516,21 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         uint16 dstChain,
         bytes memory routeData
     ) external payable nonReentrant whenNotPaused {
-        // Validate inputs
+        // --- Validation ---
         if (tokenIn.code.length == 0) revert InvalidTokenAddress(tokenIn);
         if (tokenOut.code.length == 0) revert InvalidTokenAddress(tokenOut);
         if (amountIn == 0 || amountIn > type(uint128).max) revert InvalidAmount(amountIn);
-        if (recipient == address(0) || (!testMode && recipient.code.length > 0)) revert InvalidRecipient(recipient);
+        if (recipient == address(0) || (!testMode && recipient.code.length == 0)) revert InvalidRecipient(recipient);
         if (srcChain == 0 || srcChain > MAX_CHAIN_ID) revert InvalidChainId(srcChain);
         if (dstChain == 0 || dstChain > MAX_CHAIN_ID) revert InvalidChainId(dstChain);
         if (srcChain == dstChain) revert InvalidChainId(dstChain);
         if (msg.value == 0) revert InvalidBridgeFee();
 
-        // Execute the cross-chain route directly
+        // --- Prepare Operation ---
+        // Transfer tokens *before* executing the core logic
+        TransferHelper.safeTransferFrom(tokenIn, msg.sender, address(this), amountIn);
+
+        // --- Execute Core Logic ---
         _executeCrossChainRoute(
             CrossChainRouteParams({
                 tokenIn: tokenIn,
@@ -538,40 +543,6 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
                 routeData: routeData
             })
         );
-        bytes32 operationId = keccak256(abi.encodePacked(msg.sender, tokenIn, tokenOut, amountIn, block.timestamp));
-
-        try IERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn) returns (bool success) {
-            if (!success) revert OperationFailed("Transfer failed");
-            _executeCrossChainRoute(
-                CrossChainRouteParams({
-                    tokenIn: tokenIn,
-                    tokenOut: tokenOut,
-                    amountIn: amountIn,
-                    amountOutMin: amountOutMin,
-                    recipient: recipient,
-                    srcChain: srcChain,
-                    dstChain: dstChain,
-                    routeData: routeData
-                })
-            );
-        } catch Error(string memory reason) {
-            failedOperations[operationId] = FailedOperation({
-                user: msg.sender,
-                tokenIn: tokenIn,
-                tokenOut: tokenOut,
-                amount: amountIn,
-                chainId: srcChain,
-                reason: reason,
-                success: false,
-                returnData: "",
-                state: OperationState.Pending
-            });
-
-            emit OperationFailedEvent(msg.sender, reason, operationId);
-            revert OperationFailed(reason);
-        } catch {
-            revert OperationFailed("Unknown error");
-        }
     }
 
     /**
@@ -629,16 +600,21 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         bytes memory payload = abi.encode(params.tokenOut, bridgeAmount, params.recipient);
 
         (bool useCCIP, uint256 actualFee) = _determineBridgeProtocol(params.dstChain, params.recipient, payload);
-        _sendCrossChainMessage(useCCIP, params.dstChain, params.recipient, payload, actualFee);
-        _refundExcessFee(actualFee, msg.sender);
 
-        bytes32 routeHash = keccak256(params.routeData);
+        _sendCrossChainMessage(useCCIP, params.dstChain, params.recipient, payload, actualFee);
+
+        // Refund the difference between provided fee (msg.value) and the actual fee used
+        uint256 refundAmount = msg.value >= actualFee ? msg.value - actualFee : 0;
+        _refundExcessFee(refundAmount, msg.sender);
+
+        // Emit success event
+        bytes32 routeHash = keccak256(params.routeData); // Assuming routeData represents the path
         emit CrossChainRouteExecuted(
             msg.sender,
             params.tokenIn,
             params.tokenOut,
             params.amountIn,
-            bridgeAmount,
+            bridgeAmount, // This is the amount bridged, not necessarily final amountOut
             params.srcChain,
             params.dstChain,
             routeHash
@@ -651,7 +627,7 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         returns (bool useCCIP, uint256 actualFee)
     {
         uint256 ccipFee = ccipRouter.estimateFees(dstChain, recipient, payload);
-        uint256 hyperlaneFee = hyperlane.quoteDispatch(dstChain, payload);
+        uint256 hyperlaneFee = hyperlane.quoteDispatch(dstChain, "");
 
         useCCIP = ccipFee <= hyperlaneFee;
         if (msg.value == ccipFee) {
@@ -671,15 +647,28 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
     ) private {
         require(msg.value >= actualFee, "Insufficient fee");
         if (useCCIP) {
-            // [TODO]: Consider checking the return value of sendMessage for immediate failures, although reverts are implicitly handled.
-            ccipRouter.sendMessage{value: actualFee}(dstChain, recipient, payload);
+            try ccipRouter.sendMessage{value: actualFee}(dstChain, recipient, payload) returns (bytes32 messageId) {
+                // Check return value for CCIP sendMessage (returns bytes32 messageId)
+                // CCIP sendMessage returns a message ID. Revert if it's zero bytes32.
+                require(messageId != bytes32(0), "CCIP sendMessage failed: Invalid message ID");
+                // [TODO]: Further review if CCIP messageId needs more specific handling.
+            } catch Error(string memory reason) {
+                revert OperationFailed(reason); // Revert with original reason
+            } catch (bytes memory lowLevelData) {
+                revert OperationFailed(string(lowLevelData)); // Revert with low-level data as reason
+            }
         } else {
-            // [TODO]: Consider checking the return value of dispatch for immediate failures, although reverts are implicitly handled.
-            hyperlane.dispatch{value: actualFee}(dstChain, abi.encodePacked(recipient), payload);
+            try hyperlane.dispatch{value: actualFee}(dstChain, abi.encodePacked(recipient), payload) returns (bytes32 messageId) {
+                // Check return value for Hyperlane dispatch (returns bytes32 messageId)
+                // Hyperlane dispatch returns a message ID. Revert if it's zero bytes32.
+                require(messageId != bytes32(0), "Hyperlane dispatch failed: Invalid message ID");
+            } catch Error(string memory reason) {
+                revert OperationFailed(reason);
+            } catch (bytes memory lowLevelData) {
+                revert OperationFailed(string(lowLevelData));
+            }
         }
     }
-
-    // Removed internal _getTickSpacingFromFee helper function as tickSpacing is now fetched from FeeRegistry
 
     /**
      * @notice Gets multi-path route for a swap
@@ -760,11 +749,14 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
 
             // Alternate between CCIP and Hyperlane for testing
             if (i % 2 == 0) {
-                 // [TODO]: Consider checking the return value of sendMessage for immediate failures, although reverts are implicitly handled.
-                ccipRouter.sendMessage{value: 0.1 ether}(path[i + 1], recipient, payload);
+                // Check return value for CCIP sendMessage (returns bytes32 messageId)
+                bytes32 messageId = ccipRouter.sendMessage{value: 0.1 ether}(path[i + 1], recipient, payload);
+                require(messageId != bytes32(0), "CCIP sendMessage failed in multi-path");
+                // [TODO]: Further review if CCIP messageId needs more specific handling.
             } else {
-                 // [TODO]: Consider checking the return value of dispatch for immediate failures, although reverts are implicitly handled.
-                hyperlane.dispatch{value: 0.1 ether}(path[i + 1], abi.encodePacked(recipient), payload);
+                // Check return value for Hyperlane dispatch (returns bytes32 messageId)
+                bytes32 messageId = hyperlane.dispatch{value: 0.1 ether}(path[i + 1], abi.encodePacked(recipient), payload);
+                require(messageId != bytes32(0), "Hyperlane dispatch failed in multi-path");
             }
         }
 
@@ -809,7 +801,7 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
      * @param excessFee Amount of ETH to refund.
      * @param recipient Address to receive the refund.
      */
-    function _refundExcessFee(uint256 excessFee, address recipient) internal {
+    function _refundExcessFee(uint256 excessFee, address recipient) internal { // Removed nonReentrant
         if (excessFee > 0) {
             // Check recipient is valid before sending
             if (recipient == address(0)) revert InvalidRecipient(recipient);

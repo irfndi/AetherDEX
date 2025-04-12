@@ -37,7 +37,8 @@ contract MockHyperlane {
         returns (bytes32)
     {
         _verified[0][destination] = true;
-        return bytes32(0);
+        // Return a non-zero value to simulate successful dispatch acceptance in mock
+        return bytes32(uint256(1));
     }
 
     // Implement process function from IHyperlane interface

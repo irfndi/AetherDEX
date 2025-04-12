@@ -160,7 +160,9 @@ contract CrossChainLiquidityHook is BaseHook, ReentrancyGuard { // Inherit Reent
         bytes memory payload = abi.encode(token0, token1, liquidityDelta);
         bytes memory remoteAndLocalAddresses = abi.encodePacked(remoteHooks[_chainId], address(this));
 
-        return lzEndpoint.estimateFees(_chainId, address(this), payload, false, remoteAndLocalAddresses);
+        // Capture and return the estimated fees
+        (nativeFee, zroFee) = lzEndpoint.estimateFees(_chainId, address(this), payload, false, remoteAndLocalAddresses);
+        // No need for an explicit return statement here as the named return variables are automatically returned.
     }
 
     // Removed receive() function as the contract does not handle ETH directly for LZ fees (lzEndpoint.send called with value: 0)

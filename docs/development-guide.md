@@ -1,6 +1,6 @@
-# Smart Contract Development Guide (Foundry)
+# Solidity Smart Contract Development Workflow (Foundry)
 
-This guide outlines the development process for the AetherDEX smart contract suite using Foundry.
+This document outlines the development process for the AetherDEX smart contract suite using Foundry.
 
 #### Goal
 Develop a robust, secure, optimized, and well-tested Solidity smart contract suite using Foundry, ensuring correctness in both implementation and tests.
@@ -138,3 +138,12 @@ This process is iterative. Expect to cycle through these steps multiple times as
 - **Auditing:** Plan a professional audit for critical contracts before deployment.
 - **Dependencies:** Manage external libraries (e.g., OpenZeppelin) via Foundry’s dependency system and test thoroughly.
 - **Environment:** Confirm `foundry.toml` settings (e.g., Solidity version, EVM target) match project needs.
+
+---
+
+### Notes on `./docs` Alignment
+- Ensure `./docs` reflects the latest contract logic, tests, and security considerations.
+- Suggested `./docs` improvements:
+  - `[TODO]: Create ./docs/security-analysis-log.md for static analysis logs.`
+  - `[TODO]: Update ./docs/test-coverage-report.md with coverage targets and results.`
+  - `[TODO]: Add ./docs/development-guide.md with this prompt for team reference.` (This file)

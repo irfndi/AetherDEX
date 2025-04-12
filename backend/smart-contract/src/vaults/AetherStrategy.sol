@@ -194,7 +194,9 @@ contract AetherStrategy is ReentrancyGuard { // Inherit ReentrancyGuard
         bytes memory payload = abi.encode(_yieldAmount);
         bytes memory remoteAndLocalAddresses = abi.encodePacked(chainConfigs[_chainId].remoteStrategy, address(this));
 
-        return lzEndpoint.estimateFees(_chainId, address(this), payload, false, remoteAndLocalAddresses);
+        // Capture and return the estimated fees using named return variables
+        (nativeFee, zroFee) = lzEndpoint.estimateFees(_chainId, address(this), payload, false, remoteAndLocalAddresses);
+        // No explicit return needed here
     }
 
     /**

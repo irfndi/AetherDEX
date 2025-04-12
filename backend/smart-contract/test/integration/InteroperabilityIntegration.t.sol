@@ -242,5 +242,6 @@ contract InteroperabilityIntegrationTest is Test, IEvents {
         );
     }
 
+    // Add receive function to allow the test contract to receive ETH refunds
     receive() external payable {}
 }
