@@ -3,8 +3,8 @@ pragma solidity ^0.8.29;
 
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol"; // Import ReentrancyGuard
 import {BaseHook} from "./BaseHook.sol";
+import {Hooks} from "../libraries/Hooks.sol"; // Import Hooks library
 import {IPoolManager} from "../interfaces/IPoolManager.sol";
-import {Hooks} from "../libraries/Hooks.sol";
 import {FeeRegistry} from "../FeeRegistry.sol";
 import {PoolKey} from "../types/PoolKey.sol";
 import {BalanceDelta} from "../types/BalanceDelta.sol";
@@ -55,14 +55,15 @@ contract DynamicFeeHook is BaseHook, ReentrancyGuard { // Inherit ReentrancyGuar
      * @notice Returns the hook's permissions
      * @return Hooks.Permissions struct with beforeSwap and afterSwap set to true
      */
-    function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
+    function getHookPermissions() public pure override(BaseHook) returns (Hooks.Permissions memory) {
+        // This hook implements beforeSwap and afterSwap
         return Hooks.Permissions({
             beforeInitialize: false,
             afterInitialize: false,
             beforeModifyPosition: false,
             afterModifyPosition: false,
-            beforeSwap: true,
-            afterSwap: true,
+            beforeSwap: true, // True
+            afterSwap: true,  // True
             beforeDonate: false,
             afterDonate: false
         });

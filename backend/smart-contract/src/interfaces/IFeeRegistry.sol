@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0
 // IFeeRegistry.sol
-pragma solidity ^0.8.28; // Consistent pragma version
+pragma solidity ^0.8.29; // Updated pragma version
 
 import {PoolKey} from "../types/PoolKey.sol";
 

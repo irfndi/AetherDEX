@@ -3,9 +3,9 @@ pragma solidity ^0.8.29;
 
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol"; // Import ReentrancyGuard
 import {BaseHook} from "./BaseHook.sol";
+import {Hooks} from "../libraries/Hooks.sol"; // Import Hooks library
 import {IPoolManager} from "../interfaces/IPoolManager.sol";
 import {ILayerZeroEndpoint} from "../interfaces/ILayerZeroEndpoint.sol";
-import {Hooks} from "../libraries/Hooks.sol";
 import {PoolKey} from "../types/PoolKey.sol";
 import {BalanceDelta} from "../types/BalanceDelta.sol";
 
@@ -36,14 +36,16 @@ contract CrossChainLiquidityHook is BaseHook, ReentrancyGuard { // Inherit Reent
         // Validate hook flags match implemented permissions - Removed check based on address
     }
 
+    /// @notice Required override from BaseHook
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
-        return Hooks.Permissions({
-            beforeInitialize: false, // Not implemented
-            afterInitialize: false, // Not implemented
-            beforeModifyPosition: false, // Not implemented
-            afterModifyPosition: true,  // Implemented
-            beforeSwap: false,     // Not implemented
-            afterSwap: false,     // Not implemented
+        // This hook only implements afterSwap
+        return Hooks.Permissions({ 
+            beforeInitialize: false,
+            afterInitialize: false,
+            beforeModifyPosition: false,
+            afterModifyPosition: false,
+            beforeSwap: false,
+            afterSwap: true, 
             beforeDonate: false,
             afterDonate: false
         });
@@ -130,21 +132,26 @@ contract CrossChainLiquidityHook is BaseHook, ReentrancyGuard { // Inherit Reent
     /**
      * @notice Handle incoming LayerZero messages
      */
-    function lzReceive(uint16 _srcChainId, bytes memory _srcAddress, uint64, bytes memory _payload) external nonReentrant {
+    function lzReceive(
+        uint16 srcChainId, // Renamed from _srcChainId
+        address srcAddress, // Renamed from _srcAddress
+        uint64, /*_nonce*/
+        bytes calldata payload // Renamed from _payload
+    ) external nonReentrant {
         require(msg.sender == address(lzEndpoint), "Unauthorized");
-        require(remoteHooks[_srcChainId] != address(0), "Chain not configured");
+        require(remoteHooks[srcChainId] != address(0), "Chain not configured");
 
         // Verify the sender is the registered remote hook
-        address srcAddress;
+        address srcAddressFromPayload;
         assembly {
-            srcAddress := mload(add(_srcAddress, 20))
+            srcAddressFromPayload := mload(add(srcAddress, 20))
         }
-        require(srcAddress == remoteHooks[_srcChainId], "Invalid remote hook");
+        require(srcAddressFromPayload == remoteHooks[srcChainId], "Invalid remote hook");
 
         // Decode and process the liquidity update
-        (address token0, address token1, int256 liquidityDelta) = abi.decode(_payload, (address, address, int256));
+        (address token0, address token1, int256 liquidityDelta) = abi.decode(payload, (address, address, int256));
 
-        emit CrossChainLiquidityEvent(_srcChainId, token0, token1, liquidityDelta);
+        emit CrossChainLiquidityEvent(srcChainId, token0, token1, liquidityDelta);
     }
 
     /**
@@ -184,16 +191,21 @@ contract CrossChainLiquidityHook is BaseHook, ReentrancyGuard { // Inherit Reent
     /**
      * @notice Estimate fees for cross-chain messaging
      */
-    function estimateFees(uint16 _chainId, address token0, address token1, int256 liquidityDelta)
+    function estimateFees(
+        uint16 chainId, // Renamed from _chainId
+        address token0,
+        address token1,
+        int256 liquidityDelta
+    )
         external
         view
         returns (uint256 nativeFee, uint256 zroFee)
     {
         bytes memory payload = abi.encode(token0, token1, liquidityDelta);
-        bytes memory remoteAndLocalAddresses = abi.encodePacked(remoteHooks[_chainId], address(this));
+        bytes memory remoteAndLocalAddresses = abi.encodePacked(remoteHooks[chainId], address(this));
 
         // Capture and return the estimated fees
-        (nativeFee, zroFee) = lzEndpoint.estimateFees(_chainId, address(this), payload, false, remoteAndLocalAddresses);
+        (nativeFee, zroFee) = lzEndpoint.estimateFees(chainId, address(this), payload, false, remoteAndLocalAddresses);
         // No need for an explicit return statement here as the named return variables are automatically returned.
     }
 

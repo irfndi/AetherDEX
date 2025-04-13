@@ -136,19 +136,18 @@ contract CrossChainLiquidityHookTest is Test {
     }
 
     function test_CrossChainMessageReceive() public {
-        bytes memory srcAddress = abi.encodePacked(REMOTE_HOOK);
-        bytes memory payload = abi.encode(address(token0), address(token1), int256(1000));
+        address srcAddress = REMOTE_HOOK;
 
         vm.prank(address(mockEndpoint));
+        bytes memory payload = abi.encode(address(token0), address(token1), int256(1000));
         hook.lzReceive(REMOTE_CHAIN_ID, srcAddress, 0, payload);
     }
 
     function test_RevertOnUnauthorizedMessageSender() public {
-        bytes memory srcAddress = abi.encodePacked(REMOTE_HOOK);
-        bytes memory payload = abi.encode(address(token0), address(token1), int256(1000));
+        address srcAddress = REMOTE_HOOK;
 
         vm.expectRevert("Unauthorized");
-        hook.lzReceive(REMOTE_CHAIN_ID, srcAddress, 0, payload);
+        hook.lzReceive(REMOTE_CHAIN_ID, srcAddress, 0, abi.encode(address(token0), address(token1), int256(1000)));
     }
 
     function test_CrossChainLiquidityRebalance() public {

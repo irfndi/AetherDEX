@@ -36,24 +36,24 @@ contract AetherPool is IAetherPool, ReentrancyGuard { // Inherit ReentrancyGuard
     }
 
     function initialize(
-        address _token0, // Parameter names already use underscore convention
-        address _token1,
-        uint24 _fee // Renamed fee_ to _fee to match interface
+        address initialToken0, 
+        address initialToken1,
+        uint24 initialFee 
     ) external override {
         require(!initialized, "ALREADY_INITIALIZED");
-        require(_token0 != address(0) && _token1 != address(0), "ZERO_TOKEN_ADDRESS");
-        require(_token0 != _token1, "IDENTICAL_TOKENS");
-        require(_fee <= 10000, "INVALID_FEE"); // Use _fee
+        require(initialToken0 != address(0) && initialToken1 != address(0), "ZERO_TOKEN_ADDRESS");
+        require(initialToken0 != initialToken1, "IDENTICAL_TOKENS");
+        require(initialFee <= 10000, "INVALID_FEE"); // Use fee
 
-        if (_token0 < _token1) {
-            token0 = _token0;
-            token1 = _token1;
+        if (initialToken0 < initialToken1) {
+            token0 = initialToken0;
+            token1 = initialToken1;
         } else {
-            token0 = _token1;
-            token1 = _token0;
+            token0 = initialToken1;
+            token1 = initialToken0;
         }
 
-        fee = _fee; // Use _fee
+        fee = initialFee; // Use fee
         initialized = true;
     }
 

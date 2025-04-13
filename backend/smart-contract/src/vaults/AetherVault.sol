@@ -34,31 +34,31 @@ contract AetherVault is ERC4626 {
 
     /**
      * @dev Constructor
-     * @param _asset The underlying asset token
-     * @param _name Vault token name
-     * @param _symbol Vault token symbol
-     * @param _poolManager Pool manager interface
+     * @param initialAsset The underlying asset token
+     * @param initialName Vault token name
+     * @param initialSymbol Vault token symbol
+     * @param initialPoolManager Pool manager interface
      */
     constructor(
-        IERC20 _asset,
-        string memory _name,
-        string memory _symbol,
-        IPoolManager _poolManager
-    ) ERC4626(_asset) ERC20(_name, _symbol) {
-        poolManager = _poolManager;
+        IERC20 initialAsset,
+        string memory initialName,
+        string memory initialSymbol,
+        IPoolManager initialPoolManager
+    ) ERC4626(initialAsset) ERC20(initialName, initialSymbol) {
+        poolManager = initialPoolManager;
         lastYieldTimestamp = block.timestamp;
     }
 
     /**
      * @dev Set the yield strategy address
-     * @param _strategy New strategy address
+     * @param newStrategy New strategy address
      */
-    function setStrategy(address _strategy) external {
+    function setStrategy(address newStrategy) external {
         require(strategy == address(0), "Strategy already set"); // Ensure strategy can only be set once
-        require(_strategy != address(0), "ZERO_STRATEGY_ADDRESS"); // Add zero-address check
+        require(newStrategy != address(0), "ZERO_STRATEGY_ADDRESS"); // Add zero-address check
         address oldStrategy = strategy; // Store old strategy (which is address(0) here)
-        strategy = _strategy;
-        emit StrategyUpdated(oldStrategy, _strategy); // Emit with old and new
+        strategy = newStrategy;
+        emit StrategyUpdated(oldStrategy, newStrategy); // Emit with old and new
     }
 
     /**
@@ -103,12 +103,12 @@ contract AetherVault is ERC4626 {
      * @dev Update yield rate
      * Only callable by strategy
      */
-    function updateYieldRate(uint256 _newRate) external onlyStrategy {
+    function updateYieldRate(uint256 newRate) external onlyStrategy {
         // Accrue any pending yield before updating rate
         _accruePendingYield();
         uint256 oldRate = yieldRate; // Read old value
-        yieldRate = _newRate; // Update state
-        emit YieldRateUpdated(oldRate, _newRate); // Emit event
+        yieldRate = newRate; // Update state
+        emit YieldRateUpdated(oldRate, newRate); // Emit event
     }
 
     /**

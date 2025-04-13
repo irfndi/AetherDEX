@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.29;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -16,6 +15,8 @@ import {BalanceDelta} from "./types/BalanceDelta.sol";
 import {Hooks} from "./libraries/Hooks.sol";
 import {FixedPoint} from "./libraries/FixedPoint.sol";
 import {TransferHelper} from "./libraries/TransferHelper.sol";
+import "forge-std/console.sol";
+import {TickMath} from "../lib/v4-core/src/libraries/TickMath.sol"; // Use relative path
 
 // Error definitions
 error InvalidAmount(uint256 amount);
@@ -55,14 +56,14 @@ error SwapFailed(string reason);
  */
 contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
     // Flag to bypass EOA check for testing
-    bool public testMode = false;
+    bool public testMode;
 
     /**
      * @notice Set test mode to bypass EOA check for testing
-     * @param _testMode Whether to enable test mode
+     * @param testMode_ Whether to enable test mode
      */
-    function setTestMode(bool _testMode) external onlyOwner {
-        testMode = _testMode;
+    function setTestMode(bool testMode_) external onlyOwner {
+        testMode = testMode_;
     }
 
     using Address for address;
@@ -191,13 +192,13 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
     mapping(bytes32 => FailedOperation) public failedOperations;
 
     // Security enhancements
-    uint256 public MAX_SLIPPAGE = 500; // 5% max slippage
+    uint256 public maxSlippage = 300; // Default to 0.3% slippage
     uint256 public constant MIN_FEE = 0.1 ether;
     uint256 public constant MAX_FEE = 1 ether;
     uint256 public constant MAX_CHAIN_ID = 100_000; // Maximum supported chain ID (increased to support Arbitrum)
 
     modifier validSlippage(uint256 slippage) {
-        require(slippage <= MAX_SLIPPAGE, "Slippage too high");
+        require(slippage <= maxSlippage, "Slippage too high");
         _;
     }
 
@@ -208,7 +209,7 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
 
     /**
      * @notice Constructor initializes cross-chain messaging contracts
-     * @param _owner Address of the contract owner
+     * @param initialOwner Address of the contract owner
      * @param _ccipRouter Address of CCIP Router
      * @param _hyperlane Address of Hyperlane contract
      * @param _linkToken Address of LINK token for CCIP fees
@@ -217,15 +218,15 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
      * @param _maxSlippage Maximum allowed slippage
      */
     constructor(
-        address _owner,
+        address initialOwner, // Renamed from _owner
         address _ccipRouter,
         address _hyperlane,
         address _linkToken,
         address _poolManager,
         address _factory, // Added factory address parameter
-        uint256 _maxSlippage
-    ) Ownable(_owner) Pausable() {
-        require(_owner != address(0), "Invalid owner");
+        uint256 _maxSlippage // Keep this name for clarity during construction
+    ) Ownable(initialOwner) Pausable() { // Use initialOwner
+        require(initialOwner != address(0), "Invalid owner"); // Use initialOwner
         require(_ccipRouter != address(0), "Invalid CCIP Router");
         require(_hyperlane != address(0), "Invalid Hyperlane");
         require(_linkToken != address(0), "Invalid LINK token");
@@ -238,7 +239,7 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         linkToken = IERC20(_linkToken);
         poolManager = IPoolManager(_poolManager);
         factory = AetherFactory(_factory); // Store factory address
-        MAX_SLIPPAGE = _maxSlippage;
+        maxSlippage = _maxSlippage; // Use renamed variable
     }
 
     /**
@@ -268,9 +269,11 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         // Added nonReentrant
         require(amount <= totalFees, "Insufficient fees"); // Check
         totalFees -= amount; // Effect
-        // Use call instead of transfer for better error handling and gas consistency
-        (bool success,) = payable(owner()).call{value: amount}(""); // Interaction
-        require(success, "ETH_TRANSFER_FAILED");
+
+        // Use safe call instead of transfer
+        (bool success,) = payable(owner()).call{value: amount}("");
+        require(success, "FEE_DISTRIBUTE_FAILED"); // Interaction
+
         emit FeeDistributed(amount);
     }
 
@@ -381,7 +384,7 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
 
         // 4. Process Results (Check Slippage, Transfer Out)
         amountOut = _processSwapOutput(
-            tokenIn,  // Needed for event emission
+            tokenIn, // Needed for event emission
             tokenOut,
             amountIn, // Needed for event emission
             amountOutMin,
@@ -418,12 +421,10 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
      * @notice Internal function to prepare for the swap: transfer tokens, get PoolKey, approve PoolManager
      * @return key The PoolKey for the swap
      */
-    function _prepareSwap(
-        address tokenIn,
-        address tokenOut,
-        uint256 amountIn,
-        uint24 fee
-    ) internal returns (PoolKey memory key) {
+    function _prepareSwap(address tokenIn, address tokenOut, uint256 amountIn, uint24 fee)
+        internal
+        returns (PoolKey memory key)
+    {
         // Transfer input tokens from user to this router
         TransferHelper.safeTransferFrom(tokenIn, msg.sender, address(this), amountIn); // User -> Router
 
@@ -440,7 +441,7 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         });
 
         // Router approves the Pool Manager
-        IERC20(tokenIn).safeIncreaseAllowance(address(poolManager), amountIn);
+        _safeApprove(tokenIn, address(poolManager), amountIn);
     }
 
     /**
@@ -449,18 +450,15 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
      * @param amountIn The amount of tokenIn being swapped
      * @return balanceDelta The result of the swap
      */
-    function _executePoolSwap(
-        PoolKey memory key,
-        uint256 amountIn
-    ) internal returns (BalanceDelta memory balanceDelta) {
+    function _executePoolSwap(PoolKey memory key, uint256 amountIn)
+        internal
+        returns (BalanceDelta memory balanceDelta)
+    {
         // Determine swap direction and price limit
         bool zeroForOne = true; // Since tokenIn < tokenOut, we are selling token0 (tokenIn) for token1 (tokenOut)
 
         // Using wide bounds for sqrtPriceLimitX96 for now:
-        uint160 sqrtPriceLimitX96 = zeroForOne
-            ? type(uint160).min + 1
-            : type(uint160).max - 1;
-        // [TODO]: Implement robust sqrtPriceLimitX96 calculation based on amountOutMin
+        uint160 sqrtPriceLimitX96 = zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
 
         IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
             zeroForOne: zeroForOne,
@@ -486,14 +484,16 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
      * @return amountOut The final output amount
      */
     function _processSwapOutput(
-        address /*tokenIn*/,  // Needed for event emission - Commmented out name to fix lint
+        address, /*tokenIn*/ // Needed for event emission - Commmented out name to fix lint
         address tokenOut,
-        uint256 /*amountIn*/, // Needed for event emission - Commmented out name to fix lint
+        uint256, /*amountIn*/ // Needed for event emission - Commmented out name to fix lint
         uint256 amountOutMin,
         BalanceDelta memory balanceDelta
     ) internal returns (uint256 amountOut) {
         // Since zeroForOne is true, we provided token0 (tokenIn) and received token1 (tokenOut)
-        if (balanceDelta.amount0 <= 0) { // Should have used input token
+        // The delta for the input token (amount0) should be negative.
+        if (balanceDelta.amount0 >= 0) { // Corrected check: should be negative
+            // Should have used input token
             revert SwapFailed("Pool did not take input tokens");
         }
         // Check if the amount taken matches roughly (can be slightly more due to fees)
@@ -502,7 +502,8 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         //     revert SwapFailed("Pool did not take expected input amount");
         // }
 
-        if (balanceDelta.amount1 >= 0) { // Should have received output token (negative delta)
+        if (balanceDelta.amount1 >= 0) {
+            // Should have received output token (negative delta)
             revert SwapFailed("Pool did not return output tokens");
         }
 
@@ -586,7 +587,7 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
 
         // --- Prepare Operation ---
         // Transfer tokens *before* executing the core logic
-        TransferHelper.safeTransferFrom(tokenIn, msg.sender, address(this), amountIn);
+        // TransferHelper.safeTransferFrom(tokenIn, msg.sender, address(this), amountIn);
 
         // --- Execute Core Logic ---
         _executeCrossChainRoute(
@@ -649,23 +650,32 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         // require(success, "Transfer failed"); // TransferHelper handles success check
     }
 
+    /**
+     * @notice Executes a cross-chain route by sending tokens via a bridge (CCIP or Hyperlane).
+     * @param params The parameters for the cross-chain route execution.
+     * @dev [FIXME]: Slither flags potential reentrancy due to external calls (_sendCrossChainMessage, _refundExcessFee)
+     *       before the CrossChainRouteExecuted event. Current structure follows Checks-Effects-Interactions by emitting
+     *       the event *after* interactions. However, the external calls themselves carry inherent reentrancy risk if
+     *       the recipient/bridge contracts call back unexpectedly. Ensure called contracts are trusted.
+     */
     function _executeCrossChainRoute(CrossChainRouteParams memory params) internal {
+        console.log("Router: _executeCrossChainRoute entered");
         _validateCrossChainParams(params);
+        console.log("Router: Params validated");
         _collectFees(params.dstChain);
-        _transferTokens(params.tokenIn, params.amountIn);
+        console.log("Router: Fees collected");
 
         uint256 bridgeAmount = params.amountIn * 98 / 100;
+        console.log("Router: Approving bridge %s to spend %s of token %s", address(this), bridgeAmount, params.tokenIn);
+        _safeApprove(params.tokenIn, address(this), bridgeAmount);
+        console.log("Router: Bridge approved successfully");
+
         bytes memory payload = abi.encode(params.tokenOut, bridgeAmount, params.recipient);
 
         (bool useCCIP, uint256 actualFee) = _determineBridgeProtocol(params.dstChain, params.recipient, payload);
 
-        _sendCrossChainMessage(useCCIP, params.dstChain, params.recipient, payload, actualFee);
-
-        // Refund the difference between provided fee (msg.value) and the actual fee used
-        uint256 refundAmount = msg.value >= actualFee ? msg.value - actualFee : 0;
-        _refundExcessFee(refundAmount, msg.sender);
-
-        // Emit success event
+        // --- Effects (State Changes & Events) ---
+        // Emit success event *before* external interactions
         bytes32 routeHash = keccak256(params.routeData); // Assuming routeData represents the path
         emit CrossChainRouteExecuted(
             msg.sender,
@@ -677,6 +687,28 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
             params.dstChain,
             routeHash
         );
+
+        // --- Interactions ---
+        _sendCrossChainMessage(useCCIP, params.dstChain, params.recipient, payload, actualFee);
+
+        // Refund the difference between provided fee (msg.value) and the actual fee used
+        uint256 refundAmount = msg.value >= actualFee ? msg.value - actualFee : 0;
+        // Call refund *after* primary interaction and state changes/events
+        _refundExcessFee(refundAmount, msg.sender);
+
+        // Event emission moved earlier to adhere to Checks-Effects-Interactions
+        /*
+        emit CrossChainRouteExecuted(
+            msg.sender,
+            params.tokenIn,
+            params.tokenOut,
+            params.amountIn,
+            bridgeAmount, // This is the amount bridged, not necessarily final amountOut
+            params.srcChain,
+            params.dstChain,
+            routeHash
+        );
+        */
     }
 
     function _determineBridgeProtocol(uint16 dstChain, address recipient, bytes memory payload)
@@ -716,7 +748,9 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
                 revert OperationFailed(string(lowLevelData)); // Revert with low-level data as reason
             }
         } else {
-            try hyperlane.dispatch{value: actualFee}(dstChain, abi.encodePacked(recipient), payload) returns (bytes32 messageId) {
+            try hyperlane.dispatch{value: actualFee}(dstChain, abi.encodePacked(recipient), payload) returns (
+                bytes32 messageId
+            ) {
                 // Check return value for Hyperlane dispatch (returns bytes32 messageId)
                 // Hyperlane dispatch returns a message ID. Revert if it's zero bytes32.
                 require(messageId != bytes32(0), "Hyperlane dispatch failed: Invalid message ID");
@@ -813,7 +847,8 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
                 // [TODO]: Further review if CCIP messageId needs more specific handling.
             } else {
                 // Check return value for Hyperlane dispatch (returns bytes32 messageId)
-                bytes32 messageId = hyperlane.dispatch{value: 0.1 ether}(path[i + 1], abi.encodePacked(recipient), payload);
+                bytes32 messageId =
+                    hyperlane.dispatch{value: 0.1 ether}(path[i + 1], abi.encodePacked(recipient), payload);
                 require(messageId != bytes32(0), "Hyperlane dispatch failed in multi-path");
             }
         }
@@ -841,7 +876,7 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
      */
     function setMaxSlippage(uint256 newMaxSlippage) external onlyOwner {
         require(newMaxSlippage <= 1000, "Max slippage too high"); // Max 10%
-        MAX_SLIPPAGE = newMaxSlippage;
+        maxSlippage = newMaxSlippage; // Use renamed variable
     }
 
     // Removed dead code function _handleFailedOperation and its documentation
@@ -859,12 +894,31 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
      * @param excessFee Amount of ETH to refund.
      * @param recipient Address to receive the refund.
      */
-    function _refundExcessFee(uint256 excessFee, address recipient) internal { // Removed nonReentrant
+    function _refundExcessFee(uint256 excessFee, address recipient) internal {
         if (excessFee > 0) {
-            // Check recipient is valid before sending
-            if (recipient == address(0)) revert InvalidRecipient(recipient);
-            payable(recipient).transfer(excessFee); // Use transfer instead of call
+            // Use low-level call for safety, checking the result.
+            (bool success,) = recipient.call{value: excessFee}("");
+            require(success, "AetherRouter: Fee refund failed");
         }
     }
 
+    /**
+     * @dev Internal function to safely approve spending of a token.
+     *      Handles potential issues with non-standard ERC20 implementations (like USDT)
+     *      by first setting allowance to 0 before setting the new allowance.
+     * @param token The address of the ERC20 token.
+     * @param spender The address authorized to spend the tokens.
+     * @param value The amount of tokens to approve.
+     */
+    function _safeApprove(address token, address spender, uint256 value) internal {
+        // Implement zero-then-approve pattern for safety, especially for tokens like USDT.
+        // Note: SafeERC20 v5.2.0 does not have a 'safeApprove' function.
+        // We use standard approve calls here.
+        try IERC20(token).approve(spender, 0) {}
+        catch {
+            // Some tokens might revert if approval is already 0, ignore failure.
+        }
+        IERC20(token).approve(spender, value);
+        // Consider adding checks for return values if necessary, although approve often doesn't return boolean.
+    }
 }

@@ -44,17 +44,30 @@ contract TWAPOracleHook is BaseHook {
         // require((hookFlags & requiredFlags) == requiredFlags, "Hook flags mismatch"); // Remove this check
     }
 
-    function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
-        return Hooks.Permissions({
-            beforeInitialize: true,  // Implemented
-            afterInitialize: false, // Not implemented
-            beforeModifyPosition: false, // Not implemented
-            afterModifyPosition: false, // Not implemented
-            beforeSwap: false,     // Logic only in afterSwap
-            afterSwap: true,      // Implemented
+    /// @notice Required override from BaseHook
+    /// @dev Specifies that this hook uses multiple 'after' callbacks.
+    function getHookPermissions() public pure override(BaseHook) returns (Hooks.Permissions memory) {
+        // This hook implements afterInitialize, afterModifyPosition, afterSwap, afterDonate
+        return Hooks.Permissions({ 
+            beforeInitialize: false,
+            afterInitialize: true, // True
+            beforeModifyPosition: false,
+            afterModifyPosition: true, // True
+            beforeSwap: false,
+            afterSwap: true, // True
             beforeDonate: false,
-            afterDonate: false
+            afterDonate: true // True
         });
+    }
+
+    /// @notice Hook executed after pool initialization
+    function afterInitialize(address, PoolKey calldata, uint160, bytes calldata)
+        external
+        pure
+        override
+        returns (bytes4)
+    {
+        return TWAPOracleHook.afterInitialize.selector;
     }
 
     function beforeInitialize(address, PoolKey calldata key, uint160, bytes calldata)
@@ -68,15 +81,6 @@ contract TWAPOracleHook is BaseHook {
             price: BASE_PRICE
         }));
         return TWAPOracleHook.beforeInitialize.selector;
-    }
-
-    function afterInitialize(address, PoolKey calldata, uint160, bytes calldata)
-        external
-        pure
-        override
-        returns (bytes4)
-    {
-        return TWAPOracleHook.afterInitialize.selector;
     }
 
     function beforeSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, bytes calldata)
@@ -95,17 +99,11 @@ contract TWAPOracleHook is BaseHook {
         BalanceDelta memory delta,
         bytes calldata
     ) external override returns (bytes4) {
-        try this._calculatePrice(params.zeroForOne, delta) returns (uint64 price) {
-            bytes32 poolId = _poolId(key.token0, key.token1);
-            _recordObservation(poolId, price);
-            return TWAPOracleHook.afterSwap.selector;
-        } catch {
-            // If price calculation fails, don't update observation but still return success
-            return TWAPOracleHook.afterSwap.selector;
-        }
+        _recordObservation(_poolId(key.token0, key.token1), delta.amount0, delta.amount1, params.zeroForOne);
+        return TWAPOracleHook.afterSwap.selector;
     }
 
-    function _calculatePrice(bool /* zeroForOne */, BalanceDelta memory delta) external pure returns (uint64) {
+    function calculatePrice(bool zeroForOne, BalanceDelta memory delta) external pure returns (uint64) {
         // Get absolute values (without scaling down initially)
         uint256 absAmount0 = uint256(delta.amount0 >= 0 ? delta.amount0 : -delta.amount0);
         uint256 absAmount1 = uint256(delta.amount1 >= 0 ? delta.amount1 : -delta.amount1);
@@ -123,15 +121,20 @@ contract TWAPOracleHook is BaseHook {
         return uint64(price);
     }
 
-    function _recordObservation(bytes32 poolId, uint64 price) internal {
+    function _recordObservation(bytes32 poolId, int256 amount0, int256 amount1, bool zeroForOne) internal {
         uint32 timestamp = uint32(block.timestamp);
         Observation[] storage obs = observations[poolId];
 
         if (obs.length == 0 || obs[obs.length - 1].timestamp < timestamp) {
-            obs.push(Observation({
-                timestamp: timestamp,
-                price: price
-            }));
+            try this.calculatePrice(zeroForOne, BalanceDelta({amount0: amount0, amount1: amount1})) returns (uint64 price) {
+                obs.push(Observation({
+                    timestamp: timestamp,
+                    price: price
+                }));
+            } catch {
+                // If price calculation fails, don't update observation but still return success
+                return;
+            }
 
             _cleanObservations(poolId);
         }
@@ -222,6 +225,6 @@ contract TWAPOracleHook is BaseHook {
 
     function initializeOracle(PoolKey calldata key, uint256 price) external {
         if (price == 0 || price > MAX_PRICE) revert InvalidPrice();
-        _recordObservation(_poolId(key.token0, key.token1), uint64(price));
+        _recordObservation(_poolId(key.token0, key.token1), int256(0), int256(price), true);
     }
 }

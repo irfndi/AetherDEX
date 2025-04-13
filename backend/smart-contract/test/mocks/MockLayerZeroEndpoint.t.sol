@@ -58,7 +58,7 @@ contract MockLayerZeroEndpoint {
         require(dstAddress != address(0), "Invalid destination");
 
         // Deliver the message to the destination contract
-        try CrossChainLiquidityHook(payable(dstAddress)).lzReceive(_srcChainId, abi.encodePacked(_sender), 0, _payload)
+        try CrossChainLiquidityHook(payable(dstAddress)).lzReceive(_srcChainId, _sender, 0, _payload)
         {
             emit MessageReceived(_srcChainId, abi.encodePacked(_sender), dstAddress, 0, _payload);
         } catch {

@@ -144,28 +144,27 @@ contract AetherStrategy is ReentrancyGuard { // Inherit ReentrancyGuard
     /**
      * @dev Handle incoming yield updates from other chains
      */
-    function lzReceive(uint16 _srcChainId, bytes memory _srcAddress, uint64, /* _nonce */ bytes memory _payload)
-        external
-        nonReentrant // Added nonReentrant modifier
-    {
+    function lzReceive(
+        uint16 srcChainId, // Renamed from _srcChainId
+        bytes memory srcAddress, // Changed back to memory
+        uint64, // nonce
+        bytes calldata payload // Renamed from _payload
+    ) external nonReentrant { // Added nonReentrant modifier
         require(msg.sender == address(lzEndpoint), "Invalid endpoint"); // Check
-        require(chainConfigs[_srcChainId].isActive, "Chain not active"); // Check
+        require(chainConfigs[srcChainId].isActive, "Chain not active"); // Check
 
         // Verify the sender is the registered remote strategy
-        address srcAddress;
+        address sourceAddressDecoded;
         assembly {
-            srcAddress := mload(add(_srcAddress, 20))
+            sourceAddressDecoded := mload(add(srcAddress, 20)) // Use renamed param (now memory)
         }
-        require(srcAddress == chainConfigs[_srcChainId].remoteStrategy, "Invalid remote strategy"); // Check
+        require(sourceAddressDecoded == chainConfigs[srcChainId].remoteStrategy, "Invalid remote strategy"); // Check
 
         // Decode yield update
-        uint256 yieldAmount = abi.decode(_payload, (uint256)); // Effect (local processing)
+        uint256 yieldAmount = abi.decode(payload, (uint256)); // Use renamed param
+        vault.syncCrossChainYield(srcChainId, yieldAmount); // Use renamed param
 
-        // Emit event *before* external call
-        emit CrossChainYieldSynced(_srcChainId, yieldAmount); // Effect (Event)
-
-        // External interaction
-        vault.syncCrossChainYield(_srcChainId, yieldAmount); // Interaction
+        emit CrossChainYieldSynced(srcChainId, yieldAmount); // Use renamed param
     }
 
     /**
@@ -186,26 +185,27 @@ contract AetherStrategy is ReentrancyGuard { // Inherit ReentrancyGuard
     /**
      * @dev Estimate LayerZero fees for cross-chain messaging
      */
-    function estimateFees(uint16 _chainId, uint256 _yieldAmount)
-        external
-        view
-        returns (uint256 nativeFee, uint256 zroFee)
-    {
-        bytes memory payload = abi.encode(_yieldAmount);
-        bytes memory remoteAndLocalAddresses = abi.encodePacked(chainConfigs[_chainId].remoteStrategy, address(this));
+    function estimateFees(
+        uint16 chainId, // Renamed from _chainId
+        uint256 yieldAmount, // Renamed from _yieldAmount
+        bool useZro
+    ) external view returns (uint256 nativeFee, uint256 zroFee) {
+        require(chainConfigs[chainId].isActive, "Chain not configured"); // Use renamed param
+        bytes memory payload = abi.encode(yieldAmount); // Use renamed param
+        bytes memory remoteAndLocalAddresses = abi.encodePacked(chainConfigs[chainId].remoteStrategy, address(this));
 
         // Capture and return the estimated fees using named return variables
-        (nativeFee, zroFee) = lzEndpoint.estimateFees(_chainId, address(this), payload, false, remoteAndLocalAddresses);
+        (nativeFee, zroFee) = lzEndpoint.estimateFees(chainId, address(this), payload, useZro, remoteAndLocalAddresses); // Use renamed param
         // No explicit return needed here
     }
 
     /**
      * @dev Update the rebalance interval
      */
-    function setRebalanceInterval(uint256 _interval) external onlyVault {
+    function setRebalanceInterval(uint256 interval) external onlyVault {
         uint256 oldInterval = rebalanceInterval; // Read old value
-        rebalanceInterval = _interval; // Update state
-        emit RebalanceIntervalUpdated(oldInterval, _interval); // Emit event
+        rebalanceInterval = interval; // Update state
+        emit RebalanceIntervalUpdated(oldInterval, interval); // Emit event
     }
 
     /**
@@ -218,7 +218,7 @@ contract AetherStrategy is ReentrancyGuard { // Inherit ReentrancyGuard
     /**
      * @dev Get chain configuration
      */
-    function getChainConfig(uint16 _chainId) external view returns (ChainConfig memory) {
-        return chainConfigs[_chainId];
+    function getChainConfig(uint16 chainId_) external view returns (ChainConfig memory) {
+        return chainConfigs[chainId_];
     }
 }
