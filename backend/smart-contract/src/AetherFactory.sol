@@ -73,6 +73,9 @@ contract AetherFactory is ReentrancyGuard { // Inherit ReentrancyGuard
 
         // --- Interaction (Deploy) ---
         // Prepare for CREATE2 deployment
+        // Slither: Too-many-digits - `type(AetherPool).creationCode` is a standard Solidity construct
+        // to get the deployment bytecode of a contract. The large literal is inherent to this construct.
+        // slither-disable-next-line too-many-digits
         bytes memory bytecode = type(AetherPool).creationCode;
         // Pass the factory address to the AetherPool constructor
         bytes memory constructorArgs = abi.encode(address(this));
@@ -80,11 +83,14 @@ contract AetherFactory is ReentrancyGuard { // Inherit ReentrancyGuard
         bytes32 salt = poolId; // Use the unique poolId as the salt
 
         // Deploy using CREATE2
+        // Slither: Assembly - Inline assembly is used here for the CREATE2 opcode, which allows
+        // for deterministic deployment addresses based on the salt (poolId). This is a standard
+        // and necessary pattern for factory contracts using CREATE2.
         assembly {
             pool := create2(0, add(deploymentCode, 0x20), mload(deploymentCode), salt)
         }
         require(pool != address(0), "CREATE2_FAILED");
-        require(pool != address(0), "Pool deployment failed"); // <-- Add deployment check
+        // require(pool != address(0), "Pool deployment failed"); // Redundant check, CREATE2_FAILED covers it.
 
         // --- Effects (Update state *before* external initialize call) ---
         getPool[poolId] = pool;

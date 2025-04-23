@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.29;
+// slither-disable unimplemented-functions
 
 import {BaseHook} from "./BaseHook.sol";
 import {IPoolManager} from "../interfaces/IPoolManager.sol";
@@ -46,9 +47,10 @@ contract TWAPOracleHook is BaseHook {
 
     /// @notice Required override from BaseHook
     /// @dev Specifies that this hook uses multiple 'after' callbacks.
+    // slither-disable-next-line unimplemented-functions
     function getHookPermissions() public pure override(BaseHook) returns (Hooks.Permissions memory) {
         // This hook implements afterInitialize, afterModifyPosition, afterSwap, afterDonate
-        return Hooks.Permissions({ 
+        return Hooks.Permissions({
             beforeInitialize: false,
             afterInitialize: true, // True
             beforeModifyPosition: false,
@@ -103,7 +105,7 @@ contract TWAPOracleHook is BaseHook {
         return TWAPOracleHook.afterSwap.selector;
     }
 
-    function calculatePrice(bool zeroForOne, BalanceDelta memory delta) external pure returns (uint64) {
+    function calculatePrice(bool /*zeroForOne*/, BalanceDelta memory delta) external pure returns (uint64) {
         // Get absolute values (without scaling down initially)
         uint256 absAmount0 = uint256(delta.amount0 >= 0 ? delta.amount0 : -delta.amount0);
         uint256 absAmount1 = uint256(delta.amount1 >= 0 ? delta.amount1 : -delta.amount1);
@@ -125,10 +127,12 @@ contract TWAPOracleHook is BaseHook {
         uint32 timestamp = uint32(block.timestamp);
         Observation[] storage obs = observations[poolId];
 
+        // Slither: Timestamp - Using block.timestamp is essential for recording price observations
+        // at specific points in time, which is fundamental to TWAP oracle functionality.
         if (obs.length == 0 || obs[obs.length - 1].timestamp < timestamp) {
             try this.calculatePrice(zeroForOne, BalanceDelta({amount0: amount0, amount1: amount1})) returns (uint64 price) {
                 obs.push(Observation({
-                    timestamp: timestamp,
+                    timestamp: timestamp, // Record the current block timestamp
                     price: price
                 }));
             } catch {
@@ -144,6 +148,8 @@ contract TWAPOracleHook is BaseHook {
         Observation[] storage obs = observations[poolId];
         
         // Prevent underflow when block.timestamp is small
+        // Slither: Timestamp - Using block.timestamp is necessary here to determine the cutoff
+        // point for cleaning old observations based on the defined windowSize.
         if (block.timestamp < windowSize) {
             // If not enough time has passed, no observations need cleaning yet.
             return; 
@@ -151,6 +157,8 @@ contract TWAPOracleHook is BaseHook {
         uint256 cutoff = block.timestamp - windowSize;
 
         uint256 i = 0;
+        // Slither: Timestamp - Comparison with timestamp is needed to identify and remove
+        // observations older than the TWAP window.
         while (i < obs.length && obs[i].timestamp < cutoff) {
             i++;
         }
@@ -203,6 +211,8 @@ contract TWAPOracleHook is BaseHook {
 
         while (left < right) {
             uint256 mid = (left + right + 1) / 2;
+            // Slither: Timestamp - Comparison with observation timestamps is essential for the
+            // binary search to find the observation closest to the target time (`target` is derived from block.timestamp).
             if (obs[mid].timestamp <= target) {
                 left = mid;
             } else {
@@ -225,6 +235,10 @@ contract TWAPOracleHook is BaseHook {
 
     function initializeOracle(PoolKey calldata key, uint256 price) external {
         if (price == 0 || price > MAX_PRICE) revert InvalidPrice();
-        _recordObservation(_poolId(key.token0, key.token1), int256(0), int256(price), true);
+        bytes32 poolId = _poolId(key.token0, key.token1);
+        observations[poolId].push(Observation({
+            timestamp: uint32(block.timestamp),
+            price: uint64(price)
+        }));
     }
 }

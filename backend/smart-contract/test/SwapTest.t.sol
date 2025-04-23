@@ -10,10 +10,7 @@ import "../src/FeeRegistry.sol"; // Added FeeRegistry import
 import "../src/types/PoolKey.sol"; // Added PoolKey import
 import "../src/libraries/TransferHelper.sol"; // Import TransferHelper for safeTransfer
 
-interface IERC20 { // Define IERC20 interface here - KEPT ONLY ONCE, NOW AT TOP LEVEL
-    event Approval(address indexed owner, address indexed spender, uint256 value);
-    event Transfer(address indexed from, address indexed to, uint256 value);
-}
+
 
 // Simple MockERC20 contract for testing
 contract MockToken is

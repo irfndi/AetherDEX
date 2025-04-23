@@ -3,6 +3,7 @@ pragma solidity ^0.8.29;
 
 import "forge-std/console2.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol"; // Import ReentrancyGuard
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./libraries/TransferHelper.sol";
 import "./libraries/FixedPoint.sol";
 import "./interfaces/IAetherPool.sol";
@@ -144,28 +145,42 @@ contract AetherPool is IAetherPool, ReentrancyGuard { // Inherit ReentrancyGuard
         uint256 currentFee = fee;
         console2.log("Swap Debug: amountIn", amountIn);
         console2.log("Swap Debug: currentFee", currentFee);
+        // Slither: Divide-before-multiply - Multiplication before division is used here
+        // to calculate the fee-adjusted input amount while maintaining precision.
+        // This is standard practice in AMM calculations. Overflow risk is acknowledged.
         uint256 amountInWithFee = (amountIn * (10000 - currentFee)) / 10000;
         console2.log("Swap Debug: amountInWithFee", amountInWithFee);
         console2.log("Swap Debug: reserveIn", reserveIn);
         console2.log("Swap Debug: reserveOut", reserveOut);
-        amountOut = (amountInWithFee * reserveOut) / (reserveIn + amountInWithFee);
-        console2.log("Swap Debug: calculated amountOut", amountOut);
+        // Slither: Divide-before-multiply - Multiplication before division is used here
+        // as part of the constant product formula (x*y=k) calculation for amountOut.
+        // This order maintains precision. Overflow risk is acknowledged.
+        uint256 _amountOut = (amountInWithFee * reserveOut) / (reserveIn + amountInWithFee); // Use local variable
+        console2.log("Swap Debug: calculated amountOut", _amountOut);
         
-        require(amountOut > 0, "INSUFFICIENT_OUTPUT_AMOUNT");
-        require(amountOut <= reserveOut, "OUTPUT_EXCEEDS_RESERVE");
+        require(_amountOut > 0, "INSUFFICIENT_OUTPUT_AMOUNT");
+        require(_amountOut <= reserveOut, "OUTPUT_EXCEEDS_RESERVE");
 
         if (isToken0In) {
             reserve0 = reserveIn + amountIn;
-            reserve1 = reserveOut - amountOut;
+            reserve1 = reserveOut - _amountOut; // Use local variable
         } else {
             reserve1 = reserveIn + amountIn;
-            reserve0 = reserveOut - amountOut;
+            reserve0 = reserveOut - _amountOut; // Use local variable
         }
 
         // Use msg.sender instead of the removed 'sender' parameter
         TransferHelper.safeTransferFrom(tokenIn, msg.sender, address(this), amountIn);
         address tokenOut = isToken0In ? token1 : token0;
-        TransferHelper.safeTransfer(tokenOut, to, amountOut);
+
+        // Log balances right before transfer
+        console2.log("Swap Debug: Pool balance of tokenOut before transfer:", IERC20(tokenOut).balanceOf(address(this)));
+        console2.log("Swap Debug: AmountOut to transfer:", _amountOut); // Log local variable
+
+        TransferHelper.safeTransfer(tokenOut, to, _amountOut); // Use local variable
+
+        // Assign to return variable
+        amountOut = _amountOut;
 
         // Emit Swap event (Consider adding this if not handled elsewhere)
         // emit Swap(msg.sender, tokenIn, tokenOut, amountIn, amountOut);

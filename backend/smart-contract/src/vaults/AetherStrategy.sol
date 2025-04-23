@@ -102,6 +102,8 @@ contract AetherStrategy is ReentrancyGuard { // Inherit ReentrancyGuard
      * Can only be called after rebalanceInterval has passed
      */
     function rebalanceYield() external nonReentrant { // Added nonReentrant modifier
+        // Slither: Timestamp - Using block.timestamp is necessary to enforce the rebalanceInterval.
+        // This is a standard pattern for time-based logic in smart contracts.
         require(block.timestamp >= lastRebalance + rebalanceInterval, "Rebalance interval not met"); // Check
 
         // --- Effects ---
@@ -129,6 +131,9 @@ contract AetherStrategy is ReentrancyGuard { // Inherit ReentrancyGuard
             // Distribute yield evenly across active chains
             uint256 yieldPerChain = totalYield / activeChains;
 
+            // Slither: Calls-inside-a-loop - The external call to _sendYieldUpdate (which calls lzEndpoint.send)
+            // is necessary within the loop to distribute yield updates to each configured and active chain.
+            // Gas usage should be monitored, especially with a large number of supported chains.
             for (uint256 i = 0; i < numSupportedChains; i++) { // Use cached length
                 uint16 chainId = supportedChains[i];
                 if (chainConfigs[chainId].isActive) {
@@ -154,6 +159,9 @@ contract AetherStrategy is ReentrancyGuard { // Inherit ReentrancyGuard
         require(chainConfigs[srcChainId].isActive, "Chain not active"); // Check
 
         // Verify the sender is the registered remote strategy
+        // Slither: Assembly - Inline assembly is used here to efficiently extract the source address
+        // from the `bytes memory srcAddress` provided by LayerZero's lzReceive function.
+        // This is a standard and gas-efficient pattern for handling LayerZero messages.
         address sourceAddressDecoded;
         assembly {
             sourceAddressDecoded := mload(add(srcAddress, 20)) // Use renamed param (now memory)

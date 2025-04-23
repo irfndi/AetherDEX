@@ -63,9 +63,13 @@ contract FeeRegistry is IFeeRegistry, Ownable {
     /// @notice Error thrown when trying to add a fee configuration with invalid parameters (e.g., fee is 0).
     error InvalidFeeConfiguration();
 
-    /// @notice Error thrown when querying a fee tier or tick spacing that is not supported or registered.
+    /// @notice Error thrown when querying a fee tier that is not supported or registered.
     /// @param fee The fee tier queried.
     error FeeTierNotSupported(uint24 fee);
+
+    /// @notice Error thrown when querying a tick spacing that is not supported by any fee tier.
+    /// @param tickSpacing The tick spacing queried.
+    error TickSpacingNotSupported(int24 tickSpacing);
 
     /// @notice Error thrown when trying to update a pool not registered for dynamic fees.
     /// @param poolKeyHash The hash of the PoolKey.
@@ -109,7 +113,8 @@ contract FeeRegistry is IFeeRegistry, Ownable {
     /// @param fee The fee tier to add (e.g., 3000 for 0.3%). Must be non-zero.
     /// @param tickSpacing The corresponding tick spacing. Must be positive.
     function addFeeConfiguration(uint24 fee, int24 tickSpacing) external onlyOwner {
-        if (fee == 0 || tickSpacing <= 0) {
+        // Add check for MAX_FEE
+        if (fee == 0 || fee > MAX_FEE || tickSpacing <= 0) {
             revert InvalidFeeConfiguration();
         }
         // Check if tickSpacing is non-zero, indicating the fee tier already exists
@@ -141,7 +146,11 @@ contract FeeRegistry is IFeeRegistry, Ownable {
                 lowestFee = fee;
             }
         }
-        require(lowestFee != type(uint24).max, "No fee configured for tick spacing");
+        // Revert with specific error if no fee found for the tick spacing
+        // Revert with specific error if no fee found for the tick spacing
+        if (lowestFee == type(uint24).max) {
+            revert TickSpacingNotSupported(tickSpacing); // Keep this specific error
+        }
         return lowestFee;
     }
 
@@ -150,11 +159,27 @@ contract FeeRegistry is IFeeRegistry, Ownable {
         bytes32 poolKeyHash = keccak256(abi.encode(key));
         uint24 dynamicFee = dynamicFees[poolKeyHash];
 
+        // 1. If a dynamic fee exists, return it
         if (dynamicFee != 0) {
             return dynamicFee;
-        } else {
-            return getLowestFeeForTickSpacing(key.tickSpacing);
         }
+
+        // 2. Static fees: ensure tickSpacing is positive
+        if (key.tickSpacing <= 0) {
+            revert FeeTierNotSupported(key.fee);
+        }
+
+        // Find the lowest configured fee for this tickSpacing
+        uint24 lowest = type(uint24).max;
+        for (uint24 f = MIN_FEE; f <= MAX_FEE; f += FEE_STEP) {
+            if (tickSpacings[f] == key.tickSpacing && f < lowest) {
+                lowest = f;
+            }
+        }
+        if (lowest == type(uint24).max) {
+            revert FeeTierNotSupported(key.fee);
+        }
+        return lowest;
     }
 
     /// @inheritdoc IFeeRegistry
@@ -188,6 +213,9 @@ contract FeeRegistry is IFeeRegistry, Ownable {
         if (swapVolume > 0) {
             // Calculate adjustment based on volume relative to threshold
             // Cap the multiplier to prevent excessive fees
+            // Slither: Divide-before-multiply - The division `(swapVolume + volumeThreshold - 1) / volumeThreshold`
+            // calculates ceil(swapVolume / volumeThreshold) using integer arithmetic. Multiplying the result
+            // by 50 determines the fee adjustment based on volume tiers. This order is intentional for ceiling division.
             uint256 volumeMultiplier = (swapVolume + volumeThreshold - 1) / volumeThreshold;
             if (volumeMultiplier > 10) volumeMultiplier = 10; // Cap at 10x
 
@@ -214,6 +242,9 @@ contract FeeRegistry is IFeeRegistry, Ownable {
             }
 
             // Ensure fee is a multiple of FEE_STEP
+            // Slither: Divide-before-multiply - Division before multiplication is used here
+            // to round the calculatedNewFee *down* to the nearest multiple of FEE_STEP.
+            // This ensures the final dynamic fee aligns with the defined fee granularity.
             calculatedNewFee = (calculatedNewFee / FEE_STEP) * FEE_STEP;
         }
 

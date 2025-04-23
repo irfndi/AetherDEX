@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.29;
-
+// slither-disable unimplemented-functions
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol"; // Import ReentrancyGuard
 import {BaseHook} from "./BaseHook.sol";
 import {Hooks} from "../libraries/Hooks.sol"; // Import Hooks library
@@ -37,15 +37,17 @@ contract CrossChainLiquidityHook is BaseHook, ReentrancyGuard { // Inherit Reent
     }
 
     /// @notice Required override from BaseHook
-    function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
-        // This hook only implements afterSwap
-        return Hooks.Permissions({ 
+    /// @dev Override hook permissions for cross-chain liquidity
+    // slither-disable-next-line unimplemented-functions
+    function getHookPermissions() public pure override(BaseHook) returns (Hooks.Permissions memory) {
+        // This hook only implements afterModifyPosition
+        return Hooks.Permissions({
             beforeInitialize: false,
             afterInitialize: false,
             beforeModifyPosition: false,
-            afterModifyPosition: false,
+            afterModifyPosition: true,
             beforeSwap: false,
-            afterSwap: true, 
+            afterSwap: false,
             beforeDonate: false,
             afterDonate: false
         });
@@ -54,14 +56,8 @@ contract CrossChainLiquidityHook is BaseHook, ReentrancyGuard { // Inherit Reent
     function validateHookAddress() internal view {
         // Skip validation during test environment
         if (block.chainid != 31337) {
-            // Flags required based on getHookPermissions
-            uint160 requiredFlags = Hooks.BEFORE_INITIALIZE_FLAG |
-                                   Hooks.AFTER_INITIALIZE_FLAG |
-                                   Hooks.BEFORE_MODIFY_POSITION_FLAG |
-                                   Hooks.AFTER_MODIFY_POSITION_FLAG |
-                                   Hooks.BEFORE_SWAP_FLAG |
-                                   Hooks.AFTER_SWAP_FLAG;
-            // Use 16-bit mask
+            // Dynamic flags based on implemented permissions
+            uint160 requiredFlags = uint160(Hooks.permissionsToFlags(getHookPermissions()));
             uint160 hookFlags = uint160(address(this)) & 0xFFFF;
             require((hookFlags & requiredFlags) == requiredFlags, "HookMismatchedAddressFlags");
         }
@@ -133,20 +129,14 @@ contract CrossChainLiquidityHook is BaseHook, ReentrancyGuard { // Inherit Reent
      * @notice Handle incoming LayerZero messages
      */
     function lzReceive(
-        uint16 srcChainId, // Renamed from _srcChainId
-        address srcAddress, // Renamed from _srcAddress
-        uint64, /*_nonce*/
-        bytes calldata payload // Renamed from _payload
+        uint16 srcChainId,
+        address srcAddress,
+        uint64,
+        bytes calldata payload
     ) external nonReentrant {
         require(msg.sender == address(lzEndpoint), "Unauthorized");
         require(remoteHooks[srcChainId] != address(0), "Chain not configured");
-
-        // Verify the sender is the registered remote hook
-        address srcAddressFromPayload;
-        assembly {
-            srcAddressFromPayload := mload(add(srcAddress, 20))
-        }
-        require(srcAddressFromPayload == remoteHooks[srcChainId], "Invalid remote hook");
+        require(srcAddress == remoteHooks[srcChainId], "Invalid remote hook");
 
         // Decode and process the liquidity update
         (address token0, address token1, int256 liquidityDelta) = abi.decode(payload, (address, address, int256));

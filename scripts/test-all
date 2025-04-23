@@ -1,0 +1,3 @@
+#!/bin/sh
+# Run all Foundry tests with the correct flags and project root.
+forge test --via-ir --root ./backend/smart-contract/ "$@"

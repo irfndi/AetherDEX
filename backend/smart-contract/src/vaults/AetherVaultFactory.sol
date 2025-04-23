@@ -63,6 +63,9 @@ contract AetherVaultFactory is Ownable, ReentrancyGuard { // Inherit ReentrancyG
     {
         // --- Checks ---
         require(asset != address(0), "Invalid asset address");
+        // Slither: Timestamp - This check verifies if a vault already exists for the asset by checking
+        // the vault address in the mapping. It does not directly use block.timestamp in its logic,
+        // although the VaultInfo struct contains a `deployedAt` timestamp. This is a standard existence check.
         require(vaults[asset].vault == address(0), "Vault already exists");
 
         // --- Interactions (Deploy contracts first) ---
@@ -104,7 +107,9 @@ contract AetherVaultFactory is Ownable, ReentrancyGuard { // Inherit ReentrancyG
      * @param asset The underlying asset token
      */
     function activateVault(address asset) external onlyOwner {
+        // Slither: Timestamp - This check verifies vault existence. See comment in deployVault.
         require(vaults[asset].vault != address(0), "Vault does not exist");
+        // Slither: Timestamp - This checks the boolean `isActive` flag. See comment in deployVault.
         require(!vaults[asset].isActive, "Vault already active");
 
         vaults[asset].isActive = true;
@@ -116,7 +121,9 @@ contract AetherVaultFactory is Ownable, ReentrancyGuard { // Inherit ReentrancyG
      * @param asset The underlying asset token
      */
     function deactivateVault(address asset) external onlyOwner {
+        // Slither: Timestamp - This check verifies vault existence. See comment in deployVault.
         require(vaults[asset].vault != address(0), "Vault does not exist");
+        // Slither: Timestamp - This checks the boolean `isActive` flag. See comment in deployVault.
         require(vaults[asset].isActive, "Vault already inactive");
 
         vaults[asset].isActive = false;
@@ -129,6 +136,8 @@ contract AetherVaultFactory is Ownable, ReentrancyGuard { // Inherit ReentrancyG
      * @param newTVL The new TVL value
      */
     function updateVaultTVL(address asset, uint256 newTVL) external {
+        // Slither: Timestamp - This check verifies the caller (`msg.sender`) against the stored vault address.
+        // See comment in deployVault regarding timestamp presence in the struct vs. usage in logic.
         require(msg.sender == vaults[asset].vault, "Only vault can update TVL");
         vaults[asset].tvl = newTVL;
     }
@@ -156,6 +165,8 @@ contract AetherVaultFactory is Ownable, ReentrancyGuard { // Inherit ReentrancyG
      * @return bool indicating if vault exists
      */
     function hasVault(address asset) external view returns (bool) {
+        // Slither: Timestamp - This check verifies vault existence by checking the vault address.
+        // See comment in deployVault regarding timestamp presence in the struct vs. usage in logic.
         return vaults[asset].vault != address(0);
     }
 

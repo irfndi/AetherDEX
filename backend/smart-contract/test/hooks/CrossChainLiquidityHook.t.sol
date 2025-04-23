@@ -138,8 +138,10 @@ contract CrossChainLiquidityHookTest is Test {
     function test_CrossChainMessageReceive() public {
         address srcAddress = REMOTE_HOOK;
 
-        vm.prank(address(mockEndpoint));
+        // Prepare payload
         bytes memory payload = abi.encode(address(token0), address(token1), int256(1000));
+        // Simulate call from endpoint
+        vm.prank(address(mockEndpoint));
         hook.lzReceive(REMOTE_CHAIN_ID, srcAddress, 0, payload);
     }
 

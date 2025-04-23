@@ -1,0 +1,3 @@
+#!/bin/sh
+# Run Slither static analysis on the smart contracts.
+slither ./backend/smart-contract "$@"

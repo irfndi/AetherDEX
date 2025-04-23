@@ -91,6 +91,8 @@ contract AetherVault is ERC4626 {
         address receiver,
         address owner
     ) public virtual override returns (uint256) {
+        // Slither: Timestamp - The `maxWithdraw` function (part of ERC4626 standard) might implicitly
+        // use block.timestamp if yield accrual depends on it. This is standard for yield-bearing vaults.
         require(assets <= maxWithdraw(owner), "ERC4626: withdraw more than max");
 
         uint256 shares = previewWithdraw(assets);
@@ -125,6 +127,9 @@ contract AetherVault is ERC4626 {
      * @dev Internal function to accrue pending yield
      */
     function _accruePendingYield() internal {
+        // Slither: Timestamp - Using block.timestamp is essential for calculating time-elapsed
+        // yield accrual based on the configured yieldRate. This is a fundamental aspect of
+        // yield-bearing vaults.
         uint256 timeElapsed = block.timestamp - lastYieldTimestamp;
         if (timeElapsed > 0 && yieldRate > 0) {
             uint256 yieldAmount = (timeElapsed * yieldRate) / 1e18;

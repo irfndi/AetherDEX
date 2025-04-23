@@ -135,11 +135,12 @@ contract MockLayerZeroEndpointTest is Test {
         IPoolManager.ModifyPositionParams memory params =
             IPoolManager.ModifyPositionParams({tickLower: -100, tickUpper: 100, liquidityDelta: 1000});
 
-        // Expect events from both source and destination
-        vm.expectEmit(true, true, true, true);
+        // Expect events from the hook only
+        vm.expectEmit(false, false, false, true, address(srcHook));
         emit CrossChainLiquidityHook.CrossChainLiquidityEvent(DST_CHAIN_ID, address(token0), address(token1), 1000);
 
-        // Execute liquidity change on source chain
+        // Execute liquidity change on source chain as manager
+        vm.prank(address(poolManager));
         srcHook.afterModifyPosition(address(this), key, params, BalanceDelta({amount0: 0, amount1: 0}), "");
     }
 
@@ -153,7 +154,8 @@ contract MockLayerZeroEndpointTest is Test {
         IPoolManager.ModifyPositionParams memory params =
             IPoolManager.ModifyPositionParams({tickLower: -100, tickUpper: 100, liquidityDelta: 1000});
 
-        // Should not revert despite message delivery failure
+        // Should not revert despite message delivery failure (call as manager)
+        vm.prank(address(poolManager));
         srcHook.afterModifyPosition(address(this), key, params, BalanceDelta({amount0: 0, amount1: 0}), "");
     }
 

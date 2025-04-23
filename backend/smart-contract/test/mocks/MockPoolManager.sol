@@ -73,13 +73,13 @@ contract MockPoolManager is IPoolManager {
         // The pool will pull tokenIn from this manager contract and send tokenOut to msg.sender (original caller).
         uint256 amountOut = targetPool.swap(amountIn, tokenIn, msg.sender); // Call actual swap
 
-        // 4. Calculate BalanceDelta based on actual in/out
+        // 4. Calculate BalanceDelta based on actual in/out (Pool's Perspective)
         int256 amount0Change;
         int256 amount1Change;
-        if (params.zeroForOne) { // Selling token0 (tokenIn) for token1 (tokenOut)
+        if (params.zeroForOne) { // Pool receives token0 (amountIn), sends token1 (amountOut)
             amount0Change = int256(amountIn);      // Positive: Pool received token0
             amount1Change = -int256(amountOut);    // Negative: Pool sent token1
-        } else { // Selling token1 (tokenIn) for token0 (tokenOut)
+        } else { // Pool receives token1 (amountIn), sends token0 (amountOut)
             amount1Change = int256(amountIn);      // Positive: Pool received token1
             amount0Change = -int256(amountOut);    // Negative: Pool sent token0
         }
