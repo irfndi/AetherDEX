@@ -76,10 +76,10 @@ library TWAPLib {
      */
     function getTWAP(Observation[65535] storage self) internal view returns (uint32) {
         uint32 currentTimestamp = uint32(block.timestamp);
+        // slither-disable-next-line weak-PRNG
         uint32 oldestIndex = (currentTimestamp - 3600) % 65535; // 1-hour window
-
+        // slither-disable-next-line weak-PRNG
         int56 cumulativeDifference = self[currentTimestamp % 65535].cumulativePrice - self[oldestIndex].cumulativePrice;
-
         return uint32(uint56(cumulativeDifference) / 3600);
     }
 }

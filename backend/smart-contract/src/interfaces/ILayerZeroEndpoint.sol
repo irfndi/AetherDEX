@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0
-// ILayerZeroEndpoint.sol
-pragma solidity ^0.8.29; // UPDATED PRAGMA VERSION TO 0.8.28
+pragma solidity ^0.8.29;
 
 interface ILayerZeroEndpoint {
+    // Send a message to the specified destination chain
     function send(
         uint16 _dstChainId,
         bytes calldata _destination,
@@ -11,4 +11,22 @@ interface ILayerZeroEndpoint {
         address _zroPaymentAddress,
         bytes calldata _adapterParams
     ) external payable;
+
+    // Estimate the fees for sending a cross-chain message
+    function estimateFees(
+        uint16 _dstChainId,
+        address _userApplication,
+        bytes calldata _payload,
+        bool _payInZRO,
+        bytes calldata _adapterParam
+    ) external view returns (uint256 nativeFee, uint256 zroFee);
+
+    // Optional: Additional LayerZero endpoint functions that might be needed
+    function receivePayload(
+        uint16 _srcChainId,
+        bytes memory _srcAddress,
+        address _dstAddress,
+        uint64 _nonce,
+        bytes memory _payload
+    ) external;
 }

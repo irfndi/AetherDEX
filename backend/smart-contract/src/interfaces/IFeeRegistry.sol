@@ -1,29 +1,45 @@
 // SPDX-License-Identifier: GPL-3.0
 // IFeeRegistry.sol
-pragma solidity ^0.8.29; // UPDATED PRAGMA VERSION TO 0.8.28
+pragma solidity ^0.8.29; // Updated pragma version
+
+import {PoolKey} from "../types/PoolKey.sol";
+
 /**
  * @title IFeeRegistry
  * @dev Interface for the fee registry contract that manages dynamic fees for token pairs.
  * This registry is used by the DynamicFeeHook to determine the appropriate fee for swaps
  * based on various factors like trading volume and volatility.
  */
-
 interface IFeeRegistry {
     /**
-     * @notice Gets the current fee for a token pair
-     * @dev Returns the fee tier in hundredths of a basis point (0.0001%)
-     * @param token0 The address of the first token in the pair
-     * @param token1 The address of the second token in the pair
-     * @return The current fee tier for the token pair
+     * @dev Defines the configuration for a fee tier.
+     * @param fee The swap fee percentage (in hundredths of a basis point).
+     * @param tickSpacing The distance between usable ticks for this fee tier.
      */
-    function getFee(address token0, address token1) external view returns (uint24);
+    struct FeeConfiguration {
+        uint24 fee;
+        int24 tickSpacing;
+    }
+    /**
+ * @notice Gets the current fee for a pool identified by its key.
+ * @dev Returns the fee tier in hundredths of a basis point (0.0001%).
+ * @param key The PoolKey identifying the pool (tokens, fee, tick spacing, hooks).
+ * @return The current fee tier for the pool.
+ */
+    function getFee(PoolKey calldata key) external view returns (uint24);
 
     /**
-     * @notice Updates the fee for a token pair based on swap activity
-     * @dev Called by the DynamicFeeHook after swaps to adjust fees based on market conditions
-     * @param token0 The address of the first token in the pair
-     * @param token1 The address of the second token in the pair
-     * @param swapVolume The volume of the swap that triggered this update
+     * @notice Updates the fee for a pool based on swap activity.
+     * @dev Called by the DynamicFeeHook after swaps to adjust fees based on market conditions.
+     * @param key The PoolKey identifying the pool.
+ * @param swapVolume The volume of the swap that triggered this update.
+ */
+    function updateFee(PoolKey calldata key, uint256 swapVolume) external;
+
+    /**
+     * @notice Gets the tick spacing associated with a given fee tier.
+     * @param fee The fee tier (in hundredths of a basis point).
+     * @return tickSpacing The corresponding tick spacing, or 0 if the fee tier is not supported.
      */
-    function updateFee(address token0, address token1, uint256 swapVolume) external;
+    function getTickSpacing(uint24 fee) external view returns (int24);
 }

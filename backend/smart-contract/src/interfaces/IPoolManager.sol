@@ -1,45 +1,74 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity ^0.8.29; // UPDATED PRAGMA VERSION TO 0.8.29
-// IPoolManager.sol
-/**
- * @title IPoolManager
- * @dev Interface for the pool manager contract that handles all pool operations.
- * This interface follows the Uniswap V4 pattern and defines the core functionality
- * for interacting with liquidity pools in the AetherDEX ecosystem.
- */
+pragma solidity ^0.8.29;
+
+import {PoolKey} from "../types/PoolKey.sol";
+import {BalanceDelta} from "../types/BalanceDelta.sol";
 
 interface IPoolManager {
-    /**
-     * @dev Parameters for swap operations
-     * @param amountSpecified The amount of tokens to swap, positive for exact input, negative for exact output
-     * @param sqrtPriceLimitX96 The price limit for the swap in Q64.96 format
-     * @param zeroForOne The direction of the swap (true for token0 to token1, false for token1 to token0)
-     */
-    struct SwapParams {
-        int256 amountSpecified;
-        uint160 sqrtPriceLimitX96;
-        bool zeroForOne;
+    struct Pool {
+        address token0;
+        address token1;
+        uint24 fee;
+        int24 tickSpacing;
+        address hooks;
     }
 
-    /**
-     * @dev Parameters for modifying a position (adding or removing liquidity)
-     * @param tickLower The lower tick boundary of the position
-     * @param tickUpper The upper tick boundary of the position
-     * @param liquidityDelta The amount of liquidity to add (positive) or remove (negative)
-     */
     struct ModifyPositionParams {
         int24 tickLower;
         int24 tickUpper;
         int256 liquidityDelta;
     }
-}
 
-/**
- * @dev Represents the change in token balances after an operation
- * @param amount0 The change in balance of token0 (positive for increase, negative for decrease)
- * @param amount1 The change in balance of token1 (positive for increase, negative for decrease)
- */
-struct BalanceDelta {
-    int256 amount0;
-    int256 amount1;
+    struct SwapParams {
+        bool zeroForOne;
+        int256 amountSpecified;
+        uint160 sqrtPriceLimitX96;
+    }
+
+    struct Permissions {
+        bool beforeInitialize;
+        bool afterInitialize;
+        bool beforeModifyPosition;
+        bool afterModifyPosition;
+        bool beforeSwap;
+        bool afterSwap;
+        bool beforeDonate;
+        bool afterDonate;
+    }
+
+    struct DonateParams {
+        address token0;
+        address token1;
+        uint256 amount0;
+        uint256 amount1;
+    }
+
+    function validateHookAddress(bytes32 hookData) external view returns (bool);
+
+    function modifyPosition(PoolKey calldata key, ModifyPositionParams calldata params, bytes calldata hookData)
+        external
+        returns (BalanceDelta memory);
+
+    function swap(PoolKey calldata key, SwapParams calldata params, bytes calldata hookData)
+        external
+        returns (BalanceDelta memory);
+
+    function take(PoolKey calldata key, address recipient, uint256 amount0, uint256 amount1, bytes calldata hookData)
+        external;
+
+    function settle(address recipient)
+        external
+        returns (BalanceDelta memory token0Delta, BalanceDelta memory token1Delta);
+
+    function mint(address recipient, PoolKey calldata key, uint256 amount0, uint256 amount1, bytes calldata hookData)
+        external;
+
+    function burn(address recipient, PoolKey calldata key, uint256 amount0, uint256 amount1, bytes calldata hookData)
+        external;
+
+    function getPool(PoolKey calldata key) external view returns (Pool memory);
+
+    function initialize(PoolKey calldata key, uint160 sqrtPriceX96, bytes calldata hookData) external;
+
+    function donate(PoolKey calldata key, uint256 amount0, uint256 amount1, bytes calldata data) external;
 }

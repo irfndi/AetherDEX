@@ -3,97 +3,273 @@ pragma solidity ^0.8.29;
 
 import {Test} from "forge-std/Test.sol";
 import {Hooks} from "../../src/libraries/Hooks.sol";
+import {Permissions} from "../../src/interfaces/Permissions.sol";
 import {IPoolManager} from "../../src/interfaces/IPoolManager.sol";
 import {PoolKey} from "../../src/types/PoolKey.sol";
-import {BalanceDelta} from "../../src/interfaces/IPoolManager.sol";
+import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
 
 /**
  * @title HooksTest
- * @dev Unit tests for the Hooks library, testing function selectors and inheritance
+ * @notice Unit tests for the Hooks library.
+ * @dev Tests cover function selectors and permission validation logic.
  */
 contract HooksTest is Test {
-    // Mock contract that inherits from Hooks to test the virtual functions
-    MockHooks mockHooks;
+    // --- Test State Variables (Initialized in setUp) ---
+    address constant DUMMY_SENDER = address(0x1);
+    address constant DUMMY_HOOK_TARGET = address(0x2); // Base address without flags
+    PoolKey internal DUMMY_POOL_KEY;
+    IPoolManager.SwapParams internal DUMMY_SWAP_PARAMS;
+    IPoolManager.ModifyPositionParams internal DUMMY_MODIFY_PARAMS;
+    BalanceDelta internal DUMMY_DELTA;
 
+    /**
+     * @notice Sets up the test environment by initializing dummy struct variables.
+     */
     function setUp() public {
-        mockHooks = new MockHooks();
+        DUMMY_POOL_KEY = PoolKey(address(0), address(0), 0, 0, address(0));
+        DUMMY_SWAP_PARAMS = IPoolManager.SwapParams(true, 100, 1);
+        DUMMY_MODIFY_PARAMS = IPoolManager.ModifyPositionParams(0, 0, 0);
+        DUMMY_DELTA = BalanceDelta(10, 20);
     }
 
-    function test_BeforeSwapSelector() public {
-        bytes4 selector = mockHooks.beforeSwap(
-            address(0x1),
-            PoolKey(address(0), address(0), 0, 0, address(0)),
-            IPoolManager.SwapParams(100, 0, false),
-            bytes("")
-        );
+    // --- Test Selectors ---
 
-        assertEq(selector, mockHooks.beforeSwap.selector, "beforeSwap selector mismatch");
+    /**
+     * @notice Tests if the `beforeSwap` function returns the correct selector.
+     */
+    function test_BeforeSwapSelector() public view {
+        // Changed to view because it reads state variables
+        PoolKey memory poolKey = DUMMY_POOL_KEY;
+        IPoolManager.SwapParams memory swapParams = DUMMY_SWAP_PARAMS;
+        bytes memory data = "";
+        bytes4 selector = Hooks.beforeSwap(DUMMY_SENDER, poolKey, swapParams, data);
+        assertEq(selector, Hooks.BEFORE_SWAP_SELECTOR, "beforeSwap selector mismatch");
     }
 
-    function test_AfterSwapSelector() public {
-        bytes4 selector = mockHooks.afterSwap(
-            address(0x1),
-            PoolKey(address(0), address(0), 0, 0, address(0)),
-            IPoolManager.SwapParams(100, 0, false),
-            BalanceDelta(10, 20),
-            bytes("")
-        );
-
-        assertEq(selector, mockHooks.afterSwap.selector, "afterSwap selector mismatch");
+    /**
+     * @notice Tests if the `afterSwap` function returns the correct selector.
+     */
+    function test_AfterSwapSelector() public view {
+        // Changed to view because it reads state variables
+        PoolKey memory poolKey = DUMMY_POOL_KEY;
+        IPoolManager.SwapParams memory swapParams = DUMMY_SWAP_PARAMS;
+        BalanceDelta memory delta = DUMMY_DELTA;
+        bytes memory data = "";
+        bytes4 selector = Hooks.afterSwap(DUMMY_SENDER, poolKey, swapParams, delta, data);
+        assertEq(selector, Hooks.AFTER_SWAP_SELECTOR, "afterSwap selector mismatch");
     }
 
-    function test_BeforeModifyPositionSelector() public {
-        bytes4 selector = mockHooks.beforeModifyPosition(
-            address(0x1),
-            PoolKey(address(0), address(0), 0, 0, address(0)),
-            IPoolManager.ModifyPositionParams(0, 0, 0),
-            bytes("")
-        );
-
-        assertEq(selector, mockHooks.beforeModifyPosition.selector, "beforeModifyPosition selector mismatch");
+    /**
+     * @notice Tests if the `beforeModifyPosition` function returns the correct selector.
+     */
+    function test_BeforeModifyPositionSelector() public view {
+        // Changed to view because it reads state variables
+        PoolKey memory poolKey = DUMMY_POOL_KEY;
+        IPoolManager.ModifyPositionParams memory modifyParams = DUMMY_MODIFY_PARAMS;
+        bytes memory data = "";
+        bytes4 selector = Hooks.beforeModifyPosition(DUMMY_SENDER, poolKey, modifyParams, data);
+        assertEq(selector, Hooks.BEFORE_MODIFY_POSITION_SELECTOR, "beforeModifyPosition selector mismatch");
     }
 
-    function test_AfterModifyPositionSelector() public {
-        bytes4 selector = mockHooks.afterModifyPosition(
-            address(0x1),
-            PoolKey(address(0), address(0), 0, 0, address(0)),
-            IPoolManager.ModifyPositionParams(0, 0, 0),
-            BalanceDelta(10, 20),
-            bytes("")
-        );
-
-        assertEq(selector, mockHooks.afterModifyPosition.selector, "afterModifyPosition selector mismatch");
+    /**
+     * @notice Tests if the `afterModifyPosition` function returns the correct selector.
+     */
+    function test_AfterModifyPositionSelector() public view {
+        // Changed to view because it reads state variables
+        PoolKey memory poolKey = DUMMY_POOL_KEY;
+        IPoolManager.ModifyPositionParams memory modifyParams = DUMMY_MODIFY_PARAMS;
+        BalanceDelta memory delta = DUMMY_DELTA;
+        bytes memory data = "";
+        bytes4 selector = Hooks.afterModifyPosition(DUMMY_SENDER, poolKey, modifyParams, delta, data);
+        assertEq(selector, Hooks.AFTER_MODIFY_POSITION_SELECTOR, "afterModifyPosition selector mismatch");
     }
 
-    function test_HookOverrides() public {
-        // Create a custom hook that overrides the default behavior
-        CustomHook customHook = new CustomHook();
+    // --- Test Permission Logic ---
 
-        // Test that the custom implementation returns a different selector
-        bytes4 selector = customHook.beforeSwap(
-            address(0x1),
-            PoolKey(address(0), address(0), 0, 0, address(0)),
-            IPoolManager.SwapParams(100, 0, false),
-            bytes("")
+    /**
+     * @notice Tests converting a Hooks.Permissions struct to its flag representation.
+     */
+    function test_PermissionsToFlags() public pure {
+        // Test case 1: Only beforeSwap
+        Hooks.Permissions memory p1 = Hooks.Permissions({
+            beforeInitialize: false,
+            afterInitialize: false,
+            beforeModifyPosition: false,
+            afterModifyPosition: false,
+            beforeSwap: true,
+            afterSwap: false,
+            beforeDonate: false,
+            afterDonate: false
+        });
+        uint160 flags1 = Hooks.permissionsToFlags(p1);
+        assertEq(flags1, Hooks.BEFORE_SWAP_FLAG, "Flags mismatch for beforeSwap only");
+
+        // Test case 2: afterSwap and beforeModifyPosition
+        Hooks.Permissions memory p2 = Hooks.Permissions({
+            beforeInitialize: false,
+            afterInitialize: false,
+            beforeModifyPosition: true,
+            afterModifyPosition: false,
+            beforeSwap: false,
+            afterSwap: true,
+            beforeDonate: false,
+            afterDonate: false
+        });
+        uint160 flags2 = Hooks.permissionsToFlags(p2);
+        assertEq(
+            flags2,
+            Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG,
+            "Flags mismatch for afterSwap & beforeModifyPosition"
         );
 
-        assertEq(selector, bytes4(keccak256("customBeforeSwap()")), "Custom hook selector mismatch");
+        // Test case 3: All permissions
+        Hooks.Permissions memory pAll = Hooks.Permissions({
+            beforeInitialize: true,
+            afterInitialize: true,
+            beforeModifyPosition: true,
+            afterModifyPosition: true,
+            beforeSwap: true,
+            afterSwap: true,
+            beforeDonate: true,
+            afterDonate: true
+        });
+        uint160 flagsAll = Hooks.permissionsToFlags(pAll);
+        uint160 expectedAllFlags = (
+            Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG
+                | Hooks.AFTER_MODIFY_POSITION_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG
+                | Hooks.BEFORE_DONATE_FLAG | Hooks.AFTER_DONATE_FLAG
+        );
+        assertEq(flagsAll, expectedAllFlags, "Flags mismatch for all permissions");
+
+        // Test case 4: No permissions
+        Hooks.Permissions memory pNone; // Defaults to false
+        uint160 flagsNone = Hooks.permissionsToFlags(pNone);
+        assertEq(flagsNone, 0, "Flags mismatch for no permissions");
+    }
+
+    /**
+     * @notice Tests the `hasPermission` function for various flag combinations.
+     */
+    function test_HasPermission() public pure {
+        // Manually construct addresses with flags
+        uint160 flags_bs_as = Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG;
+        address hook_bs_as = address(uint160(DUMMY_HOOK_TARGET) | flags_bs_as);
+
+        // Use uint160 flags in assertions
+        assertTrue(Hooks.hasPermission(hook_bs_as, Hooks.BEFORE_SWAP_FLAG), "Should have BEFORE_SWAP");
+        assertTrue(Hooks.hasPermission(hook_bs_as, Hooks.AFTER_SWAP_FLAG), "Should have AFTER_SWAP");
+        assertFalse(Hooks.hasPermission(hook_bs_as, Hooks.BEFORE_MODIFY_POSITION_FLAG), "Should NOT have BEFORE_MODIFY");
+        assertFalse(Hooks.hasPermission(hook_bs_as, Hooks.AFTER_DONATE_FLAG), "Should NOT have AFTER_DONATE");
+
+        // Test with a single flag
+        uint160 flags_bmp = Hooks.BEFORE_MODIFY_POSITION_FLAG;
+        address hook_bmp = address(uint160(DUMMY_HOOK_TARGET) | flags_bmp);
+        assertTrue(Hooks.hasPermission(hook_bmp, Hooks.BEFORE_MODIFY_POSITION_FLAG), "Should have BEFORE_MODIFY");
+        assertFalse(Hooks.hasPermission(hook_bmp, Hooks.BEFORE_SWAP_FLAG), "Should NOT have BEFORE_SWAP");
+
+        // Test with zero flags
+        address hook_none = DUMMY_HOOK_TARGET; // No flags added
+        assertFalse(Hooks.hasPermission(hook_none, Hooks.BEFORE_SWAP_FLAG), "Should have no permissions (BS)");
+        assertFalse(Hooks.hasPermission(hook_none, Hooks.AFTER_DONATE_FLAG), "Should have no permissions (AD)");
+
+        // Test with all flags (using the mask from validateHookAddress)
+        uint160 allFlags = (1 << 8) - 1;
+        address hook_all = address(uint160(DUMMY_HOOK_TARGET) | allFlags);
+        assertTrue(Hooks.hasPermission(hook_all, Hooks.BEFORE_SWAP_FLAG), "Should have BEFORE_SWAP (all flags)");
+        assertTrue(
+            Hooks.hasPermission(hook_all, Hooks.AFTER_INITIALIZE_FLAG), "Should have AFTER_INITIALIZE (all flags)"
+        );
+        assertTrue(Hooks.hasPermission(hook_all, Hooks.BEFORE_DONATE_FLAG), "Should have BEFORE_DONATE (all flags)");
+    }
+
+    /**
+     * @notice Tests the `validateHookAddress` function.
+     * @dev Checks if it correctly identifies valid hook addresses and reverts for invalid ones.
+     */
+    function test_ValidateHookAddress() public { // Removed 'pure' again due to vm.expectRevert
+        // Manually construct addresses with flags
+        uint160 flags_bs = Hooks.BEFORE_SWAP_FLAG;
+        address hook_bs = address(uint160(DUMMY_HOOK_TARGET) | flags_bs);
+        Hooks.validateHookAddress(hook_bs, Hooks.BEFORE_SWAP_FLAG); // Should not revert
+
+        // Valid: Address with multiple flags requesting one of them
+        uint160 flags_bs_amp = Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_MODIFY_POSITION_FLAG;
+        address hook_bs_amp = address(uint160(DUMMY_HOOK_TARGET) | flags_bs_amp);
+        Hooks.validateHookAddress(hook_bs_amp, Hooks.AFTER_MODIFY_POSITION_FLAG); // Should not revert
+
+        // Invalid: Address with BEFORE_SWAP flag requesting AFTER_SWAP permission
+        vm.expectRevert("Hook address missing required flags"); // Expect string revert
+        Hooks.validateHookAddress(hook_bs, Hooks.AFTER_SWAP_FLAG);
+
+        // Invalid: Address with no flags requesting any permission
+        address hook_none = DUMMY_HOOK_TARGET;
+        vm.expectRevert("Hook address missing required flags"); // Expect string revert
+        Hooks.validateHookAddress(hook_none, Hooks.BEFORE_INITIALIZE_FLAG);
+
+        // Invalid: Address with some flags requesting a flag it doesn't have
+        vm.expectRevert("Hook address missing required flags"); // Expect string revert
+        Hooks.validateHookAddress(hook_bs_amp, Hooks.AFTER_SWAP_FLAG);
+
+        // Valid: Requesting zero permissions (should always pass)
+        Hooks.validateHookAddress(hook_bs, 0);
+        Hooks.validateHookAddress(hook_none, 0);
+    }
+
+    /**
+     * @notice Tests manually encoding and decoding permissions flags and target address.
+     */
+    function test_ManualPermissionEncodingDecoding() public pure {
+        uint160 flags1 = Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_DONATE_FLAG;
+        address hook1 = address(uint160(DUMMY_HOOK_TARGET) | flags1);
+        uint160 permissionMask = (1 << 8) - 1; // Mask for the lower 8 bits used for flags
+
+        // Extract flags manually
+        uint160 retrievedFlags1 = uint160(uint160(hook1) & permissionMask);
+        assertEq(retrievedFlags1, flags1, "Retrieved flags mismatch");
+
+        // Extract target manually
+        address retrievedTarget1 = address(uint160(hook1) & (~permissionMask));
+        assertEq(retrievedTarget1, DUMMY_HOOK_TARGET, "Retrieved target mismatch");
+
+        // Test with zero flags
+        address hook_zero = DUMMY_HOOK_TARGET; // No flags added
+        uint160 retrievedFlagsZero = uint160(uint160(hook_zero) & permissionMask);
+        assertEq(retrievedFlagsZero, 0, "Zero flags not retrieved correctly");
+        address retrievedTargetZero = address(uint160(hook_zero) & (~permissionMask));
+        assertEq(retrievedTargetZero, DUMMY_HOOK_TARGET, "Base address changed (zero flags)");
+
+        // Test with all flags
+        uint160 allFlags = (1 << 8) - 1;
+        address hook_all = address(uint160(DUMMY_HOOK_TARGET) | allFlags);
+        uint160 retrievedFlagsAll = uint160(uint160(hook_all) & permissionMask);
+        assertEq(retrievedFlagsAll, allFlags, "All flags not retrieved correctly");
+        address retrievedTargetAll = address(uint160(hook_all) & (~permissionMask));
+        assertEq(retrievedTargetAll, DUMMY_HOOK_TARGET, "Base address changed (all flags)");
+    }
+
+    /**
+     * @notice Tests manually extracting the target address (without flags).
+     */
+    function test_ManualTargetExtraction() public pure {
+        uint160 flags = Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_INITIALIZE_FLAG;
+        address hookWithFlags = address(uint160(DUMMY_HOOK_TARGET) | flags);
+        uint160 permissionMask = (1 << 8) - 1; // Mask for the lower 8 bits used for flags
+
+        // Extract target manually
+        address target = address(uint160(hookWithFlags) & (~permissionMask));
+        assertEq(target, DUMMY_HOOK_TARGET, "Target address mismatch");
+
+        // Test with zero flags
+        address hookZeroFlags = DUMMY_HOOK_TARGET; // No flags added
+        address targetZero = address(uint160(hookZeroFlags) & (~permissionMask));
+        assertEq(targetZero, DUMMY_HOOK_TARGET, "Target address mismatch (zero flags)");
+
+        // Test with address(0) as base
+        address hookZeroBase = address(uint160(address(0)) | flags);
+        address targetZeroBase = address(uint160(hookZeroBase) & (~permissionMask));
+        assertEq(targetZeroBase, address(0), "Target address mismatch (zero base)");
     }
 }
 
-// Mock contract that inherits from Hooks for testing
-contract MockHooks is Hooks {
-// No need to override the functions as we're testing the default implementations
-}
-
-// Custom hook that overrides the default behavior
-contract CustomHook is Hooks {
-    function beforeSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, bytes calldata)
-        external
-        pure
-        override
-        returns (bytes4)
-    {
-        return bytes4(keccak256("customBeforeSwap()"));
-    }
-}
+// Removed MockHooks and CustomHook as they are not needed for testing the library's core logic.
+// The tests now directly call the library functions.

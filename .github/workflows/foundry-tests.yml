@@ -1,0 +1,119 @@
+name: Foundry Tests
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  test:
+    name: Foundry Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend/smart-contract
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          submodules: 'recursive'
+          fetch-depth: 0
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Cache Foundry dependencies
+        uses: actions/cache@v3
+        with:
+          path: |  
+            ~/.foundry/cache
+            ~/.cargo/bin
+            ~/.cargo/registry
+            ~/.cargo/git
+            backend/smart-contract/lib
+            backend/smart-contract/cache
+            backend/smart-contract/out
+          key: ${{ runner.os }}-foundry-${{ hashFiles('backend/smart-contract/foundry.toml', 'backend/smart-contract/lib/*/') }}
+          restore-keys: |
+            ${{ runner.os }}-foundry-
+
+      - name: Install dependencies
+        run: forge install
+
+      - name: Run tests
+        env:
+          FOUNDRY_PROFILE: ci
+        run: forge test --via-ir -v
+
+  static-analysis:
+    name: Static Analysis
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend/smart-contract
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          submodules: 'recursive'
+          fetch-depth: 0
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Cache Foundry dependencies
+        uses: actions/cache@v3
+        with:
+          path: |  
+            ~/.foundry/cache
+            ~/.cargo/bin
+            ~/.cargo/registry
+            ~/.cargo/git
+            backend/smart-contract/lib
+            backend/smart-contract/cache
+            backend/smart-contract/out
+          key: ${{ runner.os }}-foundry-${{ hashFiles('backend/smart-contract/foundry.toml', 'backend/smart-contract/lib/*/') }}
+          restore-keys: |
+            ${{ runner.os }}-foundry-
+
+      - name: Install dependencies
+        run: forge install
+
+      - name: Install Python and uv
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Cache uv
+        uses: actions/cache@v3
+        with:
+          path: |  
+            ~/.cache/uv
+            ~/.local/bin/uv
+          key: ${{ runner.os }}-uv-${{ hashFiles('**/requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Cache Python packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install Slither
+        run: uv pip install --system slither-analyzer
+
+      - name: Run Slither
+        run: slither . --filter-paths "lib|test|script" --exclude naming-convention,solc-version,pragma,unused-state

@@ -1,60 +1,109 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity ^0.8.29; // UPDATED PRAGMA VERSION TO 0.8.28
+pragma solidity ^0.8.29;
 
+// import {console2} from "forge-std/console2.sol"; // Removed unused import
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol"; // Import ReentrancyGuard
 import "./AetherPool.sol";
+import {IFeeRegistry} from "./interfaces/IFeeRegistry.sol";
+import {PoolKey} from "./types/PoolKey.sol"; // Import PoolKey
 
 /**
  * @title AetherFactory
  * @author AetherDEX
- * @notice Factory contract to deploy and manage AetherPool contracts.
+ * @notice Factory contract to deploy and manage AetherPool contracts using CREATE2.
  */
-contract AetherFactory {
+contract AetherFactory is ReentrancyGuard { // Inherit ReentrancyGuard
+    /** @notice Address of the fee registry contract (optional, may not be needed if validation happens elsewhere) */
+    IFeeRegistry public immutable feeRegistry; // Keep for potential future use or context, but not used in createPool
+
     /**
-     * @notice Mapping to get the pool address for a given token pair.
-     * @notice Returns pool address of the AetherPool contract for the token pair, or address(0) if no pool exists.
+     * @notice Mapping from PoolKey hash (poolId) to the deployed pool address.
+     * @notice Returns pool address of the AetherPool contract for the given PoolKey hash, or address(0) if no pool exists.
      */
-    mapping(address => mapping(address => address)) public getPool;
+    mapping(bytes32 => address) public getPool;
     /**
      * @notice Array of all deployed pool addresses.
      * @notice Returns array of AetherPool contract addresses.
      */
     address[] public allPools;
-    uint256 public nonce; // ADD NONCE
+    // uint256 public nonce; // Removed nonce, CREATE2 salt provides uniqueness
 
     /**
-     * @notice Creates a new AetherPool contract for the given token pair.
-     * @param tokenA Address of token A.
-     * @param tokenB Address of token B.
-     * @return pool address of the newly created AetherPool contract.
-     * @dev Reverts if token addresses are identical, zero address, or if a pool already exists for the token pair.
+     * @notice Emitted when a new pool is created.
+     * @param poolId The hash of the PoolKey identifying the pool.
+     * @param pool The address of the newly deployed AetherPool contract.
+     * @param key The PoolKey used to create the pool.
      */
-    function createPool(address tokenA, address tokenB) external returns (address pool) {
-        nonce++; // INCREMENT NONCE
-        require(tokenA != tokenB, "IDENTICAL_ADDRESSES");
-        (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
-        require(token0 != address(0), "ZERO_ADDRESS");
-        console2.log("ZERO_ADDRESS check passed"); // Log after ZERO_ADDRESS check
-        require(getPool[token0][token1] == address(0), "POOL_EXISTS");
-        console2.log("POOL_EXISTS check passed"); // Log after POOL_EXISTS check
+    event PoolCreated(bytes32 indexed poolId, address indexed pool, PoolKey key);
 
-        // bytes memory bytecode = type(AetherPool).creationCode;
-        // // bytes32 salt = keccak256(abi.encodePacked(token0, token1, block.number, nonce)); // USE block.number IN SALT
-        // // bytes32 salt = keccak256(abi.encodePacked(token0, token1, block.number, nonce)); // USE block.number IN SALT
-        // bytes32 salt = keccak256(abi.encodePacked(token0, token1, block.number, nonce, address(this))); // ADD FACTORY ADDRESS TO SALT
-        // assembly {
-        //     pool := create2(0, add(bytecode, 32), mload(bytecode), salt)
-        // }
-        pool = address(new AetherPool(address(this))); // DEPLOY WITH STANDARD NEW KEYWORD
-        console2.log("Pool created at:", pool); // Log pool address after creation
-        // if (pool == address(0)) revert("CREATE2_FAILED"); // REVERT IF CREATE2 FAILS
-        // console2.log("CREATE2 check passed"); // Log after CREATE2 check
-        AetherPool(pool).initialize(token0, token1);
-        console2.log("Pool initialized"); // Log after initialization
+    /**
+     * @notice Constructor to set the fee registry address.
+     * @param _feeRegistry Address of the IFeeRegistry implementation.
+     */
+    constructor(address _feeRegistry) {
+        // FeeRegistry might still be relevant for other factory functions or context,
+        // but the require check is removed as it's not strictly needed for CREATE2 deployment logic.
+        // require(_feeRegistry != address(0), "ZERO_ADDRESS");
+        feeRegistry = IFeeRegistry(_feeRegistry);
+    }
 
-        getPool[token0][token1] = pool;
-        getPool[token1][token0] = pool;
+    /**
+     * @notice Creates a new AetherPool contract for the given PoolKey using CREATE2.
+     * @param key The PoolKey struct containing all parameters (tokens, fee, tickSpacing, hooks).
+     * @return pool Address of the newly created AetherPool contract.
+     * @dev Deploys deterministically using CREATE2. Reverts if tokens are identical or zero,
+     *      or if a pool with the same PoolKey hash already exists.
+     *      Assumes token0 < token1 in the provided key.
+     */
+    function createPool(PoolKey memory key) external nonReentrant returns (address pool) { // Added nonReentrant modifier
+        // --- Checks ---
+        require(key.token0 != key.token1, "IDENTICAL_ADDRESSES");
+        require(key.token0 != address(0), "ZERO_ADDRESS_TOKEN0"); // Check token0 specifically
+        // require(key.token1 != address(0), "ZERO_ADDRESS_TOKEN1"); // token1 implicitly checked by token0 < token1 convention
+        require(key.token0 < key.token1, "UNSORTED_TOKENS"); // Enforce convention
+
+        // Calculate poolId (hash of the key)
+        bytes32 poolId = keccak256(abi.encode(key));
+        require(getPool[poolId] == address(0), "POOL_EXISTS");
+
+        // --- Effects (Record state changes before interaction) ---
+        // Store a placeholder or mark as pending before deployment?
+        // For CREATE2, we know the address beforehand, but let's deploy first
+        // then update state *before* initialize call.
+
+        // --- Interaction (Deploy) ---
+        // Prepare for CREATE2 deployment
+        // Slither: Too-many-digits - `type(AetherPool).creationCode` is a standard Solidity construct
+        // to get the deployment bytecode of a contract. The large literal is inherent to this construct.
+        // slither-disable-next-line too-many-digits
+        bytes memory bytecode = type(AetherPool).creationCode;
+        // Pass the factory address to the AetherPool constructor
+        bytes memory constructorArgs = abi.encode(address(this));
+        bytes memory deploymentCode = abi.encodePacked(bytecode, constructorArgs);
+        bytes32 salt = poolId; // Use the unique poolId as the salt
+
+        // Deploy using CREATE2
+        // Slither: Assembly - Inline assembly is used here for the CREATE2 opcode, which allows
+        // for deterministic deployment addresses based on the salt (poolId). This is a standard
+        // and necessary pattern for factory contracts using CREATE2.
+        assembly {
+            pool := create2(0, add(deploymentCode, 0x20), mload(deploymentCode), salt)
+        }
+        require(pool != address(0), "CREATE2_FAILED");
+        // require(pool != address(0), "Pool deployment failed"); // Redundant check, CREATE2_FAILED covers it.
+
+        // --- Effects (Update state *before* external initialize call) ---
+        getPool[poolId] = pool;
         allPools.push(pool);
-        return pool;
+        emit PoolCreated(poolId, pool, key); // Emit event before external call
+
+        // --- Interaction (Initialize) ---
+        // Initialize the newly created pool
+        // Note: AetherPool.initialize currently only uses token0, token1, and fee.
+        // It ignores tickSpacing and hooks from the PoolKey.
+        AetherPool(pool).initialize(key.token0, key.token1, key.fee);
+
+        // return pool; // Already defined in function signature
     }
 
     /**

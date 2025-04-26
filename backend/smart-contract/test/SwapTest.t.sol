@@ -6,12 +6,11 @@ import "forge-std/console2.sol";
 import "forge-std/Test.sol";
 import "../src/AetherPool.sol";
 import "../src/AetherFactory.sol";
+import "../src/FeeRegistry.sol"; // Added FeeRegistry import
+import "../src/types/PoolKey.sol"; // Added PoolKey import
 import "../src/libraries/TransferHelper.sol"; // Import TransferHelper for safeTransfer
 
-interface IERC20 { // Define IERC20 interface here - KEPT ONLY ONCE, NOW AT TOP LEVEL
-    event Approval(address indexed owner, address indexed spender, uint256 value);
-    event Transfer(address indexed from, address indexed to, uint256 value);
-}
+
 
 // Simple MockERC20 contract for testing
 contract MockToken is
@@ -68,8 +67,26 @@ contract AetherTest is
 {
     AetherPool public pool;
     AetherFactory public factory;
+    FeeRegistry public feeRegistry; // Added FeeRegistry instance
     MockToken public tokenA; // Use MockToken instead of MockERC20
     MockToken public tokenB;
+    PoolKey public poolKeyAB; // Store the key used in setUp
+    bytes32 public poolIdAB; // Store the poolId used in setUp
+
+    // Helper function to create PoolKey and calculate poolId
+    function _createPoolKeyAndId(address token0, address token1, uint24 fee, int24 tickSpacing, address hooks)
+        internal pure returns (PoolKey memory key, bytes32 poolId)
+    {
+        require(token0 < token1, "UNSORTED_TOKENS");
+        key = PoolKey({
+            token0: token0,
+            token1: token1,
+            fee: fee,
+            tickSpacing: tickSpacing,
+            hooks: hooks
+        });
+        poolId = keccak256(abi.encode(key));
+    }
 
     function setUp() public {
         tokenA = new MockToken("TokenA", "TKNA", 18); // Deploy MockToken tokens
@@ -78,8 +95,23 @@ contract AetherTest is
         tokenB = new MockToken("TokenB", "TKNB", 18);
         if (address(tokenB) == address(0)) revert("TokenB deployment failed"); // Check if tokenB deployment failed
 
-        factory = new AetherFactory(); // Deploy factory
-        address poolAddress = factory.createPool(address(tokenA), address(tokenB)); // Create pool using factory
+        // Ensure canonical order
+        address _token0 = address(tokenA) < address(tokenB) ? address(tokenA) : address(tokenB);
+        address _token1 = address(tokenA) < address(tokenB) ? address(tokenB) : address(tokenA);
+
+        feeRegistry = new FeeRegistry(address(this)); // Deploy FeeRegistry
+        factory = new AetherFactory(address(feeRegistry)); // Deploy factory with FeeRegistry
+
+        // Define PoolKey parameters (assuming 3000 fee, 60 tickSpacing, no hooks)
+        uint24 fee = 3000;
+        int24 tickSpacing = 60;
+        address hooks = address(0);
+        (poolKeyAB, poolIdAB) = _createPoolKeyAndId(_token0, _token1, fee, tickSpacing, hooks);
+
+        // Add fee configuration to registry before creating pool
+        feeRegistry.addFeeConfiguration(fee, tickSpacing);
+
+        address poolAddress = factory.createPool(poolKeyAB); // Create pool using PoolKey
         pool = AetherPool(poolAddress); // Get pool from factory
         console2.log("Pool address:", address(pool));
         console2.log("TokenA address:", address(tokenA));
@@ -103,7 +135,8 @@ contract AetherTest is
     }
 
     function test_createPool() public view {
-        assertEq(address(pool), factory.getPool(address(tokenA), address(tokenB)), "Pool address mismatch");
+        // Use poolId calculated in setUp
+        assertEq(address(pool), factory.getPool(poolIdAB), "Pool address mismatch");
     }
 
     function test_initializePool() public {
@@ -111,8 +144,23 @@ contract AetherTest is
         MockToken newTokenA = new MockToken("NewTokenA", "NTKNA", 18);
         MockToken newTokenB = new MockToken("NewTokenB", "NTKNB", 18);
 
+        // Ensure canonical order
+        address _token0 = address(newTokenA) < address(newTokenB) ? address(newTokenA) : address(newTokenB);
+        address _token1 = address(newTokenA) < address(newTokenB) ? address(newTokenB) : address(newTokenA);
+
+        // Define PoolKey parameters (assuming 3000 fee, 60 tickSpacing, no hooks)
+        uint24 fee = 3000;
+        int24 tickSpacing = 60;
+        address hooks = address(0);
+        (PoolKey memory newKey, ) = _createPoolKeyAndId(_token0, _token1, fee, tickSpacing, hooks);
+
+        // Add fee configuration if not already present
+        if (!feeRegistry.isSupportedFeeTier(fee)) {
+             feeRegistry.addFeeConfiguration(fee, tickSpacing);
+        }
+
         // Create pool through factory
-        address newPoolAddress = factory.createPool(address(newTokenA), address(newTokenB));
+        address newPoolAddress = factory.createPool(newKey);
         AetherPool newPool = AetherPool(newPoolAddress);
 
         // Verify pool is initialized correctly
@@ -125,16 +173,18 @@ contract AetherTest is
         assertTrue(newPool.initialized(), "Pool should be initialized after factory creation");
 
         // Verify that re-initialization reverts
-        vm.startPrank(address(factory));
-        vm.expectRevert("INITIALIZED");
-        newPool.initialize(address(newTokenA), address(newTokenB));
-        vm.stopPrank();
+        // vm.startPrank(address(factory)); // No need to prank factory
+        vm.expectRevert("ALREADY_INITIALIZED"); // Use correct revert string from AetherPool
+        // Call initialize with correct signature (token0, token1, fee)
+        newPool.initialize(_token0, _token1, fee);
+        // vm.stopPrank(); // No need to stop prank
     }
 
     function test_swapTokens() public {
         uint256 amountIn = 10 ether;
-        // Calculate expected amount using x*y=k formula
-        uint256 amountInWithFee = amountIn * 997 / 1000;
+        // Calculate expected amount using x*y=k formula and the actual pool fee
+        uint256 currentFee = pool.fee(); // Get actual fee from pool
+        uint256 amountInWithFee = (amountIn * (10000 - currentFee)) / 10000; // Use actual fee
         (uint256 reserve0, uint256 reserve1) = pool.getReserves();
         uint256 expectedAmountOut = (amountInWithFee * reserve1) / (reserve0 + amountInWithFee);
 
@@ -151,8 +201,8 @@ contract AetherTest is
         console2.log("Pool reserve0 before swap:", pool.reserve0());
         console2.log("Pool reserve1 before swap:", pool.reserve1());
 
-        // Execute swap
-        pool.swap(amountIn, address(tokenA), address(this), address(this));
+        // Execute swap (removed sender argument)
+        pool.swap(amountIn, address(tokenA), address(this));
         vm.stopPrank();
 
         // Check final state
@@ -184,8 +234,9 @@ contract AetherTest is
     function test_reverseSwapTokens() public {
         uint256 amountIn = 10 ether;
 
-        // Calculate expected amount using x*y=k formula
-        uint256 amountInWithFee = amountIn * 997 / 1000;
+        // Calculate expected amount using x*y=k formula and the actual pool fee
+        uint256 currentFee = pool.fee(); // Get actual fee from pool
+        uint256 amountInWithFee = (amountIn * (10000 - currentFee)) / 10000; // Use actual fee
         (uint256 reserve0, uint256 reserve1) = pool.getReserves();
         uint256 expectedAmountOut = (amountInWithFee * reserve0) / (reserve1 + amountInWithFee);
 
@@ -199,8 +250,8 @@ contract AetherTest is
         uint256 balanceBeforeSwap = tokenB.balanceOf(address(this));
         tokenB.approve(address(pool), amountIn);
 
-        // Execute swap
-        pool.swap(amountIn, address(tokenB), address(this), address(this));
+        // Execute swap (removed sender argument)
+        pool.swap(amountIn, address(tokenB), address(this));
         vm.stopPrank();
 
         // Check final state

@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.29; // UPDATED PRAGMA VERSION TO 0.8.29
+pragma solidity ^0.8.29;
 
-import "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
+import {console2} from "forge-std/console2.sol";
 
 contract MinimalTest is Test {
-    function test_minimalTest() public pure {
-        assertTrue(true);
+    function setUp() public pure {
+        console2.log("Setting up test");
+    }
+
+    function testBasic() public pure {
+        console2.log("Running basic test");
+        assertTrue(true, "This test should always pass");
     }
 }
