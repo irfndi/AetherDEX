@@ -27,7 +27,7 @@ jobs:
           version: nightly
 
       - name: Cache Foundry dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |  
             ~/.foundry/cache
@@ -68,7 +68,7 @@ jobs:
           version: nightly
 
       - name: Cache Foundry dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |  
             ~/.foundry/cache
@@ -92,7 +92,7 @@ jobs:
           cache: 'pip'
 
       - name: Cache uv
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |  
             ~/.cache/uv
@@ -105,7 +105,7 @@ jobs:
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
 
       - name: Cache Python packages
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
