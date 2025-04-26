@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0
+
+/*
+Created by irfndi (github.com/irfndi) - Apr 2025
+Email: join.mantap@gmail.com
+*/
+
 pragma solidity ^0.8.29;
 
 import {Test} from "forge-std/Test.sol";
@@ -7,18 +13,19 @@ import {MockChainNetworks} from "../mocks/MockChainNetworks.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {ICCIPRouter} from "../../src/interfaces/ICCIPRouter.sol";
 import {IHyperlane} from "../../src/interfaces/IHyperlane.sol";
-import {AetherRouter} from "../../src/AetherRouter.sol";
-import {AetherPool} from "../../src/AetherPool.sol";
+import {AetherRouterCrossChain} from "../../src/primary/AetherRouterCrossChain.sol";
 import {IAetherPool} from "../../src/interfaces/IAetherPool.sol";
 import {MockCCIPRouter} from "../mocks/MockCCIPRouter.sol";
 import {MockHyperlane} from "../mocks/MockHyperlane.sol";
-import {FeeRegistry} from "../../src/FeeRegistry.sol";
+import {FeeRegistry} from "../../src/primary/FeeRegistry.sol";
 import {MockPoolManager} from "../mocks/MockPoolManager.sol";
+import {AetherVaultFactory} from "../../src/vaults/AetherVaultFactory.sol";
+import {IPoolManager, PoolKey} from "../../src/interfaces/IPoolManager.sol";
 
 contract SmartRoutingIntegrationTest is Test {
     // Core contracts
     MockChainNetworks public networks;
-    AetherRouter public router;
+    AetherRouterCrossChain public router;
     MockCCIPRouter public ccipRouter;
     MockHyperlane public hyperlane;
     FeeRegistry public feeRegistry;
@@ -58,11 +65,10 @@ contract SmartRoutingIntegrationTest is Test {
         testChains[2] = networks.OPTIMISM_CHAIN_ID();
 
         // Create mock pool and poolManager for router initialization
-        AetherPool initialPool = new AetherPool(address(this)); // Assuming factory address is 'this'
         MockPoolManager initialManager = new MockPoolManager(address(0)); // Pass only hook address
 
         // Deploy router with messaging integration
-        router = new AetherRouter(
+        router = new AetherRouterCrossChain(
             address(this), // owner
             address(ccipRouter),
             address(hyperlane),
@@ -91,16 +97,28 @@ contract SmartRoutingIntegrationTest is Test {
             (token0, token1) = (token1, token0);
         }
 
-        // Deploy and initialize pool
-        AetherPool pool = new AetherPool(address(this)); // Assuming factory address is 'this'
-        pool.initialize(token0, token1, DEFAULT_FEE); // Removed last argument
+        // Use placeholder pool address
+        address placeholderPoolAddress = address(uint160(address(0)) + 0x100 + chainId); // Use base address + offset for unique placeholder
 
         // Deploy pool manager with initialized pool
-        MockPoolManager manager = new MockPoolManager(address(0));  // Pass only hook address
+        MockPoolManager manager = new MockPoolManager(address(0)); // Pass only hook address
         poolManagers[chainId] = address(manager);
-        pools[chainId] = address(pool);
 
-        _addInitialLiquidity(chainId, token0, token1, address(pool));
+        // Create pool key and register placeholder
+        PoolKey memory key = PoolKey({
+            token0: token0,
+            token1: token1,
+            fee: DEFAULT_FEE,
+            tickSpacing: 60, // Assume default
+            hooks: address(0)
+        });
+        bytes32 poolId = keccak256(abi.encode(key));
+        manager.setPool(poolId, placeholderPoolAddress);
+
+        // Store the placeholder address
+        pools[chainId] = placeholderPoolAddress;
+
+        _addInitialLiquidity(chainId, token0, token1, placeholderPoolAddress);
     }
 
     function _setupCrossChainRoutes(uint16[] memory chains) internal {
@@ -112,14 +130,15 @@ contract SmartRoutingIntegrationTest is Test {
         }
     }
 
-    function _addInitialLiquidity(uint16 /* chainId */, address token0, address token1, address pool) internal {
+    function _addInitialLiquidity(uint16, /* chainId */ address token0, address token1, address pool) internal {
         MockERC20(token0).mint(address(this), INITIAL_LIQUIDITY);
         MockERC20(token1).mint(address(this), INITIAL_LIQUIDITY);
 
         MockERC20(token0).approve(pool, INITIAL_LIQUIDITY);
         MockERC20(token1).approve(pool, INITIAL_LIQUIDITY);
 
-        AetherPool(pool).mint(address(this), INITIAL_LIQUIDITY, INITIAL_LIQUIDITY);
+        // TODO: Add liquidity via PoolManager or update test logic
+        // IAetherPool(pool).mint(address(this), INITIAL_LIQUIDITY, INITIAL_LIQUIDITY); // Old incompatible call
     }
 
     function _fundTestUsers() internal {
@@ -130,7 +149,7 @@ contract SmartRoutingIntegrationTest is Test {
     struct TestParams {
         uint16 chainId;
         address pool;
-        address token0; 
+        address token0;
         address token1;
         uint256 amountIn;
         uint256 amountOut;
@@ -139,7 +158,7 @@ contract SmartRoutingIntegrationTest is Test {
 
     function test_SingleChainRoute() public {
         TestParams memory params = _setupSingleChainTest();
-        
+
         vm.startPrank(alice);
         MockERC20(params.token0).mint(alice, SWAP_AMOUNT);
         MockERC20(params.token0).approve(address(router), SWAP_AMOUNT);
@@ -153,8 +172,8 @@ contract SmartRoutingIntegrationTest is Test {
             params.token1,
             params.amountIn,
             params.amountOut, // Using amountOut as amountOutMin for this test
-            DEFAULT_FEE,      // Pass fee
-            block.timestamp   // Pass deadline
+            DEFAULT_FEE, // Pass fee
+            block.timestamp // Pass deadline
         );
 
         assertTrue(MockERC20(params.token0).balanceOf(alice) == 0, "Token0 not spent");
@@ -162,21 +181,16 @@ contract SmartRoutingIntegrationTest is Test {
         vm.stopPrank();
     }
 
-    function _setupSingleChainTest() internal returns (TestParams memory) {
+    function _setupSingleChainTest() internal view returns (TestParams memory) {
         TestParams memory params;
         params.chainId = networks.ETHEREUM_CHAIN_ID();
         params.pool = pools[params.chainId];
-        params.token0 = AetherPool(params.pool).token0();
-        params.token1 = AetherPool(params.pool).token1();
+        (params.token0, params.token1) = IAetherPool(params.pool).tokens();
         params.amountIn = SWAP_AMOUNT;
-        
+
         // Get optimal route
-        (params.amountOut, params.routeData) = router.getOptimalRoute(
-            params.token0, 
-            params.token1, 
-            params.amountIn, 
-            params.chainId
-        );
+        (params.amountOut, params.routeData) =
+            router.getOptimalRoute(params.token0, params.token1, params.amountIn, params.chainId);
         return params;
     }
 
@@ -186,8 +200,10 @@ contract SmartRoutingIntegrationTest is Test {
 
         address srcPool = pools[srcChain];
         address dstPool = pools[dstChain];
-        address token0 = AetherPool(srcPool).token0();
-        address token1 = AetherPool(dstPool).token1();
+        (address srcToken0, ) = IAetherPool(srcPool).tokens();
+        (, address dstToken1) = IAetherPool(dstPool).tokens();
+        address token0 = srcToken0;
+        address token1 = dstToken1;
 
         vm.startPrank(alice);
         MockERC20(token0).mint(alice, SWAP_AMOUNT);
@@ -224,8 +240,10 @@ contract SmartRoutingIntegrationTest is Test {
 
         address srcPool = pools[path[0]];
         address dstPool = pools[path[2]];
-        address token0 = AetherPool(srcPool).token0();
-        address token1 = AetherPool(dstPool).token1();
+        (address srcToken0, ) = IAetherPool(srcPool).tokens();
+        (, address dstToken1) = IAetherPool(dstPool).tokens();
+        address token0 = srcToken0;
+        address token1 = dstToken1;
 
         vm.startPrank(alice);
         MockERC20(token0).mint(alice, SWAP_AMOUNT);

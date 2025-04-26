@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0
+
+/*
+Created by irfndi (github.com/irfndi) - Apr 2025
+Email: join.mantap@gmail.com
+*/
+
 pragma solidity ^0.8.29;
 
 import {Test} from "forge-std/Test.sol";
-import {AetherRouter} from "../../src/AetherRouter.sol";
+import {AetherRouterCrossChain} from "../../src/primary/AetherRouterCrossChain.sol";
 import {MockCCIPRouter} from "../mocks/MockCCIPRouter.sol";
 import {MockHyperlane} from "../mocks/MockHyperlane.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
@@ -21,7 +27,7 @@ interface IEvents {
 }
 
 contract InteroperabilityIntegrationTest is Test, IEvents {
-    AetherRouter public router;
+    AetherRouterCrossChain public router;
     MockCCIPRouter public ccipRouter;
     MockHyperlane public hyperlane;
     MockERC20 public tokenA;
@@ -44,7 +50,7 @@ contract InteroperabilityIntegrationTest is Test, IEvents {
         hyperlane = new MockHyperlane();
 
         // Deploy router with proper hook flags, passing 'this' for mock manager and factory
-        router = new AetherRouter(
+        router = new AetherRouterCrossChain(
             address(this), // owner
             address(ccipRouter),
             address(hyperlane),
@@ -53,7 +59,6 @@ contract InteroperabilityIntegrationTest is Test, IEvents {
             address(this), // factory - using this contract as a mock placeholder
             500 // maxSlippage - 5%
         );
-
 
         // Setup test accounts
         vm.deal(address(this), INITIAL_BALANCE);
@@ -81,22 +86,15 @@ contract InteroperabilityIntegrationTest is Test, IEvents {
 
         // Mock CCIP message sending to return true before execution
         vm.mockCall(
-            address(ccipRouter),
-            abi.encodeWithSelector(ccipRouter.sendCrossChainMessage.selector),
-            abi.encode(true)
+            address(ccipRouter), abi.encodeWithSelector(ccipRouter.sendCrossChainMessage.selector), abi.encode(true)
         );
 
         // Execute cross-chain transfer using CCIP
-        
+
         // Get expected route hash from router
-        bytes32 expectedRouteHash = keccak256(abi.encodePacked(
-            address(tokenA),
-            address(tokenB),
-            amount,
-            ETH_CHAIN_ID,
-            ARBITRUM_CHAIN_ID
-        ));
-        
+        bytes32 expectedRouteHash =
+            keccak256(abi.encodePacked(address(tokenA), address(tokenB), amount, ETH_CHAIN_ID, ARBITRUM_CHAIN_ID));
+
         vm.expectEmit(true, true, true, true);
         emit CrossChainRouteExecuted(
             address(this),
@@ -141,12 +139,8 @@ contract InteroperabilityIntegrationTest is Test, IEvents {
         );
 
         // Mock Hyperlane dispatch to return true
-        vm.mockCall(
-            address(hyperlane), 
-            abi.encodeWithSelector(hyperlane.dispatch.selector),
-            abi.encode(true)
-        );
-        
+        vm.mockCall(address(hyperlane), abi.encodeWithSelector(hyperlane.dispatch.selector), abi.encode(true));
+
         // Verify Hyperlane message dispatch occurred
         vm.expectCall(
             address(hyperlane),

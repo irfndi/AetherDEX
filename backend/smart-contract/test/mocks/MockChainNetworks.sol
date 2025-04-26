@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0
+
+/*
+Created by irfndi (github.com/irfndi) - Apr 2025
+Email: join.mantap@gmail.com
+*/
+
 pragma solidity ^0.8.29;
 
 import {MockERC20} from "./MockERC20.sol";
@@ -112,21 +118,12 @@ contract MockChainNetworks {
         uint256 baseFee,
         string memory nativeTokenSymbol
     ) internal {
-        address nativeToken = address(new MockERC20(
-            nativeTokenSymbol,
-            nativeTokenSymbol,
-            18
-        ));
+        address nativeToken = address(new MockERC20(nativeTokenSymbol, nativeTokenSymbol, 18));
 
         address[] memory tokens = new address[](1);
         tokens[0] = nativeToken;
 
-        chainInfo[chainId] = ChainInfo({
-            name: name,
-            blockTime: blockTime,
-            baseFee: baseFee,
-            supportedTokens: tokens
-        });
+        chainInfo[chainId] = ChainInfo({name: name, blockTime: blockTime, baseFee: baseFee, supportedTokens: tokens});
 
         nativeTokens[chainId][address(0)] = nativeToken;
         blockTimes[chainId] = blockTime;
@@ -137,19 +134,13 @@ contract MockChainNetworks {
         return nativeTokens[chainId][address(0)];
     }
 
-    function getChainInfo(uint16 chainId) external view returns (
-        string memory name,
-        uint256 blockTime,
-        uint256 baseFee,
-        address[] memory tokens
-    ) {
+    function getChainInfo(uint16 chainId)
+        external
+        view
+        returns (string memory name, uint256 blockTime, uint256 baseFee, address[] memory tokens)
+    {
         ChainInfo storage info = chainInfo[chainId];
-        return (
-            info.name,
-            info.blockTime,
-            info.baseFee,
-            info.supportedTokens
-        );
+        return (info.name, info.blockTime, info.baseFee, info.supportedTokens);
     }
 
     function mintNativeToken(uint16 chainId, address to, uint256 amount) external {

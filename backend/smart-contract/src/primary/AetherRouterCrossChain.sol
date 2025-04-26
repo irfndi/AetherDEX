@@ -1,23 +1,29 @@
 // SPDX-License-Identifier: GPL-3.0
+
+/*
+Created by irfndi (github.com/irfndi) - Apr 2025
+Email: join.mantap@gmail.com
+*/
+
 pragma solidity ^0.8.29;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol"; // Reverted to correct path
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {ICCIPRouter} from "./interfaces/ICCIPRouter.sol";
-import {IHyperlane} from "./interfaces/IHyperlane.sol";
-import {IPoolManager} from "./interfaces/IPoolManager.sol";
+import {ICCIPRouter} from "../interfaces/ICCIPRouter.sol";
+import {IHyperlane} from "../interfaces/IHyperlane.sol";
+import {IAetherPool} from "../interfaces/IAetherPool.sol"; // Correct interface import
+import {IPoolManager} from "../interfaces/IPoolManager.sol"; // Import IPoolManager for structs
 import {AetherFactory} from "./AetherFactory.sol"; // Import AetherFactory
-import {PoolKey} from "./types/PoolKey.sol";
-import {BalanceDelta} from "./types/BalanceDelta.sol";
-import {Hooks} from "./libraries/Hooks.sol";
-import {FixedPoint} from "./libraries/FixedPoint.sol";
-import {TransferHelper} from "./libraries/TransferHelper.sol";
+import {PoolKey} from "../types/PoolKey.sol";
+import {BalanceDelta} from "../types/BalanceDelta.sol";
+import {Hooks} from "../libraries/Hooks.sol";
+import {FixedPoint} from "../libraries/FixedPoint.sol";
 import "forge-std/console.sol";
-import {TickMath} from "../lib/v4-core/src/libraries/TickMath.sol"; // Use relative path
+import {TickMath} from "v4-core/libraries/TickMath.sol";
+import {BaseRouter} from "./BaseRouter.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 // Error definitions
 error InvalidAmount(uint256 amount);
@@ -44,7 +50,7 @@ error InvalidFeeTier(uint24 fee);
 error SwapFailed(string reason);
 
 /**
- * @title AetherRouter
+ * @title AetherRouterCrossChain
  * @notice Core contract for handling multi-path token swaps across chains
  * @dev Implements cross-chain routing using CCIP and Hyperlane protocols
  * Features include:
@@ -55,7 +61,7 @@ error SwapFailed(string reason);
  * @custom:security Reentrancy protection via ReentrancyGuard
  * @custom:security Pausable protection via whenNotPaused
  */
-contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
+contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
     // Flag to bypass EOA check for testing
     bool public testMode;
 
@@ -384,18 +390,17 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         _validateExecuteRouteInput(tokenIn, tokenOut, amountIn, amountOutMin, fee, deadline);
 
         // 2. Prepare Swap (Transfer In, Get PoolKey, Approve)
-        PoolKey memory key = _prepareSwap(tokenIn, tokenOut, amountIn, fee);
+        PoolKey memory key = _prepareSwap(tokenIn, tokenOut, fee);
 
         // 3. Execute Pool Swap
-        BalanceDelta memory balanceDelta = _executePoolSwap(key, amountIn);
+        (BalanceDelta memory balanceDelta, bool zeroForOne) = _executePoolSwap(key, tokenIn, amountIn); // Pass tokenIn
 
         // 4. Process Results (Check Slippage, Transfer Out)
         amountOut = _processSwapOutput(
-            tokenIn, // Needed for event emission
-            tokenOut,
-            amountIn, // Needed for event emission
+            key,
             amountOutMin,
-            balanceDelta
+            balanceDelta,
+            zeroForOne // Pass the actual swap direction
         );
 
         // 5. Emit Event
@@ -429,93 +434,89 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
      * @notice Internal function to prepare for the swap: transfer tokens, get PoolKey, approve PoolManager
      * @return key The PoolKey for the swap
      */
-    function _prepareSwap(address tokenIn, address tokenOut, uint256 amountIn, uint24 fee)
-        internal
-        returns (PoolKey memory key)
-    {
-        // Transfer input tokens from user to this router
-        TransferHelper.safeTransferFrom(tokenIn, msg.sender, address(this), amountIn); // User -> Router
-
-        // Fetch tickSpacing from the FeeRegistry via the factory
-        int24 tickSpacing = factory.feeRegistry().getTickSpacing(fee);
-        if (tickSpacing == 0) revert InvalidFeeTier(fee); // Ensure fee tier is supported
+    function _prepareSwap(address tokenIn, address tokenOut, uint24 fee) internal pure returns (PoolKey memory key) {
+        // Sort tokens for consistent PoolKey creation
+        address _token0 = tokenIn < tokenOut ? tokenIn : tokenOut;
+        address _token1 = tokenIn < tokenOut ? tokenOut : tokenIn;
 
         key = PoolKey({
-            token0: tokenIn, // Already validated tokenIn < tokenOut
-            token1: tokenOut,
+            token0: _token0,
+            token1: _token1,
             fee: fee,
-            tickSpacing: tickSpacing,
+            tickSpacing: 0, // Removed tickSpacing
             hooks: address(0) // Assuming no hooks for basic swap
         });
 
-        // Router approves the Pool Manager
-        _safeApprove(tokenIn, address(poolManager), amountIn);
+        // REMOVED: Router should not handle approvals. The user must approve the poolManager directly.
+        // TransferHelper._safeApprove(tokenIn, address(poolManager), amountIn); // Approve manager
     }
 
     /**
      * @notice Internal function to execute the swap via the PoolManager
      * @param key The PoolKey for the swap
+     * @param tokenIn The actual input token address (needed to determine swap direction)
      * @param amountIn The amount of tokenIn being swapped
      * @return balanceDelta The result of the swap
+     * @return zeroForOne The calculated swap direction (true if swapping token0 for token1)
      */
-    function _executePoolSwap(PoolKey memory key, uint256 amountIn)
+    function _executePoolSwap(PoolKey memory key, address tokenIn, uint256 amountIn)
         internal
-        returns (BalanceDelta memory balanceDelta)
+        returns (BalanceDelta memory balanceDelta, bool zeroForOne)
     {
-        // Determine swap direction and price limit
-        bool zeroForOne = true; // Since tokenIn < tokenOut, we are selling token0 (tokenIn) for token1 (tokenOut)
+        // 1. Determine swap direction based on actual tokenIn vs key.token0
+        zeroForOne = tokenIn == key.token0;
 
-        // Using wide bounds for sqrtPriceLimitX96 for now:
-        uint160 sqrtPriceLimitX96 = zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
+        // 2. Get target pool address
+        address poolAddress = poolManager.getPool(key);
+        require(poolAddress != address(0), "ROUTER: Pool not found");
 
-        IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
-            zeroForOne: zeroForOne,
-            amountSpecified: int256(amountIn), // Positive amount to swap *in*
-            sqrtPriceLimitX96: sqrtPriceLimitX96 // Set price limit based on direction
-        });
+        // 3. Transfer tokenIn from msg.sender (original caller) to the pool
+        // The caller must have approved the router for this amount.
+        _transferToPool(tokenIn, poolAddress, amountIn);
 
-        // Execute Swap via PoolManager
-        try poolManager.swap(key, params, bytes("")) returns (BalanceDelta memory returnedDelta) {
-            balanceDelta = returnedDelta;
-        } catch Error(string memory reason) {
-            revert SwapFailed(reason);
-        } catch (bytes memory lowLevelData) {
-            revert SwapFailed(string(lowLevelData));
+        // 4. Call swap directly on the pool, sending output back to the original caller (msg.sender)
+        uint256 amountOut = _swap(poolAddress, amountIn, tokenIn, msg.sender);
+
+        // 5. Construct BalanceDelta
+        int256 amount0Delta;
+        int256 amount1Delta;
+        if (zeroForOne) {
+            // Swapping token0 for token1: Input token0 (negative), Output token1 (positive)
+            amount0Delta = -int256(amountIn);
+            amount1Delta = int256(amountOut);
+        } else {
+            // Swapping token1 for token0: Input token1 (negative), Output token0 (positive)
+            amount1Delta = -int256(amountIn);
+            amount0Delta = int256(amountOut);
         }
+        balanceDelta = BalanceDelta(amount0Delta, amount1Delta);
     }
 
     /**
      * @notice Internal function to process the swap output: check results, check slippage, transfer tokens out
-     * @param tokenOut The output token address
+     * @param key The PoolKey for the swap
      * @param amountOutMin The minimum acceptable output amount
      * @param balanceDelta The result from the PoolManager swap
+     * @param zeroForOne The actual swap direction
      * @return amountOut The final output amount
      */
     function _processSwapOutput(
-        address, /*tokenIn*/ // Needed for event emission - Commmented out name to fix lint
-        address tokenOut,
-        uint256, /*amountIn*/ // Needed for event emission - Commmented out name to fix lint
+        PoolKey memory key,
         uint256 amountOutMin,
-        BalanceDelta memory balanceDelta
+        BalanceDelta memory balanceDelta,
+        bool zeroForOne // Actual swap direction
     ) internal returns (uint256 amountOut) {
-        // Assuming zeroForOne = true (selling token0 for token1) based on executeRoute logic
-        // Pool perspective: amount0 should be positive (received), amount1 should be negative (sent)
-
-        // Check if pool received the input token (token0)
-        if (balanceDelta.amount0 <= 0) {
-            revert SwapFailed("Pool did not take input tokens");
+        if (zeroForOne) {
+            // Swapping token0 for token1 (Router perspective: amount0 < 0, amount1 > 0)
+            if (balanceDelta.amount0 >= 0) revert SwapFailed("z4o: Router delta shows no token0 sent");
+            if (balanceDelta.amount1 <= 0) revert SwapFailed("z4o: Router delta shows no token1 received");
+            amountOut = uint256(balanceDelta.amount1); // Amount of token1 received (already positive)
+        } else {
+            // Swapping token1 for token0 (Router perspective: amount1 < 0, amount0 > 0)
+            if (balanceDelta.amount1 >= 0) revert SwapFailed("o4z: Router delta shows no token1 sent");
+            if (balanceDelta.amount0 <= 0) revert SwapFailed("o4z: Router delta shows no token0 received");
+            amountOut = uint256(balanceDelta.amount0); // Amount of token0 received (already positive)
         }
-        // Optional: Check if amount received is roughly correct (can be complex due to fees)
-        // if (uint256(balanceDelta.amount0) < amountIn * 99 / 100) { // Allow some tolerance
-        //     revert SwapFailed("Pool took significantly less input than expected");
-        // }
-
-        // Check if pool sent the output token (token1)
-        if (balanceDelta.amount1 >= 0) {
-            revert SwapFailed("Pool did not return output tokens");
-        }
-
-        amountOut = uint256(-balanceDelta.amount1); // Amount of tokenOut received (absolute value)
 
         // Check slippage against minimum output
         if (amountOut < amountOutMin) {
@@ -523,7 +524,12 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         }
 
         // Final Transfer to user
-        TransferHelper.safeTransfer(tokenOut, msg.sender, amountOut);
+        address tokenOutAddress = zeroForOne ? key.token1 : key.token0;
+        require(
+            IERC20(tokenOutAddress).balanceOf(address(this)) >= amountOut,
+            "RTR: Insufficient output token balance for final transfer"
+        );
+        IERC20(tokenOutAddress).safeTransfer(msg.sender, amountOut);
 
         // Event emission moved to main function after all steps succeed
     }
@@ -661,7 +667,7 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
     /**
      * @notice Executes a cross-chain route by sending tokens via a bridge (CCIP or Hyperlane).
      * @param params The parameters for the cross-chain route execution.
-     * @dev [FIXME]: Slither flags potential reentrancy due to external calls (_sendCrossChainMessage, _refundExcessFee)
+     * @dev FIXME:: Slither flags potential reentrancy due to external calls (_sendCrossChainMessage, _refundExcessFee)
      *       before the CrossChainRouteExecuted event. Current structure follows Checks-Effects-Interactions by emitting
      *       the event *after* interactions. However, the external calls themselves carry inherent reentrancy risk if
      *       the recipient/bridge contracts call back unexpectedly. Ensure called contracts are trusted.
@@ -685,13 +691,7 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         // --- Effects (State Changes & Events) ---
         // Emit success event *before* external interactions
         bytes32 routeHash = keccak256(
-            abi.encodePacked(
-                params.tokenIn,
-                params.tokenOut,
-                params.amountIn,
-                params.srcChain,
-                params.dstChain
-            )
+            abi.encodePacked(params.tokenIn, params.tokenOut, params.amountIn, params.srcChain, params.dstChain)
         );
         emit CrossChainRouteExecuted(
             msg.sender,
@@ -757,7 +757,7 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
                 // Check return value for CCIP sendMessage (returns bytes32 messageId)
                 // CCIP sendMessage returns a message ID. Revert if it's zero bytes32.
                 require(messageId != bytes32(0), "CCIP sendMessage failed: Invalid message ID");
-                // [TODO]: Further review if CCIP messageId needs more specific handling.
+                // TODO: Further review if CCIP messageId needs more specific handling.
             } catch Error(string memory reason) {
                 revert OperationFailed(reason); // Revert with original reason
             } catch (bytes memory lowLevelData) {
@@ -849,7 +849,7 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
         if (msg.value == 0) revert InsufficientFee(0.1 ether, msg.value);
 
         // Execute first swap using TransferHelper
-        TransferHelper.safeTransferFrom(tokenIn, msg.sender, address(this), amountIn);
+        IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
         // require(success, "Transfer failed"); // TransferHelper handles success check
         uint256 currentAmount = amountIn;
 
@@ -866,7 +866,7 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
                 // Check return value for CCIP sendMessage (returns bytes32 messageId)
                 bytes32 messageId = ccipRouter.sendMessage{value: 0.1 ether}(path[i + 1], recipient, payload);
                 require(messageId != bytes32(0), "CCIP sendMessage failed in multi-path");
-                // [TODO]: Further review if CCIP messageId needs more specific handling.
+                // TODO: Further review if CCIP messageId needs more specific handling.
             } else {
                 // Check return value for Hyperlane dispatch (returns bytes32 messageId)
                 bytes32 messageId =

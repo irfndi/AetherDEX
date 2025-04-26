@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0
+
+/*
+Created by irfndi (github.com/irfndi) - Apr 2025
+Email: join.mantap@gmail.com
+*/
+
 pragma solidity ^0.8.29;
 
 import {Test, console2} from "forge-std/Test.sol";
-import {FeeRegistry} from "../src/FeeRegistry.sol";
+import {FeeRegistry} from "../src/primary/FeeRegistry.sol";
 import {IFeeRegistry} from "../src/interfaces/IFeeRegistry.sol";
 import {Ownable} from "../src/access/Ownable.sol"; // Import Ownable for error selector
 import {PoolKey} from "../src/types/PoolKey.sol";
@@ -95,10 +101,10 @@ contract FeeRegistryTest is Test {
         assertFalse(registry.isSupportedFeeTier(newFee), "New tier should not be supported yet"); // Pass only fee
         registry.addFeeConfiguration(newFee, newTickSpacing);
         assertTrue(registry.isSupportedFeeTier(newFee), "New tier should be supported after adding"); // Pass only fee
-        // Removed incorrect assertEq using getFee(tickSpacing).
-        // getFee(tickSpacing) returns the *lowest* fee for that spacing, which might not be `newFee`
-        // if a lower fee already existed or is added later for the same spacing.
-        // The isSupportedFeeTier check is sufficient here.
+            // Removed incorrect assertEq using getFee(tickSpacing).
+            // getFee(tickSpacing) returns the *lowest* fee for that spacing, which might not be `newFee`
+            // if a lower fee already existed or is added later for the same spacing.
+            // The isSupportedFeeTier check is sufficient here.
     }
 
     function test_AddFeeConfiguration_Revert_NonOwner() public {
@@ -149,19 +155,37 @@ contract FeeRegistryTest is Test {
         assertTrue(registry.isSupportedFeeTier(FEE_TIER_1), "Tier 1 should be supported");
         assertTrue(registry.isSupportedFeeTier(FEE_TIER_4_LOW), "Tier 4 should be supported");
         // Create a dummy key for getFee lookup
-        PoolKey memory key1 = PoolKey({token0: address(1), token1: address(2), fee: FEE_TIER_1, tickSpacing: TICK_SPACING_1, hooks: address(0)});
+        PoolKey memory key1 = PoolKey({
+            token0: address(1),
+            token1: address(2),
+            fee: FEE_TIER_1,
+            tickSpacing: TICK_SPACING_1,
+            hooks: address(0)
+        });
         assertEq(registry.getFee(key1), FEE_TIER_4_LOW, "getFee should return the lowest fee");
 
         uint24 higherFee = 600;
         registry.addFeeConfiguration(higherFee, TICK_SPACING_1);
         assertTrue(registry.isSupportedFeeTier(higherFee), "Higher fee tier should be supported");
-        PoolKey memory key2 = PoolKey({token0: address(1), token1: address(2), fee: higherFee, tickSpacing: TICK_SPACING_1, hooks: address(0)});
+        PoolKey memory key2 = PoolKey({
+            token0: address(1),
+            token1: address(2),
+            fee: higherFee,
+            tickSpacing: TICK_SPACING_1,
+            hooks: address(0)
+        });
         assertEq(registry.getFee(key2), FEE_TIER_4_LOW, "getFee should still return the lowest");
 
         uint24 evenLowerFee = 300;
         registry.addFeeConfiguration(evenLowerFee, TICK_SPACING_1);
         assertTrue(registry.isSupportedFeeTier(evenLowerFee), "Even lower fee tier should be supported");
-        PoolKey memory key3 = PoolKey({token0: address(1), token1: address(2), fee: evenLowerFee, tickSpacing: TICK_SPACING_1, hooks: address(0)});
+        PoolKey memory key3 = PoolKey({
+            token0: address(1),
+            token1: address(2),
+            fee: evenLowerFee,
+            tickSpacing: TICK_SPACING_1,
+            hooks: address(0)
+        });
         assertEq(registry.getFee(key3), evenLowerFee, "getFee should return the new lowest fee");
     }
 
@@ -186,46 +210,95 @@ contract FeeRegistryTest is Test {
     // --- Test getFee (Static Fees) ---
 
     function test_GetFee_Static_Success_SingleFeeForTickSpacing() public view {
-        PoolKey memory key2 = PoolKey({token0: address(1), token1: address(2), fee: FEE_TIER_2, tickSpacing: TICK_SPACING_2, hooks: address(0)});
+        PoolKey memory key2 = PoolKey({
+            token0: address(1),
+            token1: address(2),
+            fee: FEE_TIER_2,
+            tickSpacing: TICK_SPACING_2,
+            hooks: address(0)
+        });
         assertEq(registry.getFee(key2), FEE_TIER_2);
-        PoolKey memory key3 = PoolKey({token0: address(1), token1: address(2), fee: FEE_TIER_3, tickSpacing: TICK_SPACING_3, hooks: address(0)});
+        PoolKey memory key3 = PoolKey({
+            token0: address(1),
+            token1: address(2),
+            fee: FEE_TIER_3,
+            tickSpacing: TICK_SPACING_3,
+            hooks: address(0)
+        });
         assertEq(registry.getFee(key3), FEE_TIER_3);
     }
 
     function test_GetFee_Static_Success_MultipleFeesForTickSpacing() public view {
-        PoolKey memory key1 = PoolKey({token0: address(1), token1: address(2), fee: FEE_TIER_1, tickSpacing: TICK_SPACING_1, hooks: address(0)});
+        PoolKey memory key1 = PoolKey({
+            token0: address(1),
+            token1: address(2),
+            fee: FEE_TIER_1,
+            tickSpacing: TICK_SPACING_1,
+            hooks: address(0)
+        });
         assertEq(registry.getFee(key1), FEE_TIER_4_LOW, "Should return lowest fee");
     }
 
     function test_GetFee_Static_Success_AfterAddingLowerFee() public {
-        PoolKey memory key1 = PoolKey({token0: address(1), token1: address(2), fee: FEE_TIER_1, tickSpacing: TICK_SPACING_1, hooks: address(0)});
+        PoolKey memory key1 = PoolKey({
+            token0: address(1),
+            token1: address(2),
+            fee: FEE_TIER_1,
+            tickSpacing: TICK_SPACING_1,
+            hooks: address(0)
+        });
         assertEq(registry.getFee(key1), FEE_TIER_4_LOW);
         uint24 evenLowerFee = 350;
         registry.addFeeConfiguration(evenLowerFee, TICK_SPACING_1);
-        PoolKey memory keyLower = PoolKey({token0: address(1), token1: address(2), fee: evenLowerFee, tickSpacing: TICK_SPACING_1, hooks: address(0)});
+        PoolKey memory keyLower = PoolKey({
+            token0: address(1),
+            token1: address(2),
+            fee: evenLowerFee,
+            tickSpacing: TICK_SPACING_1,
+            hooks: address(0)
+        });
         assertEq(registry.getFee(keyLower), evenLowerFee);
     }
 
     function test_GetFee_Static_Success_AfterAddingHigherFee() public {
-        PoolKey memory key1 = PoolKey({token0: address(1), token1: address(2), fee: FEE_TIER_1, tickSpacing: TICK_SPACING_1, hooks: address(0)});
+        PoolKey memory key1 = PoolKey({
+            token0: address(1),
+            token1: address(2),
+            fee: FEE_TIER_1,
+            tickSpacing: TICK_SPACING_1,
+            hooks: address(0)
+        });
         assertEq(registry.getFee(key1), FEE_TIER_4_LOW);
         uint24 higherFee = 600;
         registry.addFeeConfiguration(higherFee, TICK_SPACING_1);
-        PoolKey memory keyHigher = PoolKey({token0: address(1), token1: address(2), fee: higherFee, tickSpacing: TICK_SPACING_1, hooks: address(0)});
+        PoolKey memory keyHigher = PoolKey({
+            token0: address(1),
+            token1: address(2),
+            fee: higherFee,
+            tickSpacing: TICK_SPACING_1,
+            hooks: address(0)
+        });
         assertEq(registry.getFee(keyHigher), FEE_TIER_4_LOW); // Still lowest
     }
 
     function test_GetFee_Static_Revert_TickSpacingNotSupported() public {
         int24 unsupportedTickSpacing = 999;
         uint24 dummyFee = 500; // Fee doesn't matter if tick spacing isn't supported
-        PoolKey memory key = PoolKey({token0: address(1), token1: address(2), fee: dummyFee, tickSpacing: unsupportedTickSpacing, hooks: address(0)});
+        PoolKey memory key = PoolKey({
+            token0: address(1),
+            token1: address(2),
+            fee: dummyFee,
+            tickSpacing: unsupportedTickSpacing,
+            hooks: address(0)
+        });
         // Correct: Reference the error from FeeRegistry directly. It reverts with FeeTierNotSupported(dummyFee)
         vm.expectRevert(abi.encodeWithSelector(FeeRegistry.FeeTierNotSupported.selector, dummyFee));
         registry.getFee(key);
     }
 
     function test_GetFee_Static_Revert_ZeroTickSpacing() public {
-        PoolKey memory key = PoolKey({token0: address(1), token1: address(2), fee: FEE_TIER_1, tickSpacing: 0, hooks: address(0)});
+        PoolKey memory key =
+            PoolKey({token0: address(1), token1: address(2), fee: FEE_TIER_1, tickSpacing: 0, hooks: address(0)});
         // Correct: getFee reverts with InvalidFeeConfiguration for tickSpacing <= 0 (This check might happen inside PoolKey logic or getFee)
         // Assuming getFee checks the key's tickSpacing. Let's expect FeeTierNotSupported as the registry won't find a match for fee 0.
         vm.expectRevert(abi.encodeWithSelector(FeeRegistry.FeeTierNotSupported.selector, FEE_TIER_1));
@@ -233,7 +306,8 @@ contract FeeRegistryTest is Test {
     }
 
     function test_GetFee_Static_Revert_NegativeTickSpacing() public {
-        PoolKey memory key = PoolKey({token0: address(1), token1: address(2), fee: FEE_TIER_1, tickSpacing: -10, hooks: address(0)});
+        PoolKey memory key =
+            PoolKey({token0: address(1), token1: address(2), fee: FEE_TIER_1, tickSpacing: -10, hooks: address(0)});
         // Correct: getFee reverts with InvalidFeeConfiguration for tickSpacing <= 0 (This check might happen inside PoolKey logic or getFee)
         // Assuming getFee checks the key's tickSpacing. Let's expect FeeTierNotSupported as the registry won't find a match for fee 0.
         vm.expectRevert(abi.encodeWithSelector(FeeRegistry.FeeTierNotSupported.selector, FEE_TIER_1));
@@ -295,7 +369,11 @@ contract FeeRegistryTest is Test {
     function test_RegisterDynamicFeePool_Revert_ZeroUpdaterAddress() public {
         bytes32 poolKeyBCHash = _getPoolKeyHash(poolKeyBC); // Calculate hash for the error
         // Correct: Reference the error from FeeRegistry directly
-        vm.expectRevert(abi.encodeWithSelector(FeeRegistry.InvalidInitialFeeOrUpdater.selector, poolKeyBCHash, FEE_TIER_2, address(0)));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                FeeRegistry.InvalidInitialFeeOrUpdater.selector, poolKeyBCHash, FEE_TIER_2, address(0)
+            )
+        );
         registry.registerDynamicFeePool(poolKeyBC, FEE_TIER_2, address(0));
     }
 
@@ -354,7 +432,9 @@ contract FeeRegistryTest is Test {
         vm.startPrank(dynamicFeeUpdater);
         // Correct: Reference the error from FeeRegistry directly, error uses hash
         vm.expectRevert(
-            abi.encodeWithSelector(FeeRegistry.UnauthorizedUpdater.selector, poolKeyABHash, dynamicFeeUpdater, newUpdater)
+            abi.encodeWithSelector(
+                FeeRegistry.UnauthorizedUpdater.selector, poolKeyABHash, dynamicFeeUpdater, newUpdater
+            )
         );
         registry.updateFee(poolKeyAB, 1e18);
         vm.stopPrank();
@@ -412,7 +492,6 @@ contract FeeRegistryTest is Test {
         assertEq(updater, address(0), "Updater should be default (address(0)) for unregistered pool");
         // No revert expected here
     }
-
 
     // --- Test Ownership ---
 

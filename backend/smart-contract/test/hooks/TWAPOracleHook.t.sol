@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0
+
+/*
+Created by irfndi (github.com/irfndi) - Apr 2025
+Email: join.mantap@gmail.com
+*/
+
 pragma solidity ^0.8.29;
 
 import {Test} from "forge-std/Test.sol";
@@ -10,7 +16,7 @@ import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockPoolManager} from "../mocks/MockPoolManager.sol";
 import {HookFactory} from "../utils/HookFactory.sol";
 import {Hooks} from "../../src/libraries/Hooks.sol";
-import {AetherPool} from "../../src/AetherPool.sol";
+import {IAetherPool} from "../../src/interfaces/IAetherPool.sol";
 
 contract TWAPOracleHookTest is Test {
     TWAPOracleHook public twapHook;
@@ -19,18 +25,19 @@ contract TWAPOracleHookTest is Test {
     MockERC20 public token1;
     PoolKey public poolKey;
     HookFactory public factory;
+    IAetherPool public pool;
 
     // Constants aligned with TWAPOracleHook
-    uint256 constant INITIAL_PRICE = 1000;    // Base price
-    uint256 constant SCALE = 1000;            // Price scaling factor
-    uint256 constant AMOUNT_SCALE = 1e15;     // Amount scaling factor
-    uint256 constant TEST_AMOUNT = 1e15;      // Base amount for tests
+    uint256 constant INITIAL_PRICE = 1000; // Base price
+    uint256 constant SCALE = 1000; // Price scaling factor
+    uint256 constant AMOUNT_SCALE = 1e15; // Amount scaling factor
+    uint256 constant TEST_AMOUNT = 1e15; // Base amount for tests
 
     function setUp() public {
         // Deploy tokens
         token0 = new MockERC20("Token0", "TK0", 18);
         token1 = new MockERC20("Token1", "TK1", 18);
-        
+
         // Ensure token0 < token1
         if (address(token0) > address(token1)) {
             (token0, token1) = (token1, token0);
@@ -40,9 +47,13 @@ contract TWAPOracleHookTest is Test {
         factory = new HookFactory();
         twapHook = factory.deployTWAPHook(address(this), uint32(3600));
 
-        // Deploy and initialize pool
-        AetherPool pool = new AetherPool(address(this)); // Assuming factory address is 'this' for simplicity
-        pool.initialize(address(token0), address(token1), uint24(3000)); // Removed last argument
+        // Deploy Pool (using Vyper version via vm.deployCode)
+        bytes memory poolBytecode = vm.getCode("src/security/AetherPool.vy");
+        bytes memory constructorArgs = abi.encode(address(token0), address(token1), 500); // Example fee
+        address deployedPoolAddress;
+        assembly { deployedPoolAddress := create(0, add(poolBytecode, 0x20), mload(poolBytecode)) }
+        require(deployedPoolAddress != address(0), "Pool deployment failed");
+        pool = IAetherPool(deployedPoolAddress); // Assign to interface variable
 
         // Deploy pool manager with pool and hook
         poolManager = new MockPoolManager(address(twapHook)); // Pass only hook address
@@ -69,15 +80,15 @@ contract TWAPOracleHookTest is Test {
 
     function test_TWAPCalculation() public {
         // Initial price observation already set in setUp()
-        
+
         // Simulate series of swaps
-        simulateSwap(true, TEST_AMOUNT, TEST_AMOUNT);               // 1:1 ratio
+        simulateSwap(true, TEST_AMOUNT, TEST_AMOUNT); // 1:1 ratio
         vm.warp(block.timestamp + 60);
-        
-        simulateSwap(true, TEST_AMOUNT, TEST_AMOUNT * 11 / 10);    // 1:1.1 ratio
+
+        simulateSwap(true, TEST_AMOUNT, TEST_AMOUNT * 11 / 10); // 1:1.1 ratio
         vm.warp(block.timestamp + 60);
-        
-        simulateSwap(true, TEST_AMOUNT, TEST_AMOUNT * 9 / 10);     // 1:0.9 ratio
+
+        simulateSwap(true, TEST_AMOUNT, TEST_AMOUNT * 9 / 10); // 1:0.9 ratio
         vm.warp(block.timestamp + 60);
 
         uint256 twap = twapHook.consult(address(token0), address(token1), 120);
@@ -99,7 +110,7 @@ contract TWAPOracleHookTest is Test {
         // Deploy and set up second pair
         MockERC20 token2 = new MockERC20("Token2", "TK2", 18);
         MockERC20 token3 = new MockERC20("Token3", "TK3", 18);
-        
+
         if (address(token2) > address(token3)) {
             (token2, token3) = (token3, token2);
         }
@@ -117,7 +128,7 @@ contract TWAPOracleHookTest is Test {
         // Simulate trades on both pairs
         simulateSwap(true, TEST_AMOUNT, TEST_AMOUNT);
         vm.warp(block.timestamp + 60);
-        
+
         simulateSwapWithAmounts(poolKey2, true, TEST_AMOUNT, TEST_AMOUNT * 2);
         vm.warp(block.timestamp + 60);
 
@@ -131,12 +142,12 @@ contract TWAPOracleHookTest is Test {
     function test_PriceAccumulation() public {
         simulateSwap(true, TEST_AMOUNT, TEST_AMOUNT);
         vm.warp(block.timestamp + 60);
-        
+
         simulateSwap(true, TEST_AMOUNT, TEST_AMOUNT * 11 / 10);
         vm.warp(block.timestamp + 60);
 
         uint256 twap = twapHook.consult(address(token0), address(token1), 60);
-        uint256 expectedPrice = (INITIAL_PRICE * 110) / 100;  // 10% increase
+        uint256 expectedPrice = (INITIAL_PRICE * 110) / 100; // 10% increase
         assertApproxEqRel(twap, expectedPrice, 0.1e18);
     }
 
@@ -145,24 +156,16 @@ contract TWAPOracleHookTest is Test {
         simulateSwapWithAmounts(poolKey, zeroForOne, amount0, amount1);
     }
 
-    function simulateSwapWithAmounts(
-        PoolKey memory key,
-        bool zeroForOne,
-        uint256 amount0,
-        uint256 amount1
-    ) internal {
+    function simulateSwapWithAmounts(PoolKey memory key, bool zeroForOne, uint256 amount0, uint256 amount1) internal {
         require(amount0 > 0 && amount1 > 0, "Invalid amounts");
-        
+
         BalanceDelta memory delta = BalanceDelta({
             amount0: zeroForOne ? -int256(amount0) : int256(amount1),
             amount1: zeroForOne ? int256(amount1) : -int256(amount0)
         });
 
-        IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
-            zeroForOne: zeroForOne,
-            amountSpecified: int256(amount0),
-            sqrtPriceLimitX96: 0
-        });
+        IPoolManager.SwapParams memory params =
+            IPoolManager.SwapParams({zeroForOne: zeroForOne, amountSpecified: int256(amount0), sqrtPriceLimitX96: 0});
 
         twapHook.afterSwap(address(0), key, params, delta, "");
     }

@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0
+
+/*
+Created by irfndi (github.com/irfndi) - Apr 2025
+Email: join.mantap@gmail.com
+*/
+
 pragma solidity ^0.8.29;
 
 contract MockHyperlane {
@@ -31,11 +37,7 @@ contract MockHyperlane {
     }
 
     // Implement dispatch function from IHyperlane interface
-    function dispatch(uint16 destination, bytes calldata, bytes calldata)
-        external
-        payable
-        returns (bytes32)
-    {
+    function dispatch(uint16 destination, bytes calldata, bytes calldata) external payable returns (bytes32) {
         _verified[0][destination] = true;
         // Return a non-zero value to simulate successful dispatch acceptance in mock
         return bytes32(uint256(1));

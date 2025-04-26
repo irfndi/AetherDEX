@@ -1,14 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0
+
+/*
+Created by irfndi (github.com/irfndi) - Apr 2025
+Email: join.mantap@gmail.com
+*/
+
 pragma solidity ^0.8.29;
 
 import {Test} from "forge-std/Test.sol";
 import {CrossChainLiquidityHook} from "../../src/hooks/CrossChainLiquidityHook.sol";
-import {MockPoolManager} from "./MockPoolManager.sol";
-import {MockERC20} from "./MockERC20.sol";
+import {MockPoolManager} from "../mocks/MockPoolManager.sol";
+import {MockERC20} from "../mocks/MockERC20.sol";
 import {IPoolManager} from "../../src/interfaces/IPoolManager.sol";
 import {PoolKey} from "../../src/types/PoolKey.sol";
 import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
-import {AetherPool} from "../../src/AetherPool.sol";
+import {IAetherPool} from "../../src/interfaces/IAetherPool.sol";
 
 contract MockLayerZeroEndpoint {
     mapping(uint16 => address) public remoteEndpoints;
@@ -58,8 +64,7 @@ contract MockLayerZeroEndpoint {
         require(dstAddress != address(0), "Invalid destination");
 
         // Deliver the message to the destination contract
-        try CrossChainLiquidityHook(payable(dstAddress)).lzReceive(_srcChainId, _sender, 0, _payload)
-        {
+        try CrossChainLiquidityHook(payable(dstAddress)).lzReceive(_srcChainId, _sender, 0, _payload) {
             emit MessageReceived(_srcChainId, abi.encodePacked(_sender), dstAddress, 0, _payload);
         } catch {
             // In a real implementation, we would handle failed deliveries
@@ -95,24 +100,39 @@ contract MockLayerZeroEndpointTest is Test {
         token0 = new MockERC20("Token0", "TKN0", 18);
         token1 = new MockERC20("Token1", "TKN1", 18);
 
-        // Deploy and initialize pool
-        AetherPool pool = new AetherPool(address(this)); // Assuming factory address is 'this'
-        pool.initialize(address(token0), address(token1), uint24(3000)); // Removed last argument
+        // Deploy pool manager first
+        poolManager = new MockPoolManager(address(0)); // No global hook needed here
+
+        // Use placeholder pool address
+        address placeholderPoolAddress = address(0x1);
+
+        // Register placeholder pool with manager
+        PoolKey memory key = PoolKey({
+            token0: address(token0) < address(token1) ? address(token0) : address(token1),
+            token1: address(token0) < address(token1) ? address(token1) : address(token0),
+            fee: 3000,
+            tickSpacing: 60, // Assume default
+            hooks: address(0) // No hook for this specific setup
+        });
+        bytes32 poolId = keccak256(abi.encode(key));
+        poolManager.setPool(poolId, placeholderPoolAddress);
 
         // Deploy LayerZero endpoint
         lzEndpoint = new MockLayerZeroEndpoint();
 
-        // Deploy pool manager first (needed for hook deployment)
-        // Note: We pass a placeholder for the hook initially, or deploy the hook later if needed by manager constructor
-        // Assuming MockPoolManager constructor doesn't strictly need the final hook address immediately
-        poolManager = new MockPoolManager(address(0)); // Pass only hook address
-
-        // Deploy hooks, passing the actual poolManager address
-        srcHook = new CrossChainLiquidityHook(address(poolManager), address(lzEndpoint));
-        dstHook = new CrossChainLiquidityHook(address(poolManager), address(lzEndpoint));
-
-        // If MockPoolManager needs the real hook address set after deployment, do it here
-        // Example: poolManager.setHook(address(srcHook)); // Uncomment if needed
+        // Deploy hooks (assuming they need manager and lzEndpoint)
+        srcHook = new CrossChainLiquidityHook(
+            address(poolManager),
+            address(lzEndpoint),
+            address(1),
+            address(2)
+        );
+        dstHook = new CrossChainLiquidityHook(
+            address(poolManager),
+            address(lzEndpoint),
+            address(1),
+            address(2)
+        );
 
         // Configure LayerZero endpoints
         lzEndpoint.setTrustedRemote(address(srcHook), true);

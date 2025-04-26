@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0
+
+/*
+Created by irfndi (github.com/irfndi) - Apr 2025
+Email: join.mantap@gmail.com
+*/
+
 pragma solidity ^0.8.29;
 // slither-disable unimplemented-functions
+
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol"; // Import ReentrancyGuard
 import {BaseHook} from "./BaseHook.sol";
 import {Hooks} from "../libraries/Hooks.sol"; // Import Hooks library
@@ -8,30 +15,47 @@ import {IPoolManager} from "../interfaces/IPoolManager.sol";
 import {ILayerZeroEndpoint} from "../interfaces/ILayerZeroEndpoint.sol";
 import {PoolKey} from "../types/PoolKey.sol";
 import {BalanceDelta} from "../types/BalanceDelta.sol";
+import {TickMath} from "v4-core/libraries/TickMath.sol"; // Corrected path
+import "forge-std/console.sol"; // Added import for logging
 
 /**
  * @title CrossChainLiquidityHook
  * @notice Hook for managing liquidity across multiple chains
  * @dev Implements cross-chain communication using LayerZero
  */
-contract CrossChainLiquidityHook is BaseHook, ReentrancyGuard { // Inherit ReentrancyGuard
+contract CrossChainLiquidityHook is
+    BaseHook,
+    ReentrancyGuard // Inherit ReentrancyGuard
+{
     ILayerZeroEndpoint public immutable lzEndpoint;
+
+    // Local pool token addresses managed by this hook instance
+    address public immutable localToken0;
+    address public immutable localToken1;
 
     // Mapping to store remote chain hook addresses
     mapping(uint16 => address) public remoteHooks;
     // Track configured chains explicitly to avoid large loops
     uint16[] public configuredChainIds;
     mapping(uint16 => uint256) private chainIdToIndex; // Maps chainId to its index in configuredChainIds
-    mapping(uint16 => bool) private isChainConfigured;  // Quick check if chainId is in configuredChainIds
+    mapping(uint16 => bool) private isChainConfigured; // Quick check if chainId is in configuredChainIds
 
     event CrossChainLiquidityEvent(uint16 chainId, address token0, address token1, int256 liquidityDelta);
     event RemoteHookSet(uint16 indexed chainId, address indexed hookAddress);
 
-    constructor(address _poolManager, address _lzEndpoint)
+    constructor(address _poolManager, address _lzEndpoint, address _localToken0, address _localToken1)
         BaseHook(_poolManager)
     {
         lzEndpoint = ILayerZeroEndpoint(_lzEndpoint);
-        // Removed initialization of default remoteHooks here, should be set via setRemoteHook
+
+        // Store local tokens in correct order
+        if (_localToken0 < _localToken1) {
+            localToken0 = _localToken0;
+            localToken1 = _localToken1;
+        } else {
+            localToken0 = _localToken1;
+            localToken1 = _localToken0;
+        }
 
         // Validate hook flags match implemented permissions - Removed check based on address
     }
@@ -69,7 +93,7 @@ contract CrossChainLiquidityHook is BaseHook, ReentrancyGuard { // Inherit Reent
         IPoolManager.ModifyPositionParams calldata params,
         BalanceDelta memory,
         bytes calldata
-    ) external override nonReentrant returns (bytes4) { // Added nonReentrant modifier
+    ) external override returns (bytes4) {
         require(msg.sender == address(poolManager), "Only pool manager");
         validateHookAddress();
         // Only process non-zero liquidity changes
@@ -100,7 +124,6 @@ contract CrossChainLiquidityHook is BaseHook, ReentrancyGuard { // Inherit Reent
             // Update the address (works for both add and update)
             remoteHooks[chainId] = hookAddress;
             emit RemoteHookSet(chainId, hookAddress);
-
         } else if (currentlyConfigured) {
             // Removing an existing remote hook
             uint256 indexToRemove = chainIdToIndex[chainId];
@@ -128,20 +151,82 @@ contract CrossChainLiquidityHook is BaseHook, ReentrancyGuard { // Inherit Reent
     /**
      * @notice Handle incoming LayerZero messages
      */
-    function lzReceive(
-        uint16 srcChainId,
-        address srcAddress,
-        uint64,
-        bytes calldata payload
-    ) external nonReentrant {
+    function lzReceive(uint16 srcChainId, address srcAddress, uint64, bytes calldata payload) external nonReentrant {
+        console.log("lzReceive: Entered");
+        console.log("lzReceive: srcChainId=", srcChainId);
+        console.log("lzReceive: srcAddress=", srcAddress);
         require(msg.sender == address(lzEndpoint), "Unauthorized");
         require(remoteHooks[srcChainId] != address(0), "Chain not configured");
         require(srcAddress == remoteHooks[srcChainId], "Invalid remote hook");
 
-        // Decode and process the liquidity update
-        (address token0, address token1, int256 liquidityDelta) = abi.decode(payload, (address, address, int256));
+        // Decode payload
+        // Assuming payload format: (address token0, address token1, int256 liquidityDelta)
+        // Note: The tokens here are from the perspective of the *source* chain
+        (address receivedToken0, address receivedToken1, int256 liquidityDelta) =
+            abi.decode(payload, (address, address, int256));
+        console.log("lzReceive: Decoded liquidityDelta=", liquidityDelta);
+        console.log("lzReceive: Decoded receivedToken0=", receivedToken0);
+        console.log("lzReceive: Decoded receivedToken1=", receivedToken1);
 
-        emit CrossChainLiquidityEvent(srcChainId, token0, token1, liquidityDelta);
+        // Hardcoded fee and tickSpacing for this example hook logic
+        uint24 fee = 3000;
+        int24 tickSpacing = 60;
+
+        // Ensure local tokens match expected pool (optional safety check)
+        // require((receivedToken0 == localToken0 && receivedToken1 == localToken1) ||
+        //         (receivedToken0 == localToken1 && receivedToken1 == localToken0), "Token mismatch");
+
+        // Construct PoolKey using received token order and hook address
+        PoolKey memory key = PoolKey({
+            hooks: address(this),
+            // --- FIXED: Use received tokens, ensuring order --- //
+            token0: receivedToken0 < receivedToken1 ? receivedToken0 : receivedToken1,
+            token1: receivedToken0 < receivedToken1 ? receivedToken1 : receivedToken0,
+            // TODO: Fee and tickSpacing should ideally come from payload or manager lookup
+            fee: fee,
+            tickSpacing: tickSpacing
+        });
+        console.log("lzReceive: Constructed PoolKey.hooks=", key.hooks);
+        console.log("lzReceive: Constructed PoolKey.token0=", key.token0);
+        console.log("lzReceive: Constructed PoolKey.token1=", key.token1);
+        console.log("lzReceive: Constructed PoolKey.fee=", key.fee);
+        console.log("lzReceive: Constructed PoolKey.tickSpacing=", key.tickSpacing);
+
+        // Construct params for modifyPosition
+        // Assuming adding/removing liquidity across the full range for rebalancing
+        IPoolManager.ModifyPositionParams memory params = IPoolManager.ModifyPositionParams({
+            tickLower: TickMath.MIN_TICK,
+            tickUpper: TickMath.MAX_TICK,
+            liquidityDelta: liquidityDelta
+        });
+        console.log("lzReceive: Constructed Params.liquidityDelta=", params.liquidityDelta);
+        console.log("lzReceive: Constructed Params.tickLower=", params.tickLower);
+        console.log("lzReceive: Constructed Params.tickUpper=", params.tickUpper);
+
+        // Call the local pool manager to apply the change
+        console.log("lzReceive: Attempting poolManager.modifyPosition...");
+        BalanceDelta memory resultDelta; // Declare delta outside
+        bool success = false;
+
+        try poolManager.modifyPosition(key, params, "") returns (BalanceDelta memory delta) {
+            // Optionally emit an event or log success
+            // We will log the delta *after* the try/catch block
+            resultDelta = delta; // Assign delta to the outer variable
+            success = true;
+            emit CrossChainLiquidityEvent(srcChainId, key.token0, key.token1, liquidityDelta); // Emitted after successful application
+        } catch Error(string memory reason) {
+            // Handle potential errors from modifyPosition (e.g., insufficient funds if delta < 0)
+            // Log or emit an error event
+            console.log("lzReceive: poolManager.modifyPosition FAILED with reason:", reason);
+            revert(string.concat("lzReceive: modifyPosition failed - ", reason));
+        } catch {
+            console.log("lzReceive: poolManager.modifyPosition FAILED with low-level data.");
+            revert("lzReceive: modifyPosition failed with low-level data");
+        }
+
+        if (success) {
+            // Removed console.log statement
+        }
     }
 
     /**
@@ -165,7 +250,7 @@ contract CrossChainLiquidityHook is BaseHook, ReentrancyGuard { // Inherit Reent
                 chainId,
                 remoteAndLocalAddresses,
                 payload,
-                payable(msg.sender), // This might need adjustment depending on fee payment mechanism
+                payable(address(0)), // Use address(0) as refund address since msg.sender (MockPoolManager) isn't payable
                 address(0),
                 bytes("")
             ) {
@@ -186,11 +271,7 @@ contract CrossChainLiquidityHook is BaseHook, ReentrancyGuard { // Inherit Reent
         address token0,
         address token1,
         int256 liquidityDelta
-    )
-        external
-        view
-        returns (uint256 nativeFee, uint256 zroFee)
-    {
+    ) external view returns (uint256 nativeFee, uint256 zroFee) {
         bytes memory payload = abi.encode(token0, token1, liquidityDelta);
         bytes memory remoteAndLocalAddresses = abi.encodePacked(remoteHooks[chainId], address(this));
 
@@ -200,8 +281,8 @@ contract CrossChainLiquidityHook is BaseHook, ReentrancyGuard { // Inherit Reent
     }
 
     /**
-    * @notice Returns the number of configured remote chains.
-    */
+     * @notice Returns the number of configured remote chains.
+     */
     function getConfiguredChainCount() external view returns (uint256) {
         return configuredChainIds.length;
     }

@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0
+
+/*
+Created by irfndi (github.com/irfndi) - Apr 2025
+Email: join.mantap@gmail.com
+*/
+
 pragma solidity ^0.8.29;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
@@ -86,11 +92,7 @@ contract AetherVault is ERC4626 {
      * @dev Withdraw assets by burning vault tokens
      * Overridden to handle yield distribution
      */
-    function withdraw(
-        uint256 assets,
-        address receiver,
-        address owner
-    ) public virtual override returns (uint256) {
+    function withdraw(uint256 assets, address receiver, address owner) public virtual override returns (uint256) {
         // Slither: Timestamp - The `maxWithdraw` function (part of ERC4626 standard) might implicitly
         // use block.timestamp if yield accrual depends on it. This is standard for yield-bearing vaults.
         require(assets <= maxWithdraw(owner), "ERC4626: withdraw more than max");
@@ -143,11 +145,7 @@ contract AetherVault is ERC4626 {
      * @dev Update hook called on token transfers
      * Ensures yield is accrued before any token movements
      */
-    function _update(
-        address from,
-        address to,
-        uint256 amount
-    ) internal virtual override {
+    function _update(address from, address to, uint256 amount) internal virtual override {
         _accruePendingYield();
         super._update(from, to, amount);
     }

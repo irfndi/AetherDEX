@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0
+
+/*
+Created by irfndi (github.com/irfndi) - Apr 2025
+Email: join.mantap@gmail.com
+*/
+
 pragma solidity ^0.8.29;
 
 import {PoolKey} from "../types/PoolKey.sol";
@@ -66,7 +72,7 @@ interface IPoolManager {
     function burn(address recipient, PoolKey calldata key, uint256 amount0, uint256 amount1, bytes calldata hookData)
         external;
 
-    function getPool(PoolKey calldata key) external view returns (Pool memory);
+    function getPool(PoolKey memory key) external view returns (address poolAddress);
 
     function initialize(PoolKey calldata key, uint160 sqrtPriceX96, bytes calldata hookData) external;
 
