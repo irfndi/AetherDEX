@@ -34,7 +34,14 @@ jobs:
       - name: Install Vyper
         run: |
           pip install vyper==0.3.10
-          echo "VYPER_PATH=$(which vyper)" >> $GITHUB_ENV
+          THE_VYPER_PATH=$(which vyper)
+          echo "Vyper executable determined to be at: ${THE_VYPER_PATH}"
+          if [ -z "${THE_VYPER_PATH}" ]; then
+            echo "::error:: 'which vyper' did not return a path."
+            exit 1
+          fi
+          echo "VYPER_PATH=${THE_VYPER_PATH}" >> $GITHUB_ENV
+          echo "VYPER_PATH environment variable set for subsequent steps."
 
       - name: Cache Foundry dependencies
         uses: actions/cache@v3
@@ -57,8 +64,25 @@ jobs:
       - name: Run tests
         env:
           FOUNDRY_PROFILE: ci
-          VYPER_PATH: ${{ env.VYPER_PATH }} # Ensure VYPER_PATH is used
         run: |
+          echo "--- Debugging VYPER_PATH in 'Run tests' step --- "
+          echo "Current working directory: $(pwd)"
+          echo "Value of VYPER_PATH: '$VYPER_PATH'"
+          if [ -n "$VYPER_PATH" ] && [ -f "$VYPER_PATH" ] && [ -x "$VYPER_PATH" ]; then
+            echo "VYPER_PATH is set, points to an existing and executable file:"
+            ls -l "$VYPER_PATH"
+            "$VYPER_PATH" --version
+          elif [ -n "$VYPER_PATH" ]; then
+            echo "::warning::VYPER_PATH is set to '$VYPER_PATH' but it's not found or not executable. Listing directory contents if path is directory-like:"
+            ls -l "$(dirname "$VYPER_PATH")"
+            echo "Attempting to run $VYPER_PATH --version anyway:"
+            "$VYPER_PATH" --version || echo "Execution failed as expected."
+          else
+            echo "::warning::VYPER_PATH is NOT set or is empty. Defaulting to 'vyper' in PATH."
+            echo "Contents of system PATH: $PATH"
+            which vyper || echo "'vyper' not found in PATH either."
+          fi
+          echo "--- End Debugging --- "
           forge clean
           forge test --via-ir -v
 
