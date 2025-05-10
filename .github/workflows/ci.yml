@@ -1,7 +1,9 @@
 name: Foundry CI
 
-on: [push, pull_request]
+permissions:
+  contents: read
 
+on: [push, pull_request]
 jobs:
   test:
     runs-on: ubuntu-latest
