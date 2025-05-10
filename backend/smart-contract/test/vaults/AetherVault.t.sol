@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0
+
+/*
+Created by irfndi (github.com/irfndi) - Apr 2025
+Email: join.mantap@gmail.com
+*/
+
 pragma solidity ^0.8.29;
 
 import {Test, Vm} from "forge-std/Test.sol";
@@ -8,8 +14,8 @@ import {AetherVault} from "../../src/vaults/AetherVault.sol";
 import {AetherStrategy} from "../../src/vaults/AetherStrategy.sol";
 import {AetherVaultFactory} from "../../src/vaults/AetherVaultFactory.sol";
 import {IPoolManager} from "../../src/interfaces/IPoolManager.sol";
+import {IAetherPool} from "../../src/interfaces/IAetherPool.sol";
 import {MockPoolManager} from "../mocks/MockPoolManager.sol";
-import {AetherPool} from "../../src/AetherPool.sol";
 
 contract AetherVaultTest is Test {
     AetherVaultFactory public factory;
@@ -30,8 +36,7 @@ contract AetherVaultTest is Test {
         MockERC20 token1 = new MockERC20("USDC", "USDC", 6);
 
         // Create and initialize pool
-        AetherPool pool = new AetherPool(address(this)); // Assuming factory address is 'this'
-        pool.initialize(address(asset), address(token1), uint24(3000)); // Removed last argument
+        IAetherPool pool = IAetherPool(address(0)); // Initialize with dummy address
 
         // Deploy mock pool manager with pool
         poolManager = new MockPoolManager(address(0)); // Pass only hook address

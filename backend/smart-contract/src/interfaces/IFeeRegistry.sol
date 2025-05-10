@@ -1,45 +1,96 @@
 // SPDX-License-Identifier: GPL-3.0
-// IFeeRegistry.sol
-pragma solidity ^0.8.29; // Updated pragma version
 
-import {PoolKey} from "../types/PoolKey.sol";
+/*
+Created by irfndi (github.com/irfndi) - Apr 2025
+Email: join.mantap@gmail.com
+*/
+
+pragma solidity ^0.8.29;
 
 /**
- * @title IFeeRegistry
- * @dev Interface for the fee registry contract that manages dynamic fees for token pairs.
- * This registry is used by the DynamicFeeHook to determine the appropriate fee for swaps
- * based on various factors like trading volume and volatility.
+ * @title Interface for FeeRegistry
+ * @notice Defines the external functions exposed by FeeRegistry.sol.
+ * @dev Manages fee configurations for Aether pools.
  */
 interface IFeeRegistry {
-    /**
-     * @dev Defines the configuration for a fee tier.
-     * @param fee The swap fee percentage (in hundredths of a basis point).
-     * @param tickSpacing The distance between usable ticks for this fee tier.
-     */
+    // --- Events ---
+    event FeeConfigurationAdded( // Assuming tickSpacing might still be relevant for pool creation
+    address indexed token0, address indexed token1, uint24 fee, int24 tickSpacing);
+    event DynamicFeeUpdated(address indexed token0, address indexed token1, uint24 oldFee, uint24 newFee);
+    event StaticFeeSet(address indexed token0, address indexed token1, uint24 fee);
+    event DynamicFeeUpdaterSet(address indexed updater, bool allowed);
+
+    // --- Structs ---
     struct FeeConfiguration {
+        bool isStatic;
         uint24 fee;
-        int24 tickSpacing;
+        uint24 tickSpacing;
     }
-    /**
- * @notice Gets the current fee for a pool identified by its key.
- * @dev Returns the fee tier in hundredths of a basis point (0.0001%).
- * @param key The PoolKey identifying the pool (tokens, fee, tick spacing, hooks).
- * @return The current fee tier for the pool.
- */
-    function getFee(PoolKey calldata key) external view returns (uint24);
+    // Add other relevant fields if FeeRegistry stores more config per pair
+
+    // --- Functions ---
 
     /**
-     * @notice Updates the fee for a pool based on swap activity.
-     * @dev Called by the DynamicFeeHook after swaps to adjust fees based on market conditions.
-     * @param key The PoolKey identifying the pool.
- * @param swapVolume The volume of the swap that triggered this update.
- */
-    function updateFee(PoolKey calldata key, uint256 swapVolume) external;
-
-    /**
-     * @notice Gets the tick spacing associated with a given fee tier.
-     * @param fee The fee tier (in hundredths of a basis point).
-     * @return tickSpacing The corresponding tick spacing, or 0 if the fee tier is not supported.
+     * @notice Adds a new fee configuration for a token pair.
+     * @dev Only callable by the owner.
+     * @param tokenA Address of the first token.
+     * @param tokenB Address of the second token.
+     * @param fee The fee tier (e.g., 3000 for 0.3%).
+     * @param tickSpacing The tick spacing for this fee tier (if applicable).
+     * @param isStatic_ Whether the fee is static or dynamic.
      */
-    function getTickSpacing(uint24 fee) external view returns (int24);
+    function addFeeConfiguration(address tokenA, address tokenB, uint24 fee, int24 tickSpacing, bool isStatic_)
+        external;
+
+    /**
+     * @notice Sets or updates the static fee for a specific token pair.
+     * @dev Only callable by the owner.
+     * @param tokenA Address of the first token.
+     * @param tokenB Address of the second token.
+     * @param fee The static fee tier.
+     */
+    function setStaticFee(address tokenA, address tokenB, uint24 fee) external;
+
+    /**
+     * @notice Updates the dynamic fee for a specific token pair.
+     * @dev Only callable by an authorized updater or the owner.
+     * @param tokenA Address of the first token.
+     * @param tokenB Address of the second token.
+     * @param newFee The new dynamic fee tier.
+     */
+    function updateDynamicFee(address tokenA, address tokenB, uint24 newFee) external;
+
+    /**
+     * @notice Gets the fee configuration for a token pair.
+     * @param tokenA Address of the first token.
+     * @param tokenB Address of the second token.
+     * @return config The FeeConfiguration struct for the pair.
+     */
+    function getFeeConfiguration(address tokenA, address tokenB)
+        external
+        view
+        returns (FeeConfiguration memory config);
+
+    /**
+     * @notice Gets the current applicable fee for a token pair.
+     * @param tokenA Address of the first token.
+     * @param tokenB Address of the second token.
+     * @return fee The current fee (static or dynamic).
+     */
+    function getCurrentFee(address tokenA, address tokenB) external view returns (uint24 fee);
+
+    /**
+     * @notice Authorizes or deauthorizes an address to update dynamic fees.
+     * @dev Only callable by the owner.
+     * @param updater The address of the updater.
+     * @param allowed True to allow, false to disallow.
+     */
+    function setDynamicFeeUpdater(address updater, bool allowed) external;
+
+    /**
+     * @notice Checks if an address is an authorized dynamic fee updater.
+     * @param updater The address to check.
+     * @return isAllowed True if the address is allowed, false otherwise.
+     */
+    function isDynamicFeeUpdater(address updater) external view returns (bool isAllowed);
 }

@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0
+
+/*
+Created by irfndi (github.com/irfndi) - Apr 2025
+Email: join.mantap@gmail.com
+*/
+
 pragma solidity ^0.8.29;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -14,7 +20,9 @@ import {IPoolManager} from "../interfaces/IPoolManager.sol";
  * @dev Strategy contract for AetherVault that manages yield generation
  * and cross-chain interactions
  */
-contract AetherStrategy is ReentrancyGuard { // Inherit ReentrancyGuard
+contract AetherStrategy is
+    ReentrancyGuard // Inherit ReentrancyGuard
+{
     using SafeERC20 for IERC20;
 
     struct ChainConfig {
@@ -88,7 +96,8 @@ contract AetherStrategy is ReentrancyGuard { // Inherit ReentrancyGuard
      * @dev Update the base yield rate
      * @param newRate New yield rate (per second, scaled by YIELD_RATE_PRECISION)
      */
-    function updateBaseYieldRate(uint256 newRate) external onlyVault nonReentrant { // Added nonReentrant modifier
+    function updateBaseYieldRate(uint256 newRate) external onlyVault nonReentrant {
+        // Added nonReentrant modifier
         uint256 oldRate = baseYieldRate; // Effect (Read state)
         baseYieldRate = newRate; // Effect (Write state)
         // Emit event *before* external call
@@ -101,7 +110,8 @@ contract AetherStrategy is ReentrancyGuard { // Inherit ReentrancyGuard
      * @dev Rebalance yield across chains
      * Can only be called after rebalanceInterval has passed
      */
-    function rebalanceYield() external nonReentrant { // Added nonReentrant modifier
+    function rebalanceYield() external nonReentrant {
+        // Added nonReentrant modifier
         // Slither: Timestamp - Using block.timestamp is necessary to enforce the rebalanceInterval.
         // This is a standard pattern for time-based logic in smart contracts.
         require(block.timestamp >= lastRebalance + rebalanceInterval, "Rebalance interval not met"); // Check
@@ -113,12 +123,13 @@ contract AetherStrategy is ReentrancyGuard { // Inherit ReentrancyGuard
         emit StrategyRebalanced(currentTimestamp, 0); // Emit event early (totalYield calculation removed for simplicity, needs review)
 
         // --- Interactions ---
-        uint256 totalYield = 0; // [TODO] Recalculate or fetch actual yield
+        uint256 totalYield = 0; // TODO Recalculate or fetch actual yield
         uint256 activeChains = 0;
         uint256 numSupportedChains = supportedChains.length; // Cache array length
 
         // Calculate total yield across all active chains
-        for (uint256 i = 0; i < numSupportedChains; i++) { // Use cached length
+        for (uint256 i = 0; i < numSupportedChains; i++) {
+            // Use cached length
             uint16 chainId = supportedChains[i];
             if (chainConfigs[chainId].isActive) {
                 // In a real implementation, we would fetch actual yield data
@@ -134,7 +145,8 @@ contract AetherStrategy is ReentrancyGuard { // Inherit ReentrancyGuard
             // Slither: Calls-inside-a-loop - The external call to _sendYieldUpdate (which calls lzEndpoint.send)
             // is necessary within the loop to distribute yield updates to each configured and active chain.
             // Gas usage should be monitored, especially with a large number of supported chains.
-            for (uint256 i = 0; i < numSupportedChains; i++) { // Use cached length
+            for (uint256 i = 0; i < numSupportedChains; i++) {
+                // Use cached length
                 uint16 chainId = supportedChains[i];
                 if (chainConfigs[chainId].isActive) {
                     _sendYieldUpdate(chainId, yieldPerChain);
@@ -154,7 +166,8 @@ contract AetherStrategy is ReentrancyGuard { // Inherit ReentrancyGuard
         bytes memory srcAddress, // Changed back to memory
         uint64, // nonce
         bytes calldata payload // Renamed from _payload
-    ) external nonReentrant { // Added nonReentrant modifier
+    ) external nonReentrant {
+        // Added nonReentrant modifier
         require(msg.sender == address(lzEndpoint), "Invalid endpoint"); // Check
         require(chainConfigs[srcChainId].isActive, "Chain not active"); // Check
 
@@ -204,7 +217,7 @@ contract AetherStrategy is ReentrancyGuard { // Inherit ReentrancyGuard
 
         // Capture and return the estimated fees using named return variables
         (nativeFee, zroFee) = lzEndpoint.estimateFees(chainId, address(this), payload, useZro, remoteAndLocalAddresses); // Use renamed param
-        // No explicit return needed here
+            // No explicit return needed here
     }
 
     /**

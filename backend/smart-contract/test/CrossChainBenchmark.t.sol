@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0
+
+/*
+Created by irfndi (github.com/irfndi) - Apr 2025
+Email: join.mantap@gmail.com
+*/
+
 pragma solidity ^0.8.29;
 
 import {Test} from "forge-std/Test.sol";
@@ -8,7 +14,8 @@ import {MockChainNetworks} from "./mocks/MockChainNetworks.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockLayerZeroEndpoint} from "./mocks/MockLayerZeroEndpoint.sol";
 import {MockPoolManager} from "./mocks/MockPoolManager.sol";
-import {AetherPool} from "../src/AetherPool.sol";
+import {IAetherPool} from "../src/interfaces/IAetherPool.sol";
+import {PoolKey} from "../src/types/PoolKey.sol";
 import {AetherVault} from "../src/vaults/AetherVault.sol";
 import {AetherStrategy} from "../src/vaults/AetherStrategy.sol";
 import {AetherVaultFactory} from "../src/vaults/AetherVaultFactory.sol";
@@ -65,30 +72,34 @@ contract CrossChainBenchmarkTest is Test {
         // Deploy mock tokens for the pool
         MockERC20 token0 = new MockERC20("Token0", "TKN0", 18);
         MockERC20 token1 = new MockERC20("Token1", "TKN1", 18);
-        
+
         // Create a pool with the factory address (this test contract)
-        AetherPool pool = new AetherPool(address(this));
-        pool.initialize(address(token0), address(token1), uint24(3000)); // Removed last argument
+        address placeholderPoolAddress = address(0x1); // Use placeholder address
 
         // Setup pool manager with the initialized pool and no hook
-        MockPoolManager poolManager = new MockPoolManager(address(0)); // Pass only hook address
+        MockPoolManager poolManager = new MockPoolManager(address(0)); // No global hook for benchmark
         poolManagers[chainId] = poolManager;
+
+        // Register the placeholder pool with the manager
+        PoolKey memory key = PoolKey({
+            token0: address(token0) < address(token1) ? address(token0) : address(token1), // Ensure sorted order for key
+            token1: address(token0) < address(token1) ? address(token1) : address(token0),
+            fee: 3000,
+            tickSpacing: 60, // Assuming 60 for fee 3000
+            hooks: address(0) // No hook
+        });
+        bytes32 poolId = keccak256(abi.encode(key));
+        poolManager.setPool(poolId, placeholderPoolAddress);
 
         // Setup endpoint and vault
         MockLayerZeroEndpoint endpoint = new MockLayerZeroEndpoint();
         lzEndpoints[chainId] = endpoint;
 
-        AetherVaultFactory factory = new AetherVaultFactory(
-            address(poolManager),
-            address(endpoint)
-        );
+        AetherVaultFactory factory = new AetherVaultFactory(address(poolManager), address(endpoint));
 
-        (address vault, address strategy) = factory.deployVault(
-            networks.getNativeToken(chainId),
-            "Aether Benchmark Vault", 
-            "aBMV"
-        );
-        vaults[chainId] = AetherVault(vault);        
+        (address vault, address strategy) =
+            factory.deployVault(networks.getNativeToken(chainId), "Aether Benchmark Vault", "aBMV");
+        vaults[chainId] = AetherVault(vault);
 
         // Fund user
         networks.mintNativeToken(chainId, user, 10000 ether);
@@ -98,14 +109,13 @@ contract CrossChainBenchmarkTest is Test {
         require(chainA != chainB, "Cannot connect chain to itself");
         require(address(lzEndpoints[chainA]) != address(0), "Endpoint A not initialized");
         require(address(lzEndpoints[chainB]) != address(0), "Endpoint B not initialized");
-        
+
         lzEndpoints[chainA].setRemoteEndpoint(chainB, address(lzEndpoints[chainB]));
         lzEndpoints[chainB].setRemoteEndpoint(chainA, address(lzEndpoints[chainA]));
-        
+
         // Verify connection
         require(
-            lzEndpoints[chainA].remoteEndpoints(chainB) == address(lzEndpoints[chainB]),
-            "Failed to set remote endpoint"
+            lzEndpoints[chainA].remoteEndpoints(chainB) == address(lzEndpoints[chainB]), "Failed to set remote endpoint"
         );
     }
 
@@ -126,13 +136,13 @@ contract CrossChainBenchmarkTest is Test {
         for (uint256 i = 0; i < chains.length; i++) {
             uint16 chainId = chains[i];
             _benchmarkChain(chainId);
-            
+
             string memory chainName;
             uint256 blockTime;
             uint256 baseFee;
             address[] memory tokens;
             (chainName, blockTime, baseFee, tokens) = networks.getChainInfo(chainId);
-            
+
             // Log results
             console2.log("\nGas Benchmark for Chain:", chainName);
             console2.log("Base Fee (gwei):", baseFee / GWEI);
@@ -140,14 +150,14 @@ contract CrossChainBenchmarkTest is Test {
             console2.log("Deposit Gas:", gasUsage[chainId]["deposit"]);
             console2.log("Withdraw Gas:", gasUsage[chainId]["withdraw"]);
             console2.log("Cross-Chain Gas:", gasUsage[chainId]["crossChain"]);
-            
+
             // Calculate costs in USD (assuming ETH = $3000)
             uint256 gasPrice = baseFee;
             uint256 ethPrice = 3000e18; // $3000 per ETH
             uint256 depositCost = (gasUsage[chainId]["deposit"] * gasPrice * ethPrice) / 1e36;
             uint256 withdrawCost = (gasUsage[chainId]["withdraw"] * gasPrice * ethPrice) / 1e36;
             uint256 crossChainCost = (gasUsage[chainId]["crossChain"] * gasPrice * ethPrice) / 1e36;
-            
+
             console2.log("Estimated Costs (USD):");
             console2.log("Deposit: $", depositCost);
             console2.log("Withdraw: $", withdrawCost);
@@ -158,18 +168,18 @@ contract CrossChainBenchmarkTest is Test {
     function _benchmarkChain(uint16 chainId) internal {
         AetherVault vault = vaults[chainId];
         require(address(vault) != address(0), "Vault not initialized");
-        
+
         address token = networks.getNativeToken(chainId);
         require(token != address(0), "Token not initialized");
-        
+
         uint256 initialBalance = IERC20(token).balanceOf(user);
         require(initialBalance >= TEST_AMOUNT, "Insufficient initial balance");
-        
+
         console2.log("\nStarting benchmark for chain:", chainId);
         console2.log("Initial token balance:", initialBalance / 1 ether, "ETH");
-        
+
         vm.startPrank(user);
-        
+
         // Benchmark deposit
         MockERC20(token).approve(address(vault), TEST_AMOUNT);
         uint256 gasBefore = gasleft();
@@ -195,28 +205,19 @@ contract CrossChainBenchmarkTest is Test {
             }
         }
         require(destChainId != 0, "No connected chains found");
-        
-        try lzEndpoints[chainId].estimateFees(
-            destChainId,
-            address(vault),
-            crossChainData,
-            false,
-            ""
-        ) returns (uint256 nativeFee, uint256 zroFee) {
+
+        try lzEndpoints[chainId].estimateFees(destChainId, address(vault), crossChainData, false, "") returns (
+            uint256 nativeFee, uint256 zroFee
+        ) {
             console2.log("Estimated fees:", nativeFee / 1 ether, "ETH");
             uint256 estimatedGas = nativeFee;
-            
-        // Fund user with enough native token for gas
-        vm.deal(user, estimatedGas * 2);
-        
-        try lzEndpoints[chainId].send{value: estimatedGas}(
-            destChainId,
-            abi.encodePacked(address(vault)),
-            crossChainData,
-            payable(user),
-            address(0),
-            ""
-        ) {
+
+            // Fund user with enough native token for gas
+            vm.deal(user, estimatedGas * 2);
+
+            try lzEndpoints[chainId].send{value: estimatedGas}(
+                destChainId, abi.encodePacked(address(vault)), crossChainData, payable(user), address(0), ""
+            ) {
                 console2.log("Cross-chain transfer successful");
             } catch Error(string memory reason) {
                 console2.log("Cross-chain send failed:", reason);
@@ -232,7 +233,7 @@ contract CrossChainBenchmarkTest is Test {
             console2.log("Fee estimation failed with unknown error");
             revert("Fee estimation failed");
         }
-        
+
         gasUsage[chainId]["crossChain"] = gasBefore - gasleft();
 
         vm.stopPrank();
@@ -248,9 +249,9 @@ contract CrossChainBenchmarkTest is Test {
         depositAmounts[4] = 10000 ether;
 
         uint16[3] memory testChains = [
-            networks.ETHEREUM_CHAIN_ID(),    // High gas, slow
-            networks.ARBITRUM_CHAIN_ID(),    // Low gas, fast
-            networks.OPTIMISM_CHAIN_ID()     // Medium gas, medium speed
+            networks.ETHEREUM_CHAIN_ID(), // High gas, slow
+            networks.ARBITRUM_CHAIN_ID(), // Low gas, fast
+            networks.OPTIMISM_CHAIN_ID() // Medium gas, medium speed
         ];
 
         for (uint256 i = 0; i < testChains.length; i++) {
@@ -261,9 +262,9 @@ contract CrossChainBenchmarkTest is Test {
             address[] memory tokens;
             (chainName, blockTime, baseFee, tokens) = networks.getChainInfo(chainId);
 
-            console2.log("\nPerformance Analysis for", chainName);
-            console2.log("Block Time:", blockTime);
-            console2.log("Base Fee:", baseFee);
+            console2.log("\n--- Performance Analysis (Deposit):", chainName, "---");
+            // console2.log("Block Time:", blockTime);
+            // console2.log("Base Fee:", baseFee);
 
             for (uint256 j = 0; j < depositAmounts.length; j++) {
                 _benchmarkAmount(chainId, depositAmounts[j]);

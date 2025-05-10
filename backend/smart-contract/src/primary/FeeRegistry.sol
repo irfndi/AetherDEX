@@ -1,14 +1,19 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: GPL-3.0
+
+/*
+Created by irfndi (github.com/irfndi) - Apr 2025
+Email: join.mantap@gmail.com
+*/
+
 pragma solidity ^0.8.29;
 
-import {Ownable} from "./access/Ownable.sol";
-import {IFeeRegistry} from "./interfaces/IFeeRegistry.sol";
-import {PoolKey} from "./types/PoolKey.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {PoolKey} from "../types/PoolKey.sol";
 
 /// @title Fee Registry
 /// @notice Manages both static fee configurations (fee tier and tick spacing) and dynamic fees for specific Aether Pools.
 /// Allows the owner to add static configurations and register pools for dynamic fee updates by authorized addresses (e.g., hooks).
-contract FeeRegistry is IFeeRegistry, Ownable {
+contract FeeRegistry is Ownable {
     // --- Constants for Dynamic Fee Adjustments ---
     uint24 private constant MIN_FEE = 100; // 0.01%
     uint24 private constant MAX_FEE = 10000; // 1.00% (Adjusted from 10% for realism)
@@ -106,6 +111,8 @@ contract FeeRegistry is IFeeRegistry, Ownable {
     /// @param updater The address provided which is the same as the current updater.
     error NewUpdaterSameAsOld(bytes32 poolKeyHash, address updater);
 
+    /// @notice Constructs the FeeRegistry with an initial owner.
+    /// @param initialOwner The address of the owner.
     constructor(address initialOwner) Ownable(initialOwner) {}
 
     /// @notice Adds a new static fee configuration (fee tier and tick spacing).
@@ -154,7 +161,9 @@ contract FeeRegistry is IFeeRegistry, Ownable {
         return lowestFee;
     }
 
-    /// @inheritdoc IFeeRegistry
+    /// @notice Returns the fee for a given pool.
+    /// @param key The PoolKey identifying the pool.
+    /// @return fee The fee for the pool.
     function getFee(PoolKey calldata key) external view returns (uint24 fee) {
         bytes32 poolKeyHash = keccak256(abi.encode(key));
         uint24 dynamicFee = dynamicFees[poolKeyHash];
@@ -182,7 +191,6 @@ contract FeeRegistry is IFeeRegistry, Ownable {
         return lowest;
     }
 
-    /// @inheritdoc IFeeRegistry
     /// @notice Updates the dynamic fee for a registered pool based on recent swap volume.
     /// @dev Only callable by the authorized fee updater for the pool.
     /// Implements dynamic fee calculation based on swap volume and current market conditions.
@@ -299,10 +307,12 @@ contract FeeRegistry is IFeeRegistry, Ownable {
         emit FeeUpdaterSet(poolKeyHash, oldUpdater, newUpdater);
     }
 
-    /// @inheritdoc IFeeRegistry
+    /// @notice Returns the tick spacing for a given fee tier.
+    /// @param fee The fee tier to query.
+    /// @return The tick spacing for the given fee tier.
     function getTickSpacing(uint24 fee) external view returns (int24) {
         // The public mapping automatically creates a getter, but we implement
-        // the interface function explicitly for clarity and adherence to the interface.
+        // the function explicitly for clarity and adherence to the interface.
         return tickSpacings[fee];
     }
 }

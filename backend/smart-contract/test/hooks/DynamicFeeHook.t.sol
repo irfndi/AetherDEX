@@ -1,19 +1,30 @@
 // SPDX-License-Identifier: GPL-3.0
+
+/*
+Created by irfndi (github.com/irfndi) - Apr 2025
+Email: join.mantap@gmail.com
+*/
+
 pragma solidity ^0.8.29;
 
 import {Test} from "forge-std/Test.sol";
 import {DynamicFeeHook} from "../../src/hooks/DynamicFeeHook.sol";
 import {IPoolManager} from "../../src/interfaces/IPoolManager.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
-import {FeeRegistry} from "../../src/FeeRegistry.sol";
+import {FeeRegistry} from "../../src/primary/FeeRegistry.sol";
 import {PoolKey} from "../../src/types/PoolKey.sol";
 import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
 import {Hooks} from "../../src/libraries/Hooks.sol";
 import {MockPoolManager} from "../mocks/MockPoolManager.sol";
 import {HookFactory} from "../utils/HookFactory.sol";
-import {AetherPool} from "../../src/AetherPool.sol";
 
-contract DynamicFeeHookTest is Test {
+/**
+ * @title DynamicFeeHookImprovedTest
+ * @notice Comprehensive test suite for the DynamicFeeHook contract
+ * @dev Tests all aspects of the hook including fee calculation, validation, and integration with FeeRegistry
+ */
+contract DynamicFeeHookImprovedTest is Test {
+    // Test contracts
     DynamicFeeHook public hook;
     MockPoolManager public poolManager;
     FeeRegistry public feeRegistry;
@@ -21,89 +32,104 @@ contract DynamicFeeHookTest is Test {
     MockERC20 public token1;
     HookFactory public factory;
 
+    // Constants for testing
+    uint24 public constant MIN_FEE = 100; // 0.01%
+    uint24 public constant MAX_FEE = 100000; // 10%
+    uint24 public constant FEE_STEP = 50; // 0.005%
+    uint24 public constant INITIAL_FEE = 3000; // 0.3%
+    uint256 public constant VOLUME_THRESHOLD = 1000e18; // 1000 tokens
+    uint256 public constant MAX_VOLUME_MULTIPLIER = 10; // Maximum volume multiplier
+
+    // Events to test
     event FeeUpdated(address token0, address token1, uint24 newFee);
 
+    // Removed incomplete comment block that was causing compilation errors
+    /*notice Set up the test environment
+     */
     function setUp() public {
-        // Create tokens and ensure token0 < token1
+        // Create tokens and ensure token0 < token1 for canonical ordering
         token0 = new MockERC20("Token0", "TK0", 18);
         token1 = new MockERC20("Token1", "TK1", 18);
         if (address(token0) > address(token1)) {
             (token0, token1) = (token1, token0);
         }
 
-        // Deploy dependencies
-        feeRegistry = new FeeRegistry(address(this)); // Pass initialOwner
+        // Deploy FeeRegistry with test contract as owner
+        feeRegistry = new FeeRegistry(address(this));
+
+        // Deploy factory for hook deployment
         factory = new HookFactory();
 
-        // Create and initialize pool
-        AetherPool pool = new AetherPool(address(this)); // Assuming factory address is 'this' for simplicity
-        // Initialize pool without manager first, or pass address(this) temporarily if needed by AetherPool constructor
-        // Assuming AetherPool constructor only needs an owner/factory address, not the final manager
-        uint24 initialFee = 3000;
-        pool.initialize(address(token0), address(token1), initialFee); // Correct initialize signature
+        // Deploy MockPoolManager
+        poolManager = new MockPoolManager(address(0)); // Pass only one argument (_hookAddress)
 
-        // Deploy MockPoolManager first, passing address(0) as placeholder hook
-        poolManager = new MockPoolManager(address(0)); // Pass only hook address
-
-        // Deploy hook through factory, passing the correct poolManager address
+        // Deploy hook through factory
         hook = factory.deployDynamicFeeHook(address(poolManager), address(feeRegistry));
 
-        // Set the correct hook address in the pool manager
-        poolManager.setHookAddress(address(hook));
+        // Set up the FeeRegistry with initial configuration
+        PoolKey memory key = _createPoolKey(INITIAL_FEE);
 
-        // TODO: If AetherPool needs the manager address set after initialization, add that call here.
-        // Assuming pool.initialize only sets tokens/fee/owner and manager isn't strictly needed for basic setup.
+        // Add fee configuration
+        feeRegistry.addFeeConfiguration(INITIAL_FEE, 60);
 
-        // Add the static fee configuration used by the pool to the registry
-        feeRegistry.addFeeConfiguration(initialFee, 60); // Assuming tickSpacing 60 for fee 3000
-
-        // Register the pool for dynamic fees
-        PoolKey memory key = PoolKey({
-            token0: address(token0),
-            token1: address(token1),
-            fee: initialFee,
-            tickSpacing: 60,
-            hooks: address(hook)
-        });
-        // Register the pool for dynamic fees with the *hook* as the updater
-        feeRegistry.registerDynamicFeePool(key, initialFee, address(hook)); // Use hook address as updater
-
-        // Verify hook flags
-        uint160 expectedFlags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG);
-        // uint160 actualFlags = uint160(address(hook)) & 0xFF; // Incorrect: Flags are not in the address
-        uint160 actualFlags = Hooks.permissionsToFlags(hook.getHookPermissions()); // Correct: Query the hook for its permissions
-        require(actualFlags == expectedFlags, "Hook flags mismatch");
+        // Register the pool for dynamic fees with the hook as the updater
+        feeRegistry.registerDynamicFeePool(key, INITIAL_FEE, address(hook));
     }
 
+    // Removed incomplete comment block that was causing compilation errors
+    /*notice Helper function to create a pool key
+     * @param fee The fee tier for the pool
+     * @return key The created pool key
+     */
+    function _createPoolKey(uint24 fee) internal view returns (PoolKey memory) {
+        return
+            PoolKey({token0: address(token0), token1: address(token1), fee: fee, tickSpacing: 60, hooks: address(hook)});
+    }
+
+    // Removed incomplete comment block that was causing compilation errors
+    /*notice Test hook initialization
+     */
     function test_HookInitialization() public {
+        // Verify contract references
         assertEq(address(hook.poolManager()), address(poolManager));
         assertEq(address(hook.feeRegistry()), address(feeRegistry));
 
-        // Verify hook flags using the correct method
-        assertEq(
-            Hooks.permissionsToFlags(hook.getHookPermissions()), uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG)
-        );
+        // Verify hook permissions
+        Hooks.Permissions memory permissions = hook.getHookPermissions();
+        assertTrue(permissions.beforeSwap);
+        assertTrue(permissions.afterSwap);
+        assertFalse(permissions.beforeInitialize);
+        assertFalse(permissions.afterInitialize);
+        assertFalse(permissions.beforeModifyPosition);
+        assertFalse(permissions.afterModifyPosition);
+        assertFalse(permissions.beforeDonate);
+        assertFalse(permissions.afterDonate);
     }
 
-    function test_BeforeSwapHook() public {
-        PoolKey memory key = PoolKey({
-            token0: address(token0),
-            token1: address(token1),
-            fee: 3000,
-            tickSpacing: 60,
-            hooks: address(hook)
-        });
+    // Removed incomplete comment block that was causing compilation errors
+    /*notice Test beforeSwap hook with valid inputs
+     */
+    function test_BeforeSwap_Success() public {
+        PoolKey memory key = _createPoolKey(INITIAL_FEE);
 
         // Should succeed with valid token addresses
-        hook.beforeSwap(
+        bytes4 selector = hook.beforeSwap(
             address(this),
             key,
             IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1000, sqrtPriceLimitX96: 0}),
             ""
         );
 
-        // Should revert with invalid token address
+        assertEq(selector, hook.beforeSwap.selector);
+    }
+
+    // Removed incomplete comment block that was causing compilation errors
+    /*notice Test beforeSwap hook with invalid token0
+     */
+    function test_BeforeSwap_InvalidToken0() public {
+        PoolKey memory key = _createPoolKey(INITIAL_FEE);
         key.token0 = address(0);
+
         vm.expectRevert(DynamicFeeHook.InvalidTokenAddress.selector);
         hook.beforeSwap(
             address(this),
@@ -113,109 +139,215 @@ contract DynamicFeeHookTest is Test {
         );
     }
 
-    function test_AfterSwapHook() public {
-        PoolKey memory key = PoolKey({
-            token0: address(token0),
-            token1: address(token1),
-            fee: 3000,
-            tickSpacing: 60,
-            hooks: address(hook)
-        });
+    // Removed incomplete comment block that was causing compilation errors
+    /*notice Test beforeSwap hook with invalid token1
+     */
+    function test_BeforeSwap_InvalidToken1() public {
+        PoolKey memory key = _createPoolKey(INITIAL_FEE);
+        key.token1 = address(0);
 
-        // Simulate swap with positive volume
-        // With 1e18 scaling, adjustment rate 100, and volume 1000, the adjustment is 0.
-        // Fee remains at minFee.
-        // Note: The actual fee update logic is complex and depends on the hook's internal state/calculation.
-        // This test might need adjustment based on the expected behavior of the hook's fee calculation.
-        // For now, assuming the event emits the *current* fee before potential update.
-        vm.expectEmit(true, true, true, true);
-        emit FeeUpdated(address(token0), address(token1), 3000); // Expecting initial fee
-
-        hook.afterSwap(
+        vm.expectRevert(DynamicFeeHook.InvalidTokenAddress.selector);
+        hook.beforeSwap(
             address(this),
             key,
             IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1000, sqrtPriceLimitX96: 0}),
-            BalanceDelta(1000, -500),
             ""
         );
     }
 
-    function test_FeeAdjustment() public {
-        PoolKey memory key = PoolKey({
-            token0: address(token0),
-            token1: address(token1),
-            fee: 3000,
-            tickSpacing: 60,
-            hooks: address(hook)
-        });
+    // Removed incomplete comment block that was causing compilation errors
+    /*notice Test afterSwap hook with positive volume
+     */
+    function test_AfterSwap_PositiveVolume() public {
+        PoolKey memory key = _createPoolKey(INITIAL_FEE);
+        uint256 swapAmount = 1000e18; // 1000 tokens
 
-        // Initial fee should be base fee (fetched from registry)
-        // PoolKey memory key = PoolKey({token0: address(token0), token1: address(token1), fee: 3000, tickSpacing: 60, hooks: address(hook)}); // Removed duplicate declaration
-        assertEq(feeRegistry.getFee(key), 3000); // Check registry directly
+        // Mock FeeRegistry behavior
+        // This is needed because our mock doesn't actually update fees
+        vm.mockCall(
+            address(feeRegistry), abi.encodeWithSelector(FeeRegistry.getFee.selector, key), abi.encode(INITIAL_FEE)
+        );
 
-        // After large swap, fee should increase (This tests the hook's internal logic, which might be complex)
-        // The hook's getFee function is likely removed or internal. We test the effect via afterSwap event/state.
-        hook.afterSwap(
+        // Expect the FeeUpdated event
+        vm.expectEmit(true, true, true, true);
+        emit FeeUpdated(address(token0), address(token1), INITIAL_FEE);
+
+        // Call afterSwap
+        bytes4 selector = hook.afterSwap(
             address(this),
             key,
-            IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1e20, sqrtPriceLimitX96: 0}),
-            BalanceDelta(1e20, -5e19),
+            IPoolManager.SwapParams({zeroForOne: true, amountSpecified: int256(swapAmount), sqrtPriceLimitX96: 0}),
+            BalanceDelta(int256(swapAmount), -int256(swapAmount / 2)),
             ""
         );
 
-        // We cannot directly call hook.getFee anymore.
-        // We need to verify the FeeUpdated event or potentially query FeeRegistry if the hook updated it.
-        // Since the hook's update logic isn't fully tested here, we'll comment out the direct fee check for now.
-        // uint24 newFee = feeRegistry.getFee(key); // Assuming hook updates registry
-        // assertEq(newFee, 6000, "Fee should increase to maxFee");
-        // assertLe(newFee, 6000);
+        assertEq(selector, hook.afterSwap.selector);
     }
 
-    function test_CrossPairFeeIndependence() public {
-        MockERC20 token2 = new MockERC20("Token2", "TK2", 18);
-        MockERC20 token3 = new MockERC20("Token3", "TK3", 18);
+    // Removed incomplete comment block that was causing compilation errors
+    /*notice Test afterSwap hook with negative volume
+     */
+    function test_AfterSwap_NegativeVolume() public {
+        PoolKey memory key = _createPoolKey(INITIAL_FEE);
+        int256 swapAmount = -1000e18; // -1000 tokens
 
-        // Ensure canonical order for new pair
-        address _token2 = address(token2) < address(token3) ? address(token2) : address(token3);
-        address _token3 = address(token2) < address(token3) ? address(token3) : address(token2);
+        // Mock FeeRegistry behavior
+        vm.mockCall(
+            address(feeRegistry), abi.encodeWithSelector(FeeRegistry.getFee.selector, key), abi.encode(INITIAL_FEE)
+        );
 
-        // Add config for second pair using addFeeConfiguration
-        uint24 fee2 = 2000;
-        int24 tickSpacing2 = 10; // Example tick spacing
-        feeRegistry.addFeeConfiguration(fee2, tickSpacing2);
+        // Expect the FeeUpdated event
+        vm.expectEmit(true, true, true, true);
+        emit FeeUpdated(address(token0), address(token1), INITIAL_FEE);
 
-        // Simulate swaps on both pairs
-        PoolKey memory key1 = PoolKey({
-            token0: address(token0),
-            token1: address(token1),
-            fee: 3000,
-            tickSpacing: 60,
-            hooks: address(hook)
-        });
-
-        // Swap on first pair
-        hook.afterSwap(
+        // Call afterSwap
+        bytes4 selector = hook.afterSwap(
             address(this),
-            key1,
-            IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1e20, sqrtPriceLimitX96: 0}),
-            BalanceDelta(1e20, -5e19),
+            key,
+            IPoolManager.SwapParams({zeroForOne: true, amountSpecified: swapAmount, sqrtPriceLimitX96: 0}),
+            BalanceDelta(swapAmount, -swapAmount / 2),
             ""
         );
 
-        // Fees should be independent
-        // Fee T0/T1 should increase to maxFee (6000) based on the swap above.
-        // Cannot call hook.getFee directly. Check registry state if hook updates it.
-        // assertEq(feeRegistry.getFee(key1), 6000, "Fee T0/T1 should increase to maxFee");
-
-        // Check fee for the second pair using registry
-        PoolKey memory key2 = PoolKey({token0: _token2, token1: _token3, fee: fee2, tickSpacing: tickSpacing2, hooks: address(0)});
-        assertEq(feeRegistry.getFee(key2), 2000); // This pair's fee is unaffected
+        assertEq(selector, hook.afterSwap.selector);
     }
 
-    function test_RevertOnInvalidTokenPair() public {
-        // Cannot call hook.getFee directly. Test registry behavior instead.
-        PoolKey memory invalidKey = PoolKey({token0: address(0), token1: address(0), fee: 3000, tickSpacing: 0, hooks: address(0)});
-        vm.expectRevert(); // Expect revert on invalid tickSpacing
-        feeRegistry.getFee(invalidKey);
+    // Removed incomplete comment block that was causing compilation errors
+    /*notice Test afterSwap hook with zero volume
+     */
+    function test_AfterSwap_ZeroVolume() public {
+        PoolKey memory key = _createPoolKey(INITIAL_FEE);
+
+        // No event should be emitted for zero volume
+        bytes4 selector = hook.afterSwap(
+            address(this),
+            key,
+            IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 0, sqrtPriceLimitX96: 0}),
+            BalanceDelta(0, 0),
+            ""
+        );
+
+        assertEq(selector, hook.afterSwap.selector);
     }
-}
+
+    // Removed incomplete comment block that was causing compilation errors
+    /*notice Test fee calculation with small volume
+     */
+    function test_CalculateFee_SmallVolume() public {
+        PoolKey memory key = _createPoolKey(INITIAL_FEE);
+        uint256 amount = 100e18; // 100 tokens, below threshold
+
+        // Mock FeeRegistry behavior
+        vm.mockCall(
+            address(feeRegistry), abi.encodeWithSelector(FeeRegistry.getFee.selector, key), abi.encode(INITIAL_FEE)
+        );
+
+        // Calculate fee
+        uint256 feeAmount = hook.calculateFee(key, amount);
+
+        // For small volume, fee should be base fee
+        // amount * fee / 1e6 = 100e18 * 3000 / 1e6 = 300e15
+        assertEq(feeAmount, 300e15);
+    }
+
+    // Removed incomplete comment block that was causing compilation errors
+    /*notice Test fee calculation with large volume
+     */
+    function test_CalculateFee_LargeVolume() public {
+        PoolKey memory key = _createPoolKey(INITIAL_FEE);
+        uint256 amount = 5000e18; // 5000 tokens, above threshold
+
+        // Mock FeeRegistry behavior
+        vm.mockCall(
+            address(feeRegistry), abi.encodeWithSelector(FeeRegistry.getFee.selector, key), abi.encode(INITIAL_FEE)
+        );
+
+        // Calculate fee
+        uint256 feeAmount = hook.calculateFee(key, amount);
+
+        // For volume = 5000e18, volumeMultiplier = 5
+        // scaledFee = 3000 * 5 = 15000
+        // feeAmount = 5000e18 * 15000 / 1e6 = 75e18
+        assertEq(feeAmount, 75e18);
+    }
+
+    // Removed incomplete comment block that was causing compilation errors
+    /*notice Test fee calculation with very large volume (exceeding MAX_VOLUME_MULTIPLIER)
+     */
+    function test_CalculateFee_VeryLargeVolume() public {
+        PoolKey memory key = _createPoolKey(INITIAL_FEE);
+        uint256 amount = 20000e18; // 20000 tokens, would give multiplier of 20 but should be capped at 10
+
+        // Mock FeeRegistry behavior
+        vm.mockCall(
+            address(feeRegistry), abi.encodeWithSelector(FeeRegistry.getFee.selector, key), abi.encode(INITIAL_FEE)
+        );
+
+        // Calculate fee
+        uint256 feeAmount = hook.calculateFee(key, amount);
+
+        // For very large volume, multiplier should be capped at MAX_VOLUME_MULTIPLIER (10)
+        // scaledFee = 3000 * 10 = 30000
+        // feeAmount = 20000e18 * 30000 / 1e6 = 600e18
+        assertEq(feeAmount, 600e18);
+    }
+
+    // Removed incomplete comment block that was causing compilation errors
+    /*notice Test fee calculation with invalid fee
+     */
+    function test_CalculateFee_InvalidFee() public {
+        PoolKey memory key = _createPoolKey(INITIAL_FEE);
+        uint256 amount = 1000e18;
+
+        // Mock FeeRegistry to return an invalid fee
+        uint24 invalidFee = 75; // Below MIN_FEE
+        vm.mockCall(
+            address(feeRegistry), abi.encodeWithSelector(FeeRegistry.getFee.selector, key), abi.encode(invalidFee)
+        );
+
+        // Should revert with InvalidFee
+        vm.expectRevert(abi.encodeWithSelector(DynamicFeeHook.InvalidFee.selector, invalidFee));
+        hook.calculateFee(key, amount);
+    }
+
+    // Removed incomplete comment block that was causing compilation errors
+    /*notice Test fee validation with valid fees
+     */
+    function test_ValidateFee_Valid() public {
+        // Test minimum fee
+        assertTrue(hook.validateFee(MIN_FEE));
+
+        // Test maximum fee
+        assertTrue(hook.validateFee(MAX_FEE));
+
+        // Test fee in the middle
+        assertTrue(hook.validateFee(3000));
+
+        // Test fee that's a multiple of FEE_STEP
+        assertTrue(hook.validateFee(MIN_FEE + FEE_STEP));
+    }
+
+    // Removed incomplete comment block that was causing compilation errors
+    /*notice Test fee validation with invalid fees
+     */
+    function test_ValidateFee_Invalid() public {
+        // Test fee below minimum
+        assertFalse(hook.validateFee(MIN_FEE - 1));
+
+        // Test fee above maximum
+        assertFalse(hook.validateFee(MAX_FEE + 1));
+
+        // Test fee that's not a multiple of FEE_STEP
+        assertFalse(hook.validateFee(MIN_FEE + 1));
+    }
+
+    // Removed incomplete comment block that was causing compilation errors
+    /*notice Test constructor with invalid fee registry address
+     */
+    function test_Constructor_InvalidFeeRegistry() public {
+        vm.expectRevert(DynamicFeeHook.InvalidTokenAddress.selector);
+        new DynamicFeeHook(address(poolManager), address(0));
+    }
+
+    // Removed incomplete comment block that was causing compilation errors
+} // Added missing closing brace for the contract

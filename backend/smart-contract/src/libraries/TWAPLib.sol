@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0
+
+/*
+Created by irfndi (github.com/irfndi) - Apr 2025
+Email: join.mantap@gmail.com
+*/
+
 // TWAPLib.sol
 pragma solidity ^0.8.29; // UPDATED PRAGMA VERSION TO 0.8.28
 /**

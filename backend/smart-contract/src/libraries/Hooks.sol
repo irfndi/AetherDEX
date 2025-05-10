@@ -1,4 +1,10 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: GPL-3.0
+
+/*
+Created by irfndi (github.com/irfndi) - Apr 2025
+Email: join.mantap@gmail.com
+*/
+
 pragma solidity ^0.8.29;
 
 import {PoolKey} from "../types/PoolKey.sol";
@@ -83,38 +89,38 @@ library Hooks {
         bytes4(keccak256("afterModifyPosition(address,PoolKey,IPoolManager.ModifyPositionParams,BalanceDelta,bytes)"));
 
     function beforeSwap(
-        address /*sender*/,
-        PoolKey memory /*key*/,
-        IPoolManager.SwapParams memory /*params*/,
+        address, /*sender*/
+        PoolKey memory, /*key*/
+        IPoolManager.SwapParams memory, /*params*/
         bytes memory /*hookData*/
     ) internal pure returns (bytes4) {
         return BEFORE_SWAP_SELECTOR;
     }
 
     function afterSwap(
-        address /*sender*/,
-        PoolKey memory /*key*/,
-        IPoolManager.SwapParams memory /*params*/,
-        BalanceDelta memory /*delta*/,
+        address, /*sender*/
+        PoolKey memory, /*key*/
+        IPoolManager.SwapParams memory, /*params*/
+        BalanceDelta memory, /*delta*/
         bytes memory /*hookData*/
     ) internal pure returns (bytes4) {
         return AFTER_SWAP_SELECTOR;
     }
 
     function beforeModifyPosition(
-        address /*sender*/,
-        PoolKey memory /*key*/,
-        IPoolManager.ModifyPositionParams memory /*params*/,
+        address, /*sender*/
+        PoolKey memory, /*key*/
+        IPoolManager.ModifyPositionParams memory, /*params*/
         bytes memory /*data*/
     ) internal pure returns (bytes4) {
         return BEFORE_MODIFY_POSITION_SELECTOR;
     }
 
     function afterModifyPosition(
-        address /*sender*/,
-        PoolKey memory /*key*/,
-        IPoolManager.ModifyPositionParams memory /*params*/,
-        BalanceDelta memory /*delta*/,
+        address, /*sender*/
+        PoolKey memory, /*key*/
+        IPoolManager.ModifyPositionParams memory, /*params*/
+        BalanceDelta memory, /*delta*/
         bytes memory /*data*/
     ) internal pure returns (bytes4) {
         return AFTER_MODIFY_POSITION_SELECTOR;

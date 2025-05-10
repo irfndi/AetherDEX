@@ -1,8 +1,14 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: GPL-3.0
+
+/*
+Created by irfndi (github.com/irfndi) - Apr 2025
+Email: join.mantap@gmail.com
+*/
+
 pragma solidity ^0.8.29;
 
 import {IPoolManager} from "../../src/interfaces/IPoolManager.sol";
-import {AetherPool} from "../../src/AetherPool.sol";
+import {IAetherPool} from "../../src/interfaces/IAetherPool.sol";
 import {BaseHook} from "../../src/hooks/BaseHook.sol";
 import {Hooks} from "../../src/libraries/Hooks.sol";
 import {PoolKey} from "../../src/types/PoolKey.sol";
@@ -41,47 +47,54 @@ contract MockPoolManager is IPoolManager {
         hookAddress = _newHookAddress;
     }
 
+    // Minimal struct definition matching AetherRouter's expected callback data
+    struct SwapCallbackData {
+        bytes path;
+        address payer;
+    }
+
     function swap(PoolKey calldata key, SwapParams calldata params, bytes calldata hookData)
         external
         override
         returns (BalanceDelta memory delta)
     {
-        // Validate key
-        _validateKey(key);
+        // Validate key and get the pool address
+        address poolAddress = _validateKey(key); // Use the returned address
 
         // Handle pre-swap hook
         _handleBeforeSwapHook(key, params, hookData);
 
         // --- Execute Swap on the actual pool ---
-        address poolAddress = pools[keccak256(abi.encode(key))];
-        require(poolAddress != address(0), "MPM: Pool not found for swap");
-        AetherPool targetPool = AetherPool(poolAddress);
+        IAetherPool targetPool = IAetherPool(poolAddress); // Use the validated address
 
         // Determine tokenIn and amountIn
         address tokenIn = params.zeroForOne ? key.token0 : key.token1;
         uint256 amountIn = uint256(params.amountSpecified);
         require(amountIn > 0, "MPM: Invalid swap amount");
 
-        // 1. Transfer tokenIn from original caller (msg.sender) to this mock manager
-        // Note: The caller (test contract) must have approved this mock manager beforehand.
-        TransferHelper.safeTransferFrom(tokenIn, msg.sender, address(this), amountIn);
+        // ***** ADDED STEP *****
+        // Pull tokenIn from Router (msg.sender) to the actual pool
+        TransferHelper.safeTransferFrom(tokenIn, msg.sender, address(targetPool), amountIn);
 
-        // 2. Approve the actual pool to take tokenIn from this mock manager
-        IERC20(tokenIn).approve(poolAddress, amountIn);
+        // 2. Call the actual pool's swap function, sending output to the Router (msg.sender)
+        // The pool assumes it has already received tokenIn.
+        uint256 amountOut = targetPool.swap(
+            amountIn, // uint256 amountIn (already transferred to pool)
+            tokenIn, // address tokenIn
+            msg.sender // address to (send output tokens to the Router)
+        );
 
-        // 3. Call the actual pool's swap function (manager is msg.sender for the pool)
-        // The pool will pull tokenIn from this manager contract and send tokenOut to msg.sender (original caller).
-        uint256 amountOut = targetPool.swap(amountIn, tokenIn, msg.sender); // Call actual swap
-
-        // 4. Calculate BalanceDelta based on actual in/out (Pool's Perspective)
+        // 3. Calculate BalanceDelta (from pool's perspective - simplified for mock)
         int256 amount0Change;
         int256 amount1Change;
-        if (params.zeroForOne) { // Pool receives token0 (amountIn), sends token1 (amountOut)
-            amount0Change = int256(amountIn);      // Positive: Pool received token0
-            amount1Change = -int256(amountOut);    // Negative: Pool sent token1
-        } else { // Pool receives token1 (amountIn), sends token0 (amountOut)
-            amount1Change = int256(amountIn);      // Positive: Pool received token1
-            amount0Change = -int256(amountOut);    // Negative: Pool sent token0
+        if (params.zeroForOne) {
+            // Pool receives token0 (amountIn), sends token1 (amountOut)
+            amount0Change = int256(amountIn); // Positive: Pool received token0
+            amount1Change = -int256(amountOut); // Negative: Pool sent token1
+        } else {
+            // Pool receives token1 (amountIn), sends token0 (amountOut)
+            amount1Change = int256(amountIn); // Positive: Pool received token1
+            amount0Change = -int256(amountOut); // Negative: Pool sent token0
         }
         delta = BalanceDelta(amount0Change, amount1Change);
 
@@ -99,9 +112,10 @@ contract MockPoolManager is IPoolManager {
         poolAddress = pools[poolId];
         require(poolAddress != address(0), "MPM: Pool not found for key");
         // Validate tokens against the retrieved pool instance
-        AetherPool targetPool = AetherPool(poolAddress);
-        require(key.token0 == targetPool.token0(), "MPM: Invalid token0");
-        require(key.token1 == targetPool.token1(), "MPM: Invalid token1");
+        IAetherPool targetPool = IAetherPool(poolAddress);
+        (address poolToken0, address poolToken1) = targetPool.tokens();
+        require(key.token0 == poolToken0, "MPM: Invalid token0");
+        require(key.token1 == poolToken1, "MPM: Invalid token1");
         // Hook validation remains the same, assuming hookAddress is global for the mock
         require(key.hooks == hookAddress, "MPM: Invalid hook address");
     }
@@ -175,28 +189,52 @@ contract MockPoolManager is IPoolManager {
     mapping(bytes32 => int24) public initialTick; // Store the initial tick
 
     /// @inheritdoc IPoolManager
-    function modifyPosition(PoolKey calldata key, ModifyPositionParams calldata params, bytes calldata /* hookData */ )
-        external
-        override
-        returns (BalanceDelta memory delta)
-    {
+    function modifyPosition(
+        PoolKey calldata key,
+        ModifyPositionParams calldata params,
+        bytes calldata hookData /* hookData */
+    ) external override returns (BalanceDelta memory delta) {
         address poolAddress = _validateKey(key); // Get pool address while validating
-        AetherPool targetPool = AetherPool(poolAddress); // Get pool instance
+        IAetherPool targetPool = IAetherPool(poolAddress); // Get pool instance
 
-        // Call the actual pool's mint or burn function
         if (params.liquidityDelta > 0) {
-            // For mint, we need amounts. This mock can't calculate them from ticks.
-            // We'll revert here as the mock is insufficient for realistic mint testing via manager.
-            // Tests should call pool.mint directly or use a more sophisticated mock/integration test.
-            revert("MPM: Mock modifyPosition cannot calculate mint amounts. Call pool.mint directly.");
-            // If we *did* calculate amounts (e.g., amount0, amount1):
-            // uint256 liquidityOut = targetPool.mint(msg.sender, amount0, amount1);
-            // delta = BalanceDelta(int256(amount0), int256(amount1)); // Positive delta for manager receiving tokens
+            // --- Mint Liquidity --- 
+            // Cast int256 to uint256 first, then to uint128, as we know it's positive here.
+            uint128 liquidityToAdd = uint128(uint256(params.liquidityDelta));
+            require(liquidityToAdd > 0, "MPM: Liquidity delta must be positive");
+
+            // 1. Call the actual pool's mint function to determine required token amounts
+            //    The pool calculates amounts based on liquidity and reserves.
+            //    NOTE: The actual AetherPool.mint will revert here until implemented, which is expected in later tests.
+            (uint256 requiredAmount0, uint256 requiredAmount1) = targetPool.mint(msg.sender, liquidityToAdd);
+
+            // *** MOCK ASSERTION ***: Check if pool requested any tokens.
+            // In a real scenario, the pool would revert if calculation fails.
+            require(requiredAmount0 > 0 || requiredAmount1 > 0, "MPM: Pool reported zero amounts needed for mint");
+
+            // 2. Transfer required tokens FROM msg.sender TO pool
+            //    (Requires approval in test setup)
+            if (requiredAmount0 > 0) {
+                TransferHelper.safeTransferFrom(key.token0, msg.sender, address(targetPool), requiredAmount0);
+            }
+            if (requiredAmount1 > 0) {
+                TransferHelper.safeTransferFrom(key.token1, msg.sender, address(targetPool), requiredAmount1);
+            }
+
+            // 3. Calculate delta (positive = pool received)
+            delta = BalanceDelta(int256(requiredAmount0), int256(requiredAmount1));
+            // ----------------------------------
         } else if (params.liquidityDelta < 0) {
+            // Removing liquidity (burn)
             uint256 liquidityToRemove = uint256(-params.liquidityDelta);
-            (uint256 amount0Out, uint256 amount1Out) = targetPool.burn(msg.sender, liquidityToRemove);
-            // Return negative delta indicating tokens sent from the pool
-            delta = BalanceDelta(-int256(amount0Out), -int256(amount1Out));
+            require(liquidityToRemove > 0, "MPM: Burn amount must be positive"); // Sanity check
+
+            // Call the actual pool's burn function
+            // The pool is responsible for checks like sufficient liquidity and transferring tokens
+            (uint256 amount0, uint256 amount1) = targetPool.burn(msg.sender, liquidityToRemove);
+
+            // Delta from the pool's perspective (negative means sent out)
+            delta = BalanceDelta(-int256(amount0), -int256(amount1));
         } else {
             // liquidityDelta is zero, return zero delta
             delta = BalanceDelta(0, 0);
@@ -252,8 +290,8 @@ contract MockPoolManager is IPoolManager {
         // Ensure the actual pool instance is initialized as well
         address poolAddress = pools[poolId]; // Get pool address
         require(poolAddress != address(0), "MPM: Pool not set for this ID");
-        AetherPool targetPool = AetherPool(poolAddress); // Get pool instance
-        targetPool.initialize(key.token0, key.token1, key.fee);
+        // IAetherPool targetPool = IAetherPool(poolAddress); // Get pool instance // Commented out as unused
+        // targetPool.initialize(key.token0, key.token1, key.fee); // Removed initialize call
 
         // Optionally, call hook if present and has permission
         if (key.hooks != address(0) && Hooks.hasPermission(key.hooks, Hooks.AFTER_INITIALIZE_FLAG)) {
@@ -268,19 +306,11 @@ contract MockPoolManager is IPoolManager {
         // No revert needed here as we are implementing the function
     }
 
-    // Get pool info based on the key, retrieving from the mapping
-    function getPool(PoolKey calldata key) external view override returns (Pool memory) {
+    // --- Pool Query --- //
+
+    function getPool(PoolKey memory key) external view override returns (address poolAddress) {
         bytes32 poolId = keccak256(abi.encode(key));
-        address poolAddress = pools[poolId];
-        require(poolAddress != address(0), "MPM: Pool not found for key");
-        AetherPool targetPool = AetherPool(poolAddress);
-        // Return info based on the specific pool found
-        return Pool({
-            token0: targetPool.token0(),
-            token1: targetPool.token1(),
-            fee: targetPool.fee(), // Get fee from the actual pool instance
-            tickSpacing: 60, // Assuming fixed tick spacing for mock, adjust if needed
-            hooks: hookAddress // Assuming global hook address for mock
-        });
+        poolAddress = pools[poolId];
+        require(poolAddress != address(0), "MPM: Pool not found");
     }
 }

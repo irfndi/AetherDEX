@@ -1,3 +1,18 @@
 #!/bin/sh
 # Run all Foundry tests with the correct flags and project root.
+# Check Vyper syntax first (requires Vyper to be installed)
+echo "Checking Vyper syntax..."
+if command -v vyper &> /dev/null; then
+    VYPER_CHECK_CMD='find backend/smart-contract/src/security -name "*.vy" -exec vyper {} \;'
+    eval $VYPER_CHECK_CMD
+    if [ $? -ne 0 ]; then
+        echo "Vyper syntax check failed!"
+        exit 1
+    fi
+else
+    echo "Warning: vyper command not found, skipping Vyper syntax check."
+fi
+
+echo "Running Foundry tests..."
+forge clean
 forge test --via-ir --root ./backend/smart-contract/ "$@"

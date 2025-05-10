@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0
+
+/*
+Created by irfndi (github.com/irfndi) - Apr 2025
+Email: join.mantap@gmail.com
+*/
+
 pragma solidity ^0.8.29;
 
 import {IPoolManager} from "../interfaces/IPoolManager.sol";
@@ -20,7 +26,7 @@ abstract contract BaseHook {
 
     constructor(address _poolManager) {
         poolManager = IPoolManager(_poolManager);
-        
+
         // Skip validation during test environment
         if (block.chainid != 31337) {
             // Get flags from contract address

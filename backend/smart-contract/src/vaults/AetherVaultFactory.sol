@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0
+
+/*
+Created by irfndi (github.com/irfndi) - Apr 2025
+Email: join.mantap@gmail.com
+*/
+
 pragma solidity ^0.8.29;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -15,7 +21,10 @@ import {ILayerZeroEndpoint} from "../interfaces/ILayerZeroEndpoint.sol";
  * @dev Factory contract for deploying AetherVault and AetherStrategy pairs
  * Manages deployment, initialization, and tracking of vaults across chains
  */
-contract AetherVaultFactory is Ownable, ReentrancyGuard { // Inherit ReentrancyGuard
+contract AetherVaultFactory is
+    Ownable,
+    ReentrancyGuard // Inherit ReentrancyGuard
+{
     IPoolManager public immutable poolManager;
     ILayerZeroEndpoint public immutable lzEndpoint;
 

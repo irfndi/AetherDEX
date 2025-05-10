@@ -4,17 +4,22 @@ out = 'out'
 libs = ['lib', 'node_modules']
 test = 'test'
 
+    [profile.default.vyper]
+    version = "0.3.10"
+    path = "${VYPER_PATH:vyper}"
+
 [profile.remappings]
 'forge-std' = 'lib/forge-std/src/'
-'@openzeppelin/contracts' = 'lib/openzeppelin-contracts/contracts/'
-'@uniswap/v4-core/' = 'lib/v4-core/src' # Corrected remapping path
-'@uniswap/v4-core/interfaces/' = 'lib/v4-core/src/interfaces/' # Added specific interface remapping
+'@openzeppelin/contracts/' = 'lib/openzeppelin-contracts/contracts/' # Revert to standard
+'v4-core/' = 'lib/v4-core/src/' # Use v4-core key
+'v4-core/interfaces/' = 'lib/v4-core/src/interfaces/' # Use v4-core key
 
 [profile.compiler]
 solc_version = '0.8.29'
 optimizer = true
 optimizer_runs = 1000
 via_ir = true
+ffi = true
 # Security settings
 strict = true
 revert_strings = 'strip'

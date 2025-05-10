@@ -1,6 +1,6 @@
 # Security Analysis Log
 
-> [TODO]: Update this log after every Slither/static analysis run and after addressing any high/medium severity issues. Keep findings and resolutions current.
+> TODO: Update this log after every Slither/static analysis run and after addressing any high/medium severity issues. Keep findings and resolutions current.
 > 
 > **Last Reviewed:** 2025-04-17
 

@@ -1,4 +1,10 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: GPL-3.0
+
+/*
+Created by irfndi (github.com/irfndi) - Apr 2025
+Email: join.mantap@gmail.com
+*/
+
 pragma solidity ^0.8.29;
 
 import {Test} from "forge-std/Test.sol";
@@ -186,7 +192,8 @@ contract HooksTest is Test {
      * @notice Tests the `validateHookAddress` function.
      * @dev Checks if it correctly identifies valid hook addresses and reverts for invalid ones.
      */
-    function test_ValidateHookAddress() public { // Removed 'pure' again due to vm.expectRevert
+    function test_ValidateHookAddress() public {
+        // Removed 'pure' again due to vm.expectRevert
         // Manually construct addresses with flags
         uint160 flags_bs = Hooks.BEFORE_SWAP_FLAG;
         address hook_bs = address(uint160(DUMMY_HOOK_TARGET) | flags_bs);

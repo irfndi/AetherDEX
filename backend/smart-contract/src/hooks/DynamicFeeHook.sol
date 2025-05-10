@@ -1,11 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0
+
+/*
+Created by irfndi (github.com/irfndi) - Apr 2025
+Email: join.mantap@gmail.com
+*/
+
 pragma solidity ^0.8.29;
 // slither-disable unimplemented-functions
+
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol"; // Import ReentrancyGuard
 import {BaseHook} from "./BaseHook.sol";
 import {Hooks} from "../libraries/Hooks.sol"; // Import Hooks library
 import {IPoolManager} from "../interfaces/IPoolManager.sol";
-import {FeeRegistry} from "../FeeRegistry.sol";
+import {FeeRegistry} from "../primary/FeeRegistry.sol";
 import {PoolKey} from "../types/PoolKey.sol";
 import {BalanceDelta} from "../types/BalanceDelta.sol";
 
@@ -14,7 +21,10 @@ import {BalanceDelta} from "../types/BalanceDelta.sol";
  * @notice Hook for dynamic fee adjustment based on pool activity
  * @dev Implements dynamic fee logic using FeeRegistry for cross-chain fee management
  */
-contract DynamicFeeHook is BaseHook, ReentrancyGuard { // Inherit ReentrancyGuard
+contract DynamicFeeHook is
+    BaseHook,
+    ReentrancyGuard // Inherit ReentrancyGuard
+{
     /// @notice Reference to the fee registry contract
     FeeRegistry public immutable feeRegistry;
 
@@ -66,7 +76,7 @@ contract DynamicFeeHook is BaseHook, ReentrancyGuard { // Inherit ReentrancyGuar
             beforeModifyPosition: false,
             afterModifyPosition: false,
             beforeSwap: true, // True
-            afterSwap: true,  // True
+            afterSwap: true, // True
             beforeDonate: false,
             afterDonate: false
         });
@@ -112,7 +122,8 @@ contract DynamicFeeHook is BaseHook, ReentrancyGuard { // Inherit ReentrancyGuar
         IPoolManager.SwapParams calldata params,
         BalanceDelta memory delta,
         bytes calldata
-    ) external override nonReentrant returns (bytes4) { // Added nonReentrant modifier
+    ) external override nonReentrant returns (bytes4) {
+        // Added nonReentrant modifier
         // Update fee based on swap volume
         int256 swapVolume = params.zeroForOne ? delta.amount0 : delta.amount1;
         if (swapVolume != 0) {
