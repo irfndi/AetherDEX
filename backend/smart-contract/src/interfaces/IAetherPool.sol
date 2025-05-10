@@ -43,11 +43,11 @@ interface IAetherPool {
     // --- State-Changing Functions ---
 
     /// @notice Mints liquidity based on a specified liquidity amount.
-    /// @dev This function is typically called by the Pool Manager.
-    /// @param recipient The address to receive the minted LP tokens (implicitly calculated).
-    /// @param amount The amount of liquidity to add.
-    /// @return amount0 The required amount of token0 to deposit.
-    /// @return amount1 The required amount of token1 to deposit.
+    /// @dev This function is typically called by the Pool Manager or a router.
+    /// @param recipient The address to receive the minted LP tokens.
+    /// @param amount The amount of liquidity to add (LP tokens to mint).
+    /// @return amount0 The required amount of token0 to deposit for the specified LP amount.
+    /// @return amount1 The required amount of token1 to deposit for the specified LP amount.
     function mint(address recipient, uint128 amount) external returns (uint256 amount0, uint256 amount1);
 
     /// @notice Burns liquidity tokens.
@@ -67,11 +67,11 @@ interface IAetherPool {
     // Initialization function (added for Vyper pools)
     function initialize(address token0, address token1, uint24 fee) external;
 
-    /// @notice Initializes the pool by setting the initial liquidity.
+    /// @notice Adds initial liquidity to the pool after it has been initialized.
     /// @param amount0Desired The desired amount of token0.
     /// @param amount1Desired The desired amount of token1.
     /// @return liquidity The amount of LP tokens minted.
-    function initialize_pool(uint256 amount0Desired, uint256 amount1Desired) external returns (uint256 liquidity);
+    function addInitialLiquidity(uint256 amount0Desired, uint256 amount1Desired) external returns (uint256 liquidity);
 
     // --- View Functions ---
 

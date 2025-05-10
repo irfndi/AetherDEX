@@ -1,4 +1,11 @@
-# @version 0.3.10
+#/* SPDX-License-Identifier: GPL-3.0 */
+
+#/*
+# Created by irfndi (github.com/irfndi) - Apr 2025
+# Email: join.mantap@gmail.com
+# */
+
+@version 0.3.10
 
 # --- Interfaces ---
 from vyper.interfaces import ERC20
@@ -106,7 +113,6 @@ def initialize(token0_addr: address, token1_addr: address, pool_fee: uint24):
     @param pool_fee Fee tier for the pool, denominated in hundredths of a bip (1/100 of 0.01%)
     """
     assert not self.initialized, "ALREADY_INITIALIZED"
-    assert not self.initialized, "ALREADY_INITIALIZED"
     assert token0_addr != EMPTY_ADDRESS and token1_addr != EMPTY_ADDRESS, "ZERO_ADDRESS"
     assert token0_addr != token1_addr, "IDENTICAL_ADDRESSES"
     
@@ -142,7 +148,7 @@ def burn(to: address, liquidity: uint256) -> (uint256, uint256):
     assert liquidity > 0, "INSUFFICIENT_LIQUIDITY_BURNED"
  
     # Check owner's balance
-    assert self.balanceOf[to] >= liquidity, "INSUFFICIENT_LIQUIDITY_OWNED"
+    assert self.balanceOf[msg.sender] >= liquidity, "INSUFFICIENT_LIQUIDITY_OWNED"
  
     _reserve0: uint256 = self.reserve0
     _reserve1: uint256 = self.reserve1
@@ -164,7 +170,7 @@ def burn(to: address, liquidity: uint256) -> (uint256, uint256):
     self.totalSupply = _totalSupply - liquidity
 
     # --- Debit LP Tokens ---
-    self.balanceOf[to] -= liquidity
+    self.balanceOf[msg.sender] -= liquidity
 
     # --- Emit Event ---
     # log LiquidityRemoved(provider=to, amount0=amount0, amount1=amount1, liquidity=liquidity)
@@ -273,22 +279,16 @@ def transfer(_to: address, _value: uint256) -> bool:
     return True
 
 @external
-def approve(_spender: address, _value: uint256) -> bool:
+def approve(spender: address, amount: uint256) -> bool:
     """
-    @notice Approve an address to spend LP tokens on behalf of the caller.
-    @param _spender The address to approve.
-    @param _value The amount to approve.
-    @return Success boolean.
+    @notice Approve spender to withdraw from your account multiple times, up to the amount.
+    @dev If this function is called again it overwrites the current allowance with amount.
+    @param spender The address which will spend the funds.
+    @param amount The amount of tokens to be spent.
+    @return bool True if the approval was successful.
     """
-    # Prevent approval for zero address
-    assert _spender != EMPTY_ADDRESS, "APPROVE_TO_ZERO_ADDRESS"
-
-    # Set allowance
-    self.allowance[msg.sender][_spender] = _value
-
-    # Log event
-    log Approval(msg.sender, _spender, _value)
-
+    self.allowance[msg.sender][spender] = amount
+    log Approval(msg.sender, spender, amount)
     return True
 
 @external
@@ -321,16 +321,17 @@ def transferFrom(_from: address, _to: address, _value: uint256) -> bool:
 # --- Public Mutating Functions --- #
 
 @external
-def initialize_pool(amount0_desired: uint256, amount1_desired: uint256) -> uint256:
+@nonreentrant('lock') # Ensure reentrancy protection
+def addInitialLiquidity(amount0_desired: uint256, amount1_desired: uint256) -> uint256:
     """
-    @notice Initializes the pool with the first liquidity provision.
-    @dev Can only be called once when totalSupply is 0.
+    @notice Adds initial liquidity to the pool after it has been initialized with token addresses and fee.
+    @dev Can only be called once when totalSupply is 0, and after 'initialize' has been called.
     @param amount0_desired The desired amount of token0.
     @param amount1_desired The desired amount of token1.
     @return liquidity The amount of LP tokens minted.
     """
     # --- Checks ---
-    assert not self.initialized, "POOL_ALREADY_INITIALIZED"
+    assert self.initialized, "POOL_NOT_YET_INITIALIZED"
     assert self.totalSupply == 0, "INITIALIZE_POOL_ALREADY_HAS_LIQUIDITY"
     assert amount0_desired > 0 and amount1_desired > 0, "INITIALIZE_ZERO_AMOUNT"
 

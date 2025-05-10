@@ -1,4 +1,9 @@
-# @version 0.3.10
+#/*
+# Created by irfndi (github.com/irfndi) - Apr 2025
+# Email: join.mantap@gmail.com
+# */
+
+@version 0.3.10
 
 interface IAetherPool:
     # --- State-Changing Functions ---

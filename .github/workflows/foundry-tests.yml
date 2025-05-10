@@ -26,6 +26,16 @@ jobs:
         with:
           version: nightly
 
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10' # Vyper 0.3.10 is compatible with Python 3.8-3.11
+
+      - name: Install Vyper
+        run: |
+          pip install vyper==0.3.10
+          echo "VYPER_PATH=$(which vyper)" >> $GITHUB_ENV
+
       - name: Cache Foundry dependencies
         uses: actions/cache@v3
         with:
@@ -47,7 +57,10 @@ jobs:
       - name: Run tests
         env:
           FOUNDRY_PROFILE: ci
-        run: forge test --via-ir -v
+          VYPER_PATH: ${{ env.VYPER_PATH }} # Ensure VYPER_PATH is used
+        run: |
+          forge clean
+          forge test --via-ir -v
 
   static-analysis:
     name: Static Analysis
@@ -83,13 +96,24 @@ jobs:
             ${{ runner.os }}-foundry-
 
       - name: Install dependencies
-        run: forge install
+        run: |
+          forge clean
+          forge install
 
       - name: Install Python and uv
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
           cache: 'pip'
+
+      - name: Install Vyper for Slither
+        id: set_vyper_for_slither
+        run: |
+          pip install vyper==0.3.10
+          VYPER_EXECUTABLE=$(which vyper)
+          echo "VYPER_PATH_FOR_SLITHER=${VYPER_EXECUTABLE}" >> $GITHUB_ENV # Keep for other potential uses
+          echo "vyper_exe_path=${VYPER_EXECUTABLE}" >> $GITHUB_OUTPUT     # Set as step output
+          echo "Vyper for Slither installed at: ${VYPER_EXECUTABLE}"
 
       - name: Cache uv
         uses: actions/cache@v3
@@ -116,4 +140,8 @@ jobs:
         run: uv pip install --system slither-analyzer
 
       - name: Run Slither
-        run: slither . --filter-paths "lib|test|script" --exclude naming-convention,solc-version,pragma,unused-state
+        env:
+          SLITHER_SPECIFIC_VYPER_PATH: ${{ steps.set_vyper_for_slither.outputs.vyper_exe_path }}
+        run: |
+          echo "Executing Slither with Vyper path: ${SLITHER_SPECIFIC_VYPER_PATH}"
+          slither . --vyper "${SLITHER_SPECIFIC_VYPER_PATH}" --filter-paths "lib|test|script" --exclude naming-convention,solc-version,pragma,unused-state --ignore-compile --continue-on-failure

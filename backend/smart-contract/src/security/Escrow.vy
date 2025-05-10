@@ -1,11 +1,11 @@
-#// SPDX-License-Identifier: GPL-3.0
+#/* SPDX-License-Identifier: GPL-3.0 */
 
 #/*
 # Created by irfndi (github.com/irfndi) - Apr 2025
 # Email: join.mantap@gmail.com
 # */
 
-# @version 0.3.10
+@version 0.3.10
 
 interface ERC20:
     def transfer(recipient: address, amount: uint256) -> bool: nonpayable
@@ -32,6 +32,10 @@ event Released:
     amount: uint256
 
 event Refunded:
+    amount: uint256
+
+event DisputeResolved:
+    recipient: indexed(address)
     amount: uint256
 
 @external
@@ -88,3 +92,20 @@ def refund():
     assert res, "Transfer failed"
     self.isReleased = True
     log Refunded(self.amount)
+
+@external
+def resolve_dispute(recipient: address):
+    """
+    @notice Arbiter resolves a dispute and sends funds to the specified recipient (buyer or seller).
+    @param recipient The address (either buyer or seller) to receive the funds.
+    """
+    assert msg.sender == self.arbiter, "Only arbiter can resolve dispute"
+    assert self.isFunded, "Not funded"
+    assert not self.isReleased, "Funds already released/refunded"
+    assert recipient == self.buyer or recipient == self.seller, "Recipient must be buyer or seller"
+
+    res: bool = self.token.transfer(recipient, self.amount)
+    assert res, "Transfer failed"
+    
+    self.isReleased = True # Mark as handled
+    log DisputeResolved(recipient, self.amount)
