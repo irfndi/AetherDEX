@@ -110,7 +110,8 @@ contract FeeRegistryTest is Test {
     function test_AddFeeConfiguration_Revert_NonOwner() public {
         vm.startPrank(user);
         // Use the string revert from the local Ownable.sol
-        vm.expectRevert("Ownable: caller is not the owner");
+        // This project uses a custom Ownable implementation with string errors
+        vm.expectRevert(bytes("Ownable: caller is not the owner"));
         registry.addFeeConfiguration(100, 1);
         vm.stopPrank();
     }
@@ -337,7 +338,8 @@ contract FeeRegistryTest is Test {
     function test_RegisterDynamicFeePool_Revert_NonOwner() public {
         vm.startPrank(user);
         // Use the string revert from the local Ownable.sol
-        vm.expectRevert("Ownable: caller is not the owner");
+        // This project uses a custom Ownable implementation with string errors
+        vm.expectRevert(bytes("Ownable: caller is not the owner"));
         registry.registerDynamicFeePool(poolKeyBC, FEE_TIER_2, dynamicFeeUpdater);
         vm.stopPrank();
     }
@@ -449,7 +451,8 @@ contract FeeRegistryTest is Test {
         address newUpdater = makeAddr("newUpdater");
         vm.startPrank(user);
         // Use the string revert from the local Ownable.sol
-        vm.expectRevert("Ownable: caller is not the owner");
+        // This project uses a custom Ownable implementation with string errors
+        vm.expectRevert(bytes("Ownable: caller is not the owner"));
         registry.setFeeUpdater(poolKeyAB, newUpdater);
         vm.stopPrank();
     }
@@ -502,7 +505,8 @@ contract FeeRegistryTest is Test {
 
         // Old owner (this) cannot call owner functions anymore
         // Use the string revert from the local Ownable.sol
-        vm.expectRevert("Ownable: caller is not the owner");
+        // This project uses a custom Ownable implementation with string errors
+        vm.expectRevert(bytes("Ownable: caller is not the owner"));
         registry.addFeeConfiguration(100, 1);
 
         // New owner can call owner functions
