@@ -28,8 +28,11 @@ abstract contract BaseRouter is ReentrancyGuard {
         IERC20(token).safeTransferFrom(msg.sender, pool, amount);
     }
 
-    function _swap(address pool, uint256 amountIn, address tokenIn, address to) internal returns (uint256 amountOut) {
+    function _swap(address pool, uint256 amountIn, address tokenIn, address to, uint256 minAmountOut)
+        internal
+        returns (uint256 amountOut)
+    {
         amountOut = IAetherPool(pool).swap(amountIn, tokenIn, to);
-        require(amountOut > 0, "InsufficientOutputAmount");
+        require(amountOut >= minAmountOut, "SlippageExceeded");
     }
 }

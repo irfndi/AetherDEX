@@ -24,9 +24,9 @@ interface IFeeRegistry {
     struct FeeConfiguration {
         bool isStatic;
         uint24 fee;
-        int24 tickSpacing; // Include if needed by pool initialization
-            // Add other relevant fields if FeeRegistry stores more config per pair
+        uint24 tickSpacing;
     }
+    // Add other relevant fields if FeeRegistry stores more config per pair
 
     // --- Functions ---
 

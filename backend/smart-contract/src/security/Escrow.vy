@@ -39,6 +39,7 @@ event DisputeResolved:
     amount: uint256
 
 @external
+@external
 def __init__(_buyer: address, _seller: address, _arbiter: address, _token: ERC20, _amount: uint256):
     """
     @param _buyer The address that funds the escrow
@@ -47,13 +48,24 @@ def __init__(_buyer: address, _seller: address, _arbiter: address, _token: ERC20
     @param _token The ERC20 token address
     @param _amount The amount to hold in escrow
     """
+    assert _buyer != empty(address), "Buyer cannot be zero address"
+    assert _seller != empty(address), "Seller cannot be zero address"
+    assert _arbiter != empty(address), "Arbiter cannot be zero address"
+    assert _token.address != empty(address), "Token cannot be zero address"
+    assert _amount > 0, "Amount must be greater than zero"
+
+    # Prevent conflict of interest
+    assert _buyer != _seller, "Buyer cannot be seller"
+    assert _buyer != _arbiter, "Buyer cannot be arbiter"
+    assert _seller != _arbiter, "Seller cannot be arbiter"
+
     self.buyer = _buyer
-    self.seller = _seller
-    self.arbiter = _arbiter
-    self.token = _token
-    self.amount = _amount
-    self.isFunded = False
-    self.isReleased = False
+    assert msg.sender == self.buyer, "Only buyer can fund"
+    assert not self.isFunded, "Already funded"
+    self.isFunded = True  # effects
+    res: bool = self.token.transferFrom(msg.sender, self, self.amount)  # interaction
+    assert res, "Transfer failed"
+    log Funded(msg.sender, self.amount)
 
 @external
 def fund():
@@ -76,10 +88,11 @@ def release():
     assert self.isFunded, "Not funded"
     assert not self.isReleased, "Already released"
     res: bool = self.token.transfer(self.seller, self.amount)
+    assert not self.isReleased, "Already released"
+    self.isReleased = True  # Update state before external call
+    res: bool = self.token.transfer(self.buyer, self.amount)
     assert res, "Transfer failed"
-    self.isReleased = True
-    log Released(self.amount)
-
+    log Refunded(self.amount)
 @external
 def refund():
     """
