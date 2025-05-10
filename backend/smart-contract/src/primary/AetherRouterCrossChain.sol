@@ -475,7 +475,7 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
         _transferToPool(tokenIn, poolAddress, amountIn);
 
         // 4. Call swap directly on the pool, sending output to this contract for post-processing
-        uint256 amountOut = _swap(poolAddress, amountIn, tokenIn, address(this));
+        uint256 amountOut = _swap(poolAddress, amountIn, tokenIn, address(this), 0); // Min amount check happens later
         // 5. Construct BalanceDelta
         int256 amount0Delta;
         int256 amount1Delta;

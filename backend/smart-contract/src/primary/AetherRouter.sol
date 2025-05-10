@@ -77,7 +77,7 @@ contract AetherRouter is BaseRouter {
         amounts[0] = amountIn;
 
         _transferToPool(tokenIn, pool, amountIn);
-        uint256 amountOut = _swap(pool, amountIn, tokenIn, to);
+        uint256 amountOut = _swap(pool, amountIn, tokenIn, to, amountOutMin);
         amounts[1] = amountOut;
         require(amountOut >= amountOutMin, "InsufficientOutputAmount");
     }
@@ -124,7 +124,7 @@ contract AetherRouter is BaseRouter {
         // Router now has allowance, so it transfers from msg.sender to the pool.
         IERC20(tokenInAddress).safeTransferFrom(msg.sender, pool, amountIn); 
         
-        uint256 amountOut = _swap(pool, amountIn, tokenInAddress, to);
+        uint256 amountOut = _swap(pool, amountIn, tokenInAddress, to, amountOutMin);
         amounts[1] = amountOut;
         require(amountOut >= amountOutMin, "InsufficientOutputAmount");
     }

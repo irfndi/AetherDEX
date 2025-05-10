@@ -104,7 +104,7 @@ contract SwapRouterTest is
 
         // --- Deploy Core Contracts ---
         feeRegistry = new FeeRegistry(address(this)); // Deploy FeeRegistry
-        factory = new AetherFactory(address(this), address(feeRegistry)); // Pass owner and registry
+        factory = new AetherFactory(address(this), address(feeRegistry), 3000); // Pass owner, registry, and initial pool fee of 0.3%
         router = new AetherRouter(); // Deploy Router (no constructor args)
 
         // Define PoolKey parameters (assuming 3000 fee, 60 tickSpacing, no hooks)
@@ -143,7 +143,7 @@ contract SwapRouterTest is
 
         // Call router's addLiquidity
         vm.startPrank(address(this)); // Simulate 'this' as the caller
-        (uint256 amountAActual, uint256 amountBActual, uint256 liquidity) = router.addLiquidity(
+        ( /* uint256 amountAActual */ , /* uint256 amountBActual */, uint256 liquidity) = router.addLiquidity(
             address(pool), amountADesired, amountBDesired, amountAMin, amountBMin, address(this), deadline
         );
         vm.stopPrank();
@@ -161,8 +161,8 @@ contract SwapRouterTest is
         uint256 amountIn = 10 ether;
 
         // Calculate expected amount using x*y=k formula and the actual pool fee
-        uint256 currentFee = pool.fee(); // Get actual fee from pool
-        uint256 amountInWithFee = (amountIn * (10000 - currentFee)) / 10000; // Use actual fee
+        // uint256 currentFee = pool.fee(); // Get actual fee from pool
+        // uint256 amountInWithFee = (amountIn * (10000 - currentFee)) / 10000; // Unused variable
 
         // Mint tokens to 'this' for swapping
         tokenA.mint(address(this), amountIn);
@@ -175,16 +175,15 @@ contract SwapRouterTest is
         address[] memory path = new address[](3);
         path[0] = address(tokenA); // Input token
         path[1] = address(tokenB); // Output token (determines swap direction implicitly in simple pool)
-        path[2] = address(pool);   // Pool address
+        path[2] = address(pool); // Pool address
 
         uint256 amountOutMin = 0; // No slippage for test
         uint256 deadline = block.timestamp + 60;
 
         // Execute swap via Router
         vm.startPrank(address(this));
-        uint256[] memory amounts = router.swapExactTokensForTokens(
-            amountIn, amountOutMin, path, address(this), deadline
-        );
+        uint256[] memory amounts =
+            router.swapExactTokensForTokens(amountIn, amountOutMin, path, address(this), deadline);
         vm.stopPrank();
 
         // Check final state
@@ -201,8 +200,8 @@ contract SwapRouterTest is
         uint256 amountIn = 10 ether;
 
         // Calculate expected amount using x*y=k formula and the actual pool fee
-        uint256 currentFee = pool.fee(); // Get actual fee from pool
-        uint256 amountInWithFee = (amountIn * (10000 - currentFee)) / 10000; // Use actual fee
+        // uint256 currentFee = pool.fee(); // Get actual fee from pool
+        // uint256 amountInWithFee = (amountIn * (10000 - currentFee)) / 10000; // Unused variable
 
         // Mint tokens to 'this' for swapping
         tokenB.mint(address(this), amountIn);
@@ -215,16 +214,15 @@ contract SwapRouterTest is
         address[] memory path = new address[](3);
         path[0] = address(tokenB); // Input token
         path[1] = address(tokenA); // Output token
-        path[2] = address(pool);   // Pool address
+        path[2] = address(pool); // Pool address
 
         uint256 amountOutMin = 0; // No slippage for test
         uint256 deadline = block.timestamp + 60;
 
         // Execute swap via Router
         vm.startPrank(address(this));
-        uint256[] memory amounts = router.swapExactTokensForTokens(
-            amountIn, amountOutMin, path, address(this), deadline
-        );
+        uint256[] memory amounts =
+            router.swapExactTokensForTokens(amountIn, amountOutMin, path, address(this), deadline);
         vm.stopPrank();
 
         // Check final state

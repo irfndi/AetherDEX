@@ -5,7 +5,7 @@
 # Email: join.mantap@gmail.com
 # */
 
-@version 0.3.10
+# @version 0.3.10
 
 interface ERC20:
     def transfer(recipient: address, amount: uint256) -> bool: nonpayable
@@ -39,7 +39,6 @@ event DisputeResolved:
     amount: uint256
 
 @external
-@external
 def __init__(_buyer: address, _seller: address, _arbiter: address, _token: ERC20, _amount: uint256):
     """
     @param _buyer The address that funds the escrow
@@ -60,12 +59,12 @@ def __init__(_buyer: address, _seller: address, _arbiter: address, _token: ERC20
     assert _seller != _arbiter, "Seller cannot be arbiter"
 
     self.buyer = _buyer
-    assert msg.sender == self.buyer, "Only buyer can fund"
-    assert not self.isFunded, "Already funded"
-    self.isFunded = True  # effects
-    res: bool = self.token.transferFrom(msg.sender, self, self.amount)  # interaction
-    assert res, "Transfer failed"
-    log Funded(msg.sender, self.amount)
+    self.seller = _seller
+    self.arbiter = _arbiter
+    self.token = _token
+    self.amount = _amount
+    self.isFunded = False
+    self.isReleased = False
 
 @external
 def fund():
@@ -87,12 +86,17 @@ def release():
     assert msg.sender == self.arbiter, "Only arbiter can release funds" #dev: check caller is arbiter
     assert self.isFunded, "Not funded"
     assert not self.isReleased, "Already released"
-    res: bool = self.token.transfer(self.seller, self.amount)
-    assert not self.isReleased, "Already released"
-    self.isReleased = True  # Update state before external call
-    res: bool = self.token.transfer(self.buyer, self.amount)
-    assert res, "Transfer failed"
-    log Refunded(self.amount)
+    
+    # Mark as released before external call to prevent reentrancy
+    self.isReleased = True
+    
+    # Transfer funds to the seller (this is the correct recipient for 'release')
+    transfer_success: bool = self.token.transfer(self.seller, self.amount)
+    assert transfer_success, "Transfer failed"
+    
+    # Log the release event
+    log Released(self.amount)
+    
 @external
 def refund():
     """
@@ -101,9 +105,15 @@ def refund():
     assert msg.sender == self.arbiter, "Only arbiter can refund funds" #dev: check caller is arbiter
     assert self.isFunded, "Not funded"
     assert not self.isReleased, "Already released"
-    res: bool = self.token.transfer(self.buyer, self.amount)
-    assert res, "Transfer failed"
+    
+    # Mark as released before external call to prevent reentrancy
     self.isReleased = True
+    
+    # Transfer funds to the buyer (this is the correct recipient for 'refund')
+    transfer_success: bool = self.token.transfer(self.buyer, self.amount)
+    assert transfer_success, "Transfer failed"
+    
+    # Log the refund event
     log Refunded(self.amount)
 
 @external
@@ -117,8 +127,8 @@ def resolve_dispute(recipient: address):
     assert not self.isReleased, "Funds already released/refunded"
     assert recipient == self.buyer or recipient == self.seller, "Recipient must be buyer or seller"
 
-    res: bool = self.token.transfer(recipient, self.amount)
-    assert res, "Transfer failed"
+    transfer_success: bool = self.token.transfer(recipient, self.amount)
+    assert transfer_success, "Transfer failed"
     
     self.isReleased = True # Mark as handled
     log DisputeResolved(recipient, self.amount)

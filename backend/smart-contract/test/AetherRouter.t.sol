@@ -68,7 +68,7 @@ contract AetherRouterTest is Test {
 
         // Deploy factory and router
         console.log("Deploying factory...");
-        factory = new AetherFactory(address(this), address(feeRegistry)); // Correct: Pass owner and feeRegistry
+        factory = new AetherFactory(address(this), address(feeRegistry), 3000); // Pass owner, feeRegistry, and initial pool fee of 0.3%
         console.log("Factory deployed at:", address(factory));
         // Deploy MockPoolManager
         console.log("Deploying MockPoolManager...");

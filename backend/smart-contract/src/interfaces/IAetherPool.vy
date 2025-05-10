@@ -3,10 +3,12 @@
 # Email: join.mantap@gmail.com
 # */
 
-@version 0.3.10
+# @version 0.3.10
 
 interface IAetherPool:
     # --- State-Changing Functions ---
+    def initialize_pool(amount0: uint256, amount1: uint256) -> uint256: nonpayable
+    
     def mint(to: address, amount0: uint256, amount1: uint256) -> uint256: nonpayable
 
     def burn(to: address, liquidity: uint256) -> (uint256, uint256): nonpayable
