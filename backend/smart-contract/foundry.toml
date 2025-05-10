@@ -6,7 +6,7 @@ test = 'test'
 
     [profile.default.vyper]
     version = "0.3.10"
-    path = "/Users/irfandi/.pyenv/versions/3.12.6/bin/vyper"
+    # Let Foundry find Vyper in PATH instead of using a hardcoded path that won't work in CI
 
 [profile.remappings]
 'forge-std' = 'lib/forge-std/src/'

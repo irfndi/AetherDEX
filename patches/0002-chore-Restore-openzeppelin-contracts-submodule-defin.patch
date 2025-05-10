@@ -1,0 +1,27 @@
+From 002a2edaef3b984043354bb0c07be5d8d9e50cb9 Mon Sep 17 00:00:00 2001
+From: irfandi marsya <join.mantap@gmail.com>
+Date: Sat, 10 May 2025 11:39:07 +0700
+Subject: [PATCH 2/3] chore: Restore openzeppelin-contracts submodule
+ definition
+
+---
+ .gitmodules | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/.gitmodules b/.gitmodules
+index dc86191..537b12a 100644
+--- a/.gitmodules
++++ b/.gitmodules
+@@ -1,6 +1,9 @@
+ [submodule "backend/smart-contract/lib/forge-std"]
+ 	path = backend/smart-contract/lib/forge-std
+ 	url = https://github.com/foundry-rs/forge-std
++[submodule "backend/smart-contract/lib/openzeppelin-contracts"]
++	path = backend/smart-contract/lib/openzeppelin-contracts
++	url = https://github.com/OpenZeppelin/openzeppelin-contracts
+ [submodule "backend/smart-contract/lib/v4-core"]
+ 	path = backend/smart-contract/lib/v4-core
+ 	url = https://github.com/uniswap/v4-core
+-- 
+2.39.5 (Apple Git-154)
+

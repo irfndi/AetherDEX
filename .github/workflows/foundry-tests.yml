@@ -83,6 +83,22 @@ jobs:
             which vyper || echo "'vyper' not found in PATH either."
           fi
           echo "--- End Debugging --- "
+          
+          # Create a CI-specific foundry.toml that doesn't have the hardcoded Vyper path
+          echo "Creating CI-specific foundry.toml..."
+          ORIGINAL_TOML="$(cat foundry.toml)"
+          # Remove any existing hardcoded vyper path
+          echo "$ORIGINAL_TOML" | grep -v "path =.*vyper" > foundry.toml.ci
+          # Add the current vyper path
+          if [ -n "$VYPER_PATH" ]; then
+            echo "Setting VYPER_PATH in foundry.toml.ci to $VYPER_PATH"
+          else
+            VYPER_PATH="$(which vyper)"
+            echo "Using detected vyper path: $VYPER_PATH"
+          fi
+          mv foundry.toml.ci foundry.toml
+          
+          # Run the tests
           forge clean
           forge test --via-ir -v
 

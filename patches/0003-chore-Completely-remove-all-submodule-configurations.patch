@@ -1,0 +1,80 @@
+From b56bb8b0c1ef779f3f76ed126050a852d48b2fce Mon Sep 17 00:00:00 2001
+From: irfandi marsya <join.mantap@gmail.com>
+Date: Sat, 10 May 2025 11:41:19 +0700
+Subject: [PATCH 3/3] chore: Completely remove all submodule configurations and
+ directories
+
+---
+ backend/.github/workflows/test.yml   | 43 ----------------------------
+ backend/smart-contract/lib/forge-std |  1 -
+ backend/smart-contract/lib/v4-core   |  2 +-
+ 3 files changed, 1 insertion(+), 45 deletions(-)
+ delete mode 100644 backend/.github/workflows/test.yml
+ delete mode 160000 backend/smart-contract/lib/forge-std
+
+diff --git a/backend/.github/workflows/test.yml b/backend/.github/workflows/test.yml
+deleted file mode 100644
+index 34a4a52..0000000
+--- a/backend/.github/workflows/test.yml
++++ /dev/null
+@@ -1,43 +0,0 @@
+-name: CI
+-
+-on:
+-  push:
+-  pull_request:
+-  workflow_dispatch:
+-
+-env:
+-  FOUNDRY_PROFILE: ci
+-
+-jobs:
+-  check:
+-    strategy:
+-      fail-fast: true
+-
+-    name: Foundry project
+-    runs-on: ubuntu-latest
+-    steps:
+-      - uses: actions/checkout@v4
+-        with:
+-          submodules: recursive
+-
+-      - name: Install Foundry
+-        uses: foundry-rs/foundry-toolchain@v1
+-
+-      - name: Show Forge version
+-        run: |
+-          forge --version
+-
+-      - name: Run Forge fmt
+-        run: |
+-          forge fmt --check
+-        id: fmt
+-
+-      - name: Run Forge build
+-        run: |
+-          forge build --sizes
+-        id: build
+-
+-      - name: Run Forge tests
+-        run: |
+-          forge test -vvv
+-        id: test
+diff --git a/backend/smart-contract/lib/forge-std b/backend/smart-contract/lib/forge-std
+deleted file mode 160000
+index 77041d2..0000000
+--- a/backend/smart-contract/lib/forge-std
++++ /dev/null
+@@ -1 +0,0 @@
+-Subproject commit 77041d2ce690e692d6e03cc812b57d1ddaa4d505
+diff --git a/backend/smart-contract/lib/v4-core b/backend/smart-contract/lib/v4-core
+index df421dd..a7cf038 160000
+--- a/backend/smart-contract/lib/v4-core
++++ b/backend/smart-contract/lib/v4-core
+@@ -1 +1 @@
+-Subproject commit df421ddd262803ead099fd8797d29c82b32d5c73
++Subproject commit a7cf038cd568801a79a9b4cf92cd5b52c95c8585
+-- 
+2.39.5 (Apple Git-154)
+
