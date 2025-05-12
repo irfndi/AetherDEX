@@ -9,61 +9,69 @@ on:
       - main
       - develop
     paths:
-      - 'interface/web/**'
+      - "interface/web/**"
+      - ".github/workflows/frontend-build.yml"
   pull_request:
     branches:
       - main
       - develop
     paths:
-      - 'interface/web/**'
+      - "interface/web/**"
+      - ".github/workflows/frontend-build.yml"
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: interface/web
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: "interface/web/package.json"
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
         with:
           bun-version: latest
-          
+
       - name: Cache Bun dependencies
         uses: actions/cache@v4
         with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb') }}
+          path: |
+            ~/.bun/install/cache
+            interface/web/node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('interface/web/bun.lockb', 'interface/web/package.json') }}
           restore-keys: |
             ${{ runner.os }}-bun-
-            
+
       - name: Install dependencies
-        run: |
-          cd interface/web
-          bun install
-          
+        run: bun install
+
       - name: Lint
-        run: |
-          cd interface/web
-          bun run lint || echo "::warning::Linting issues found but continuing build"
-          
+        run: bun run lint
+        continue-on-error: true
+
       - name: Type check
-        run: |
-          cd interface/web
-          bun run typecheck || echo "::warning::Type checking issues found but continuing build"
-          
+        run: bun run typecheck
+        continue-on-error: true
+
       - name: Build project
-        run: |
-          cd interface/web
-          bun run build
-          
+        run: bun run build
+
       - name: Archive build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: frontend-build
           path: interface/web/dist
           retention-days: 7
+
+      - name: Check bundle size
+        run: |
+          echo "Analyzing bundle size..."
+          find dist -type f -name "*.js" | xargs du -h | sort -hr

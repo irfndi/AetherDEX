@@ -25,7 +25,7 @@
 
 AetherDEX is a comprehensive decentralized exchange platform built on Ethereum and compatible L2 networks, offering:
 
-- **Automated Market Maker (AMM)**: Efficient constant product formula (x*y=k) for token swaps
+- **Automated Market Maker (AMM)**: Efficient constant product formula (x\*y=k) for token swaps
 - **Concentrated Liquidity**: Capital-efficient liquidity provision in custom price ranges
 - **TWAP Oracle**: Time-weighted average price calculations for reliable price feeds
 - **Extensible Architecture**: Customizable hooks for pre and post-swap operations
@@ -60,17 +60,19 @@ AetherDEX/
 ### Installation
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/your-username/AetherDEX.git
    cd AetherDEX
    ```
 
 2. Install dependencies for each component:
+
    ```bash
    # Smart contracts
    cd backend/smart-contract
    forge install
-   
+
    # Frontend
    cd ../../interface/web
    bun install

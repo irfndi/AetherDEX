@@ -64,3 +64,12 @@ debug.log
 .vercel
 .turbo
 .goose
+# Ignore node_modules files even if git tries to delete them
+interface/web/node_modules/**
+node_modules/**
+
+# Git internal files that should not be committed
+.git/FETCH_HEAD
+.git/index
+.git/logs/
+
