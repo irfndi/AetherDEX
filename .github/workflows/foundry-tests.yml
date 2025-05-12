@@ -50,20 +50,34 @@ jobs:
       - name: Install dependencies
         run: forge install
 
+      - name: Install Python and Vyper
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install Vyper
+        run: |
+          pip install vyper==0.3.10
+          VYPER_EXECUTABLE=$(which vyper)
+          echo "VYPER_PATH=${VYPER_EXECUTABLE}" >> $GITHUB_ENV
+          echo "Vyper installed at: ${VYPER_EXECUTABLE}"
+
       - name: Run tests
         env:
           FOUNDRY_PROFILE: ci
         run: |
           # Setup Vyper environment
           echo "Setting up Vyper environment..."
-          VYPER_PATH="$(which vyper)"
-          echo "Using detected vyper path: $VYPER_PATH"
+          echo "Using vyper path: $VYPER_PATH"
           
           # Create a CI-specific foundry.toml
           echo "Creating CI-specific foundry.toml..."
           ORIGINAL_TOML="$(cat foundry.toml)"
-          echo "$ORIGINAL_TOML" | grep -v "path =.*vyper" > foundry.toml.ci
+          echo "$ORIGINAL_TOML" > foundry.toml.ci
+          echo "vyper_path = \"$VYPER_PATH\"" >> foundry.toml.ci
           mv foundry.toml.ci foundry.toml
+          cat foundry.toml
           
           # Run the tests with parallel execution and better error reporting
           echo "Running Forge tests..."
@@ -111,15 +125,10 @@ jobs:
           version: nightly
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-
-      - name: Install Slither
-        run: pip3 install slither-analyzer
-      
-      - name: Run Slither static analysis
-        run: slither . --fail-none
+          cache: 'pip'
 
       - name: Cache Foundry dependencies
         uses: actions/cache@v4
@@ -177,16 +186,27 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      - name: Install Slither
-        run: uv pip install --system slither-analyzer
+      - name: Install Slither and dependencies
+        run: |
+          uv pip install --system slither-analyzer
+          pip install vyper==0.3.10
+          VYPER_EXECUTABLE=$(which vyper)
+          echo "VYPER_PATH=${VYPER_EXECUTABLE}" >> $GITHUB_ENV
+          echo "Vyper installed at: ${VYPER_EXECUTABLE}"
 
       - name: Run Slither
         env:
           PATH: ${{ env.PATH }}:/opt/hostedtoolcache/Python/3.10.17/x64/bin
         run: |
           echo "Executing Slither security analysis..."
+          # Create build directory for Slither
+          mkdir -p out/build-info
+          
+          # Run forge build to generate build info
+          forge build --build-info --skip */test/** */script/** || echo "::warning::Forge build had issues"
+          
           # Run slither with better configuration
-          slither . --json slither-report.json --sarif slither-results.sarif || echo "::warning::Slither found potential issues - check the report for details"
+          slither . --ignore-compile --json slither-report.json --sarif slither-results.sarif || echo "::warning::Slither found potential issues - check the report for details"
           
           # Generate a summary of findings
           if [ -f "slither-report.json" ]; then
