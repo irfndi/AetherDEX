@@ -18,4 +18,5 @@ interface ICCIPRouter {
         external
         view
         returns (uint256);
+    function depositToken(address token, uint256 amount) external returns (bool);
 }

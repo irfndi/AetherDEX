@@ -42,6 +42,7 @@ contract CrossChainLiquidityHook is
 
     event CrossChainLiquidityEvent(uint16 chainId, address token0, address token1, int256 liquidityDelta);
     event RemoteHookSet(uint16 indexed chainId, address indexed hookAddress);
+    event CrossChainLiquidityError(uint16 chainId, address token0, address token1, int256 liquidityDelta, string reason);
 
     constructor(address _poolManager, address _lzEndpoint, address _localToken0, address _localToken1)
         BaseHook(_poolManager)
@@ -209,8 +210,12 @@ contract CrossChainLiquidityHook is
         try poolManager.modifyPosition(key, params, "") returns (BalanceDelta memory /*delta*/) {
             // On success, emit cross-chain liquidity event
             emit CrossChainLiquidityEvent(srcChainId, key.token0, key.token1, liquidityDelta);
-        } catch {
-            // Swallow errors to avoid revert on modifyPosition failure
+        } catch Error(string memory reason) {
+            // Log error with reason instead of silently failing
+            emit CrossChainLiquidityError(srcChainId, key.token0, key.token1, liquidityDelta, reason);
+        } catch (bytes memory /* lowLevelData */) {
+            // Log error with generic message for low-level errors
+            emit CrossChainLiquidityError(srcChainId, key.token0, key.token1, liquidityDelta, "Low-level error");
         }
 
     }

@@ -332,8 +332,8 @@ contract FeeRegistryTest is Test {
         uint24 dummyFee = 42069; // Random unsupported fee
         address updater = makeAddr("updater");
 
-        // Correct: Reference the error from FeeRegistry directly
-        vm.expectRevert(abi.encodeWithSelector(FeeRegistry.FeeTierNotSupported.selector, dummyFee));
+        // Updated: Reference the new error from FeeRegistry directly
+        vm.expectRevert(abi.encodeWithSelector(FeeRegistry.InvalidInitialFee.selector, dummyFee));
         registry.registerDynamicFeePool(poolKeyBC, dummyFee, updater);
     }
 

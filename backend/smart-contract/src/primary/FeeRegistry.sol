@@ -86,8 +86,11 @@ contract FeeRegistry is Ownable {
     /// @param expectedUpdater The authorized updater address.
     error UnauthorizedUpdater(bytes32 poolKeyHash, address caller, address expectedUpdater);
 
-    /// @notice Error thrown when trying to set an invalid dynamic fee (e.g., 0).
+    /// @notice Error thrown when trying to update a dynamic fee with an invalid value.
     error InvalidDynamicFee();
+
+    /// @notice Error thrown when trying to register a pool with an invalid initial fee.
+    error InvalidInitialFee(uint24 fee);
 
     /// @notice Error thrown during registration if the initial fee or updater address is invalid.
     /// @param poolKeyHash The hash of the PoolKey.
@@ -216,17 +219,24 @@ contract FeeRegistry is Ownable {
 
         if (swapVolume > 0) {
             uint256 volumeMultiplierRaw = (swapVolume + volumeThreshold - 1) / volumeThreshold;
-            uint24 unCappedFeeAdjustmentForCheck = uint24(volumeMultiplierRaw * 50);
+            uint256 unCappedFeeAdjustment = volumeMultiplierRaw * 50;
+            
+            // Check bounds using wider types to prevent overflow
+            uint256 potentialFeeForBoundCheck = uint256(currentFee) + unCappedFeeAdjustment;
+            if (
+                potentialFeeForBoundCheck > MAX_FEE ||
+                potentialFeeForBoundCheck < MIN_FEE ||
+                potentialFeeForBoundCheck > type(uint24).max   // extra safety check
+            ) {
+                revert InvalidDynamicFee();
+            }
+            
+            // Now that we've verified the bounds, we can safely cast to uint24
+            // No need to keep the uncapped adjustment since we've already done the bounds check with wider types
 
             uint256 volumeMultiplierCapped = volumeMultiplierRaw;
             if (volumeMultiplierCapped > 10) volumeMultiplierCapped = 10; // Cap at 10x
             feeAdjustment = uint24(volumeMultiplierCapped * 50); // This is the capped adjustment for actual use
-
-            // Perform initial bounds check with the un-capped adjustment
-            uint24 potentialFeeForBoundCheck = currentFee + unCappedFeeAdjustmentForCheck;
-            if (potentialFeeForBoundCheck > MAX_FEE || potentialFeeForBoundCheck < MIN_FEE) {
-                revert InvalidDynamicFee();
-            }
         }
 
         // Calculate new fee, ensuring it stays within bounds using the *capped* feeAdjustment
@@ -245,12 +255,12 @@ contract FeeRegistry is Ownable {
             // However, rounding down might still take it below MIN_FEE if it was very close.
             calculatedNewFee = (potentialNewFee / FEE_STEP) * FEE_STEP;
 
-            // Check bounds AGAIN AFTER rounding, as rounding might push it e.g. below MIN_FEE
-            if (calculatedNewFee < MIN_FEE) {
+            // Check bounds AGAIN AFTER rounding
+            if (calculatedNewFee < MIN_FEE || calculatedNewFee > MAX_FEE) {
                 revert InvalidDynamicFee();
             }
-            // No need to check calculatedNewFee > MAX_FEE if potentialFeeForBoundCheck was fine
-            // and we used a capped (<= unCapped) feeAdjustment for potentialNewFee.
+            // Even though theoretically calculatedNewFee should never exceed MAX_FEE if potentialFeeForBoundCheck was fine,
+            // we check it explicitly for extra safety and to guard against future code changes.
         }
 
         // Only update if the fee has changed
@@ -275,7 +285,7 @@ contract FeeRegistry is Ownable {
 
         // Validate initialFee for dynamic pool registration
         if (initialFee < MIN_FEE || initialFee > MAX_FEE || initialFee % FEE_STEP != 0) {
-            revert FeeTierNotSupported(initialFee);
+            revert InvalidInitialFee(initialFee);
         }
 
         if (feeUpdaters[poolKeyHash] != address(0)) {

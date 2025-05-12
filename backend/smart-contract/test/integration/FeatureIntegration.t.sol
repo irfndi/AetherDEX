@@ -21,6 +21,7 @@ import {CrossChainLiquidityHook} from "../../src/hooks/CrossChainLiquidityHook.s
 import {DynamicFeeHook} from "../../src/hooks/DynamicFeeHook.sol";
 import {Hooks} from "../../src/libraries/Hooks.sol"; // Import Hooks library
 import {MockPoolManager} from "../mocks/MockPoolManager.sol"; // Import MockPoolManager
+import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
 import {IPoolManager} from "../../src/interfaces/IPoolManager.sol"; // Import IPoolManager for structs
 import {PoolKey} from "../../src/types/PoolKey.sol"; // Import PoolKey
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol"; // Added for MockPool
@@ -92,7 +93,8 @@ contract MockPool is IAetherPool {
             } else {
                 tokenToTransferOut = token0;
             }
-            IERC20(tokenToTransferOut).transfer(to, amountOut);
+            bool ok = IERC20(tokenToTransferOut).transfer(to, amountOut);
+            require(ok, "MockPool: TRANSFER_FAILED");
         }
         return amountOut;
     }
@@ -192,12 +194,15 @@ contract FeatureIntegrationTest is Test {
 
         // Fund the MockPool with tokens so it can perform swaps
         uint256 poolSupply = 1_000_000 * 10**18; // A large supply for the pool
-        // Ensure MockERC20 is correctly referenced; if nativeToken is WETH, it might also be a MockERC20
-        // For simplicity, assuming both poolToken0 and poolToken1 are MockERC20 instances here.
-        // If nativeToken is actual ETH and needs wrapping, test setup might be more complex.
-        // For this mock, we'll assume they are standard ERC20 compatible for minting.
-        MockERC20(poolToken0).mint(address(mockPoolInstance), poolSupply);
-        MockERC20(poolToken1).mint(address(mockPoolInstance), poolSupply);
+        
+        // Safely mint tokens to the pool, checking if the token supports the mint function
+        if (address(poolToken0).code.length > 0) {
+            try MockERC20(poolToken0).mint(address(mockPoolInstance), poolSupply) {} catch {}
+        }
+        
+        if (address(poolToken1).code.length > 0) {
+            try MockERC20(poolToken1).mint(address(mockPoolInstance), poolSupply) {} catch {}
+        }
 
         // Create pool manager first, passing the direct hook address
         MockPoolManager manager = new MockPoolManager(address(dynamicFeeHook)); // Pass only hook address
@@ -380,8 +385,24 @@ contract FeatureIntegrationTest is Test {
             sqrtPriceLimitX96: zeroForOne ? MIN_SQRT_RATIO + 1 : MAX_SQRT_RATIO - 1
         });
 
+        // Record balance before swap for verification
+        address tokenOut = zeroForOne ? token1Addr : token0Addr;
+        uint256 balanceBefore = MockERC20(tokenOut).balanceOf(address(this));
+        
         // Call swap via the MockPoolManager
-        manager.swap(key, params, "");
+        BalanceDelta memory delta = manager.swap(key, params, "");
+        
+        // Get the relevant amount from the delta based on zeroForOne
+        int256 amountOut = zeroForOne ? delta.amount1 : delta.amount0;
+        
+        // Assert that the output amount is negative (representing tokens sent from the pool)
+        assertTrue(amountOut < 0, "Output amount should be negative (representing tokens received)");
+        uint256 outputAmount = uint256(-amountOut);
+        assertTrue(outputAmount > 0, "Output amount should be greater than zero");
+        
+        // Assert that the recipient's balance has increased by the expected amount
+        uint256 balanceAfter = MockERC20(tokenOut).balanceOf(address(this));
+        assertEq(balanceAfter - balanceBefore, outputAmount, "Recipient balance should increase by the output amount");
     }
 
     uint160 constant MIN_SQRT_RATIO = 4295128739;
