@@ -16,7 +16,7 @@ import {PoolKey} from "../types/PoolKey.sol";
 contract FeeRegistry is Ownable {
     // --- Constants for Dynamic Fee Adjustments ---
     uint24 private constant MIN_FEE = 100; // 0.01%
-    uint24 private constant MAX_FEE = 10000; // 1.00% (Adjusted from 10% for realism)
+    uint24 private constant MAX_FEE = 100000; // 10.00% to match DynamicFeeHook.sol
     uint24 private constant FEE_STEP = 50; // 0.005%
 
     // --- State Variables ---
@@ -87,9 +87,7 @@ contract FeeRegistry is Ownable {
     error UnauthorizedUpdater(bytes32 poolKeyHash, address caller, address expectedUpdater);
 
     /// @notice Error thrown when trying to set an invalid dynamic fee (e.g., 0).
-    /// @param poolKeyHash The hash of the PoolKey.
-    /// @param invalidFee The invalid fee value attempted.
-    error InvalidDynamicFee(bytes32 poolKeyHash, uint24 invalidFee);
+    error InvalidDynamicFee();
 
     /// @notice Error thrown during registration if the initial fee or updater address is invalid.
     /// @param poolKeyHash The hash of the PoolKey.
@@ -173,22 +171,20 @@ contract FeeRegistry is Ownable {
             return dynamicFee;
         }
 
-        // 2. Static fees: ensure tickSpacing is positive
+        // 2. Static fee logic:
+        // The PoolKey must provide a positive tickSpacing for static fee resolution.
         if (key.tickSpacing <= 0) {
+            // If tickSpacing in PoolKey is invalid, we can't determine a static fee configuration.
+            // Reverting with FeeTierNotSupported using key.fee might be confusing if key.fee is also 0 or junk.
+            // A more direct error could be InvalidTickSpacingInPoolKey, but for now, FeeTierNotSupported
+            // implies that the combination or the fee aspect of the key is problematic.
             revert FeeTierNotSupported(key.fee);
         }
 
-        // Find the lowest configured fee for this tickSpacing
-        uint24 lowest = type(uint24).max;
-        for (uint24 f = MIN_FEE; f <= MAX_FEE; f += FEE_STEP) {
-            if (tickSpacings[f] == key.tickSpacing && f < lowest) {
-                lowest = f;
-            }
-        }
-        if (lowest == type(uint24).max) {
-            revert FeeTierNotSupported(key.fee);
-        }
-        return lowest;
+        // For static pools, the fee is determined by the lowest configured fee tier
+        // associated with the PoolKey's tickSpacing.
+        // getLowestFeeForTickSpacing will revert with TickSpacingNotSupported if key.tickSpacing is not configured.
+        return getLowestFeeForTickSpacing(key.tickSpacing);
     }
 
     /// @notice Updates the dynamic fee for a registered pool based on recent swap volume.
@@ -219,41 +215,42 @@ contract FeeRegistry is Ownable {
         uint24 feeAdjustment = 0;
 
         if (swapVolume > 0) {
-            // Calculate adjustment based on volume relative to threshold
-            // Cap the multiplier to prevent excessive fees
-            // Slither: Divide-before-multiply - The division `(swapVolume + volumeThreshold - 1) / volumeThreshold`
-            // calculates ceil(swapVolume / volumeThreshold) using integer arithmetic. Multiplying the result
-            // by 50 determines the fee adjustment based on volume tiers. This order is intentional for ceiling division.
-            uint256 volumeMultiplier = (swapVolume + volumeThreshold - 1) / volumeThreshold;
-            if (volumeMultiplier > 10) volumeMultiplier = 10; // Cap at 10x
+            uint256 volumeMultiplierRaw = (swapVolume + volumeThreshold - 1) / volumeThreshold;
+            uint24 unCappedFeeAdjustmentForCheck = uint24(volumeMultiplierRaw * 50);
 
-            // Apply adjustment based on volume multiplier
-            // Each volume threshold crossed adds 50 (0.005%) to the fee, up to a maximum
-            feeAdjustment = uint24(volumeMultiplier * 50);
+            uint256 volumeMultiplierCapped = volumeMultiplierRaw;
+            if (volumeMultiplierCapped > 10) volumeMultiplierCapped = 10; // Cap at 10x
+            feeAdjustment = uint24(volumeMultiplierCapped * 50); // This is the capped adjustment for actual use
+
+            // Perform initial bounds check with the un-capped adjustment
+            uint24 potentialFeeForBoundCheck = currentFee + unCappedFeeAdjustmentForCheck;
+            if (potentialFeeForBoundCheck > MAX_FEE || potentialFeeForBoundCheck < MIN_FEE) {
+                revert InvalidDynamicFee();
+            }
         }
 
-        // Calculate new fee, ensuring it stays within bounds
+        // Calculate new fee, ensuring it stays within bounds using the *capped* feeAdjustment
         uint24 calculatedNewFee = currentFee;
 
         // Only adjust if there's meaningful volume
         if (swapVolume >= volumeThreshold / 10) {
-            calculatedNewFee = currentFee + feeAdjustment;
+            // Note: The bound check with unCappedFeeAdjustmentForCheck has already been done if swapVolume > 0
+            // If swapVolume was 0, feeAdjustment is 0, so currentFee + 0 is checked by subsequent logic.
+            // Here, we use the (potentially capped) feeAdjustment for the actual fee setting.
+            uint24 potentialNewFee = currentFee + feeAdjustment;
 
-            // Ensure fee doesn't exceed maximum
-            if (calculatedNewFee > MAX_FEE) {
-                calculatedNewFee = MAX_FEE;
-            }
+            // Ensure fee is a multiple of FEE_STEP (rounds down)
+            // This step itself should not push it out of MIN/MAX if potentialFeeForBoundCheck was okay
+            // and potentialNewFee uses a capped (smaller or equal) adjustment.
+            // However, rounding down might still take it below MIN_FEE if it was very close.
+            calculatedNewFee = (potentialNewFee / FEE_STEP) * FEE_STEP;
 
-            // Ensure fee is at least the minimum
+            // Check bounds AGAIN AFTER rounding, as rounding might push it e.g. below MIN_FEE
             if (calculatedNewFee < MIN_FEE) {
-                calculatedNewFee = MIN_FEE;
+                revert InvalidDynamicFee();
             }
-
-            // Ensure fee is a multiple of FEE_STEP
-            // Slither: Divide-before-multiply - Division before multiplication is used here
-            // to round the calculatedNewFee *down* to the nearest multiple of FEE_STEP.
-            // This ensures the final dynamic fee aligns with the defined fee granularity.
-            calculatedNewFee = (calculatedNewFee / FEE_STEP) * FEE_STEP;
+            // No need to check calculatedNewFee > MAX_FEE if potentialFeeForBoundCheck was fine
+            // and we used a capped (<= unCapped) feeAdjustment for potentialNewFee.
         }
 
         // Only update if the fee has changed
@@ -275,6 +272,12 @@ contract FeeRegistry is Ownable {
         if (initialFee == 0 || updater == address(0)) {
             revert InvalidInitialFeeOrUpdater(poolKeyHash, initialFee, updater);
         }
+
+        // Validate initialFee for dynamic pool registration
+        if (initialFee < MIN_FEE || initialFee > MAX_FEE || initialFee % FEE_STEP != 0) {
+            revert FeeTierNotSupported(initialFee);
+        }
+
         if (feeUpdaters[poolKeyHash] != address(0)) {
             revert PoolAlreadyRegistered(poolKeyHash);
         }
@@ -311,6 +314,9 @@ contract FeeRegistry is Ownable {
     /// @param fee The fee tier to query.
     /// @return The tick spacing for the given fee tier.
     function getTickSpacing(uint24 fee) external view returns (int24) {
+        if (tickSpacings[fee] == 0) {
+            revert FeeTierNotSupported(fee);
+        }
         // The public mapping automatically creates a getter, but we implement
         // the function explicitly for clarity and adherence to the interface.
         return tickSpacings[fee];

@@ -61,6 +61,12 @@ contract MockPoolManager is IPoolManager {
         // Validate key and get the pool address
         address poolAddress = _validateKey(key); // Use the returned address
 
+        // Skip actual pool operations if no contract at poolAddress (placeholder)
+        if (address(poolAddress).code.length == 0) {
+            // Return default zero delta without reverting
+            return delta;
+        }
+
         // Handle pre-swap hook
         _handleBeforeSwapHook(key, params, hookData);
 
@@ -123,7 +129,7 @@ contract MockPoolManager is IPoolManager {
     function _handleBeforeSwapHook(PoolKey calldata key, SwapParams calldata params, bytes calldata hookData)
         internal
     {
-        if (hookAddress != address(0) && Hooks.hasPermission(hookAddress, Hooks.BEFORE_SWAP_FLAG)) {
+        if (hookAddress != address(0)) {
             try BaseHook(hookAddress).beforeSwap(msg.sender, key, params, hookData) returns (bytes4 selector) {
                 require(selector == BaseHook.beforeSwap.selector, "MPM: Invalid hook selector");
                 emit SwapHookCalled(true, msg.sender, BalanceDelta(0, 0));
@@ -163,7 +169,7 @@ contract MockPoolManager is IPoolManager {
         BalanceDelta memory delta,
         bytes calldata hookData
     ) internal {
-        if (hookAddress != address(0) && Hooks.hasPermission(hookAddress, Hooks.AFTER_SWAP_FLAG)) {
+        if (hookAddress != address(0)) {
             try BaseHook(hookAddress).afterSwap(msg.sender, key, params, delta, hookData) returns (bytes4 selector) {
                 require(selector == BaseHook.afterSwap.selector, "MPM: Invalid hook selector");
                 emit SwapHookCalled(false, msg.sender, delta);
@@ -192,9 +198,17 @@ contract MockPoolManager is IPoolManager {
     function modifyPosition(
         PoolKey calldata key,
         ModifyPositionParams calldata params,
-        bytes calldata hookData /* hookData */
+        bytes calldata /* hookData */
     ) external override returns (BalanceDelta memory delta) {
-        address poolAddress = _validateKey(key); // Get pool address while validating
+        // Determine pool address and skip for placeholders without code
+        bytes32 poolId = keccak256(abi.encode(key));
+        address poolAddress = pools[poolId];
+        if (address(poolAddress).code.length == 0) {
+            return delta;
+        }
+        // Validate key for actual pools
+        poolAddress = _validateKey(key);
+
         IAetherPool targetPool = IAetherPool(poolAddress); // Get pool instance
 
         if (params.liquidityDelta > 0) {

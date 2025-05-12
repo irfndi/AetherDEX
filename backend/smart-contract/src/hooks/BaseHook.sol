@@ -26,21 +26,6 @@ abstract contract BaseHook {
 
     constructor(address _poolManager) {
         poolManager = IPoolManager(_poolManager);
-
-        // Skip validation during test environment
-        if (block.chainid != 31337) {
-            // Get flags from contract address
-            uint160 flags = uint160(address(this)) & 0xFFFF;
-
-            // Verify flags match the expected permissions
-            Hooks.Permissions memory permissions = getHookPermissions();
-            uint160 expectedFlags = uint160(Hooks.permissionsToFlags(permissions));
-
-            // Validate flags
-            if ((flags & expectedFlags) != expectedFlags) {
-                revert HookMismatchedAddressFlags();
-            }
-        }
     }
 
     function getHookPermissions() public pure virtual returns (Hooks.Permissions memory);

@@ -31,6 +31,9 @@ contract AetherRouter is BaseRouter {
         uint256 deadline
     ) external nonReentrant checkDeadline(deadline) returns (uint256 amountA, uint256 amountB, uint256 liquidity) {
         require(pool != address(0), "InvalidPoolAddress");
+        uint256 forceReadDeadline = deadline; // Read 'deadline'
+        forceReadDeadline = forceReadDeadline; // "Use" the local variable to silence linter
+        // Parameter 'deadline' is used by the checkDeadline modifier
         // TODO: Implement liquidity addition via PoolManager and IAetherPool.mint
         // For now, we'll simulate the assignments and checks for parameters.
         // IAetherPool actualMintCall = IAetherPool(pool);
@@ -94,7 +97,7 @@ contract AetherRouter is BaseRouter {
         bytes32 s
     ) private {
         // Cast to IERC20 to call allowance, as IERC20Permit does not define it.
-        if (IERC20(address(token)).allowance(owner, spender) < amount) { 
+        if (IERC20(address(token)).allowance(owner, spender) < amount) {
             token.permit(owner, spender, amount, deadline, v, r, s);
         }
     }
@@ -122,8 +125,8 @@ contract AetherRouter is BaseRouter {
         amounts[0] = amountIn;
 
         // Router now has allowance, so it transfers from msg.sender to the pool.
-        IERC20(tokenInAddress).safeTransferFrom(msg.sender, pool, amountIn); 
-        
+        IERC20(tokenInAddress).safeTransferFrom(msg.sender, pool, amountIn);
+
         uint256 amountOut = _swap(pool, amountIn, tokenInAddress, to, amountOutMin);
         amounts[1] = amountOut;
         require(amountOut >= amountOutMin, "InsufficientOutputAmount");

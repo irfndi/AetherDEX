@@ -127,8 +127,6 @@ contract AetherFactory is
         getPool[token1][token0] = poolAddress; // Allow lookup in reverse order too
         allPools.push(poolAddress);
 
-        // Assuming IAetherPool has a 'fee()' getter or similar to retrieve the fee for the event.
-        // If not, this part might need adjustment or removal of fee from this specific event emit.
         uint24 registeredFee = IAetherPool(poolAddress).fee(); 
         emit PoolCreated(token0, token1, registeredFee, poolAddress, allPools.length);
     }

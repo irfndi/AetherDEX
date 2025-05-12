@@ -126,30 +126,30 @@ contract InteroperabilityIntegrationTest is Test, IEvents {
         // Calculate Hyperlane fees
         uint256 hyperlaneFee = hyperlane.quoteDispatch(ARBITRUM_CHAIN_ID, "");
 
-        // Execute cross-chain transfer using Hyperlane
-        router.executeCrossChainRoute{value: hyperlaneFee}(
-            address(tokenA),
-            address(tokenB),
-            amount,
-            amount * 95 / 100,
-            address(this),
-            ETH_CHAIN_ID,
-            ARBITRUM_CHAIN_ID,
-            ""
-        );
-
-        // Mock Hyperlane dispatch to return true
+        // Mock Hyperlane dispatch to return true, set this BEFORE the call that triggers it
         vm.mockCall(address(hyperlane), abi.encodeWithSelector(hyperlane.dispatch.selector), abi.encode(true));
 
-        // Verify Hyperlane message dispatch occurred
+        // Verify Hyperlane message dispatch occurred, set this BEFORE the call that triggers it
         vm.expectCall(
             address(hyperlane),
             abi.encodeWithSelector(
                 hyperlane.dispatch.selector,
                 ARBITRUM_CHAIN_ID,
-                abi.encodePacked(address(this)),
-                abi.encode(address(tokenB), amount * 98 / 100, address(this))
+                abi.encodePacked(address(this)), // recipient address on destination
+                abi.encode(address(tokenB), amount * 95 / 100, address(this)) // payload: tokenOut, amountOutMin, recipient
             )
+        );
+
+        // Execute cross-chain transfer using Hyperlane
+        router.executeCrossChainRoute{value: hyperlaneFee}(
+            address(tokenA),
+            address(tokenB),
+            amount,
+            amount * 95 / 100, // amountOutMin with 5% slippage
+            address(this),
+            ETH_CHAIN_ID,
+            ARBITRUM_CHAIN_ID,
+            ""
         );
     }
 

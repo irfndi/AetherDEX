@@ -15,6 +15,17 @@ import {PoolKey} from "../../src/types/PoolKey.sol";
 import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
 
 /**
+ * @title HooksValidator
+ * @notice Helper contract to expose the Hooks.validateHookAddress function as external
+ * for proper testing of reverts in the Hooks library.
+ */
+contract HooksValidator {
+    function validateHookAddress(address hookAddress, uint160 requiredFlags) external pure {
+        Hooks.validateHookAddress(hookAddress, requiredFlags);
+    }
+}
+
+/**
  * @title HooksTest
  * @notice Unit tests for the Hooks library.
  * @dev Tests cover function selectors and permission validation logic.
@@ -22,7 +33,7 @@ import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
 contract HooksTest is Test {
     // --- Test State Variables (Initialized in setUp) ---
     address constant DUMMY_SENDER = address(0x1);
-    address constant DUMMY_HOOK_TARGET = address(0x2); // Base address without flags
+    address constant DUMMY_HOOK_TARGET = address(0x100); // Base address without flags
     PoolKey internal DUMMY_POOL_KEY;
     IPoolManager.SwapParams internal DUMMY_SWAP_PARAMS;
     IPoolManager.ModifyPositionParams internal DUMMY_MODIFY_PARAMS;
@@ -193,34 +204,46 @@ contract HooksTest is Test {
      * @dev Checks if it correctly identifies valid hook addresses and reverts for invalid ones.
      */
     function test_ValidateHookAddress() public {
-        // Removed 'pure' again due to vm.expectRevert
+        // Deploy the wrapper contract
+        HooksValidator validator = new HooksValidator();
+        
         // Manually construct addresses with flags
         uint160 flags_bs = Hooks.BEFORE_SWAP_FLAG;
         address hook_bs = address(uint160(DUMMY_HOOK_TARGET) | flags_bs);
-        Hooks.validateHookAddress(hook_bs, Hooks.BEFORE_SWAP_FLAG); // Should not revert
 
-        // Valid: Address with multiple flags requesting one of them
         uint160 flags_bs_amp = Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_MODIFY_POSITION_FLAG;
         address hook_bs_amp = address(uint160(DUMMY_HOOK_TARGET) | flags_bs_amp);
-        Hooks.validateHookAddress(hook_bs_amp, Hooks.AFTER_MODIFY_POSITION_FLAG); // Should not revert
+        address hook_none = DUMMY_HOOK_TARGET; // No flags
 
-        // Invalid: Address with BEFORE_SWAP flag requesting AFTER_SWAP permission
-        vm.expectRevert("Hook address missing required flags"); // Expect string revert
-        Hooks.validateHookAddress(hook_bs, Hooks.AFTER_SWAP_FLAG);
+        // -- Test valid cases (these should not revert) --
+        
+        // Valid: Hook with BEFORE_SWAP_FLAG requesting BEFORE_SWAP_FLAG
+        validator.validateHookAddress(hook_bs, Hooks.BEFORE_SWAP_FLAG);
+
+        // Valid: Hook with multiple flags requesting one of its flags
+        validator.validateHookAddress(hook_bs_amp, Hooks.BEFORE_SWAP_FLAG);
+        validator.validateHookAddress(hook_bs_amp, Hooks.AFTER_MODIFY_POSITION_FLAG);
+        
+        // Valid: Requesting zero permissions (should always pass)
+        validator.validateHookAddress(hook_bs, 0);
+        validator.validateHookAddress(hook_none, 0);
+        
+        // -- Test invalid cases (these should revert) --
+        
+        // Invalid: Address zero with any permission requested (should revert)
+        vm.expectRevert("Hook address missing required flags");
+        validator.validateHookAddress(address(0), Hooks.BEFORE_SWAP_FLAG);
 
         // Invalid: Address with no flags requesting any permission
-        address hook_none = DUMMY_HOOK_TARGET;
-        vm.expectRevert("Hook address missing required flags"); // Expect string revert
-        Hooks.validateHookAddress(hook_none, Hooks.BEFORE_INITIALIZE_FLAG);
+        vm.expectRevert("Hook address missing required flags");
+        validator.validateHookAddress(hook_none, Hooks.BEFORE_INITIALIZE_FLAG);
 
         // Invalid: Address with some flags requesting a flag it doesn't have
-        vm.expectRevert("Hook address missing required flags"); // Expect string revert
-        Hooks.validateHookAddress(hook_bs_amp, Hooks.AFTER_SWAP_FLAG);
-
-        // Valid: Requesting zero permissions (should always pass)
-        Hooks.validateHookAddress(hook_bs, 0);
-        Hooks.validateHookAddress(hook_none, 0);
+        vm.expectRevert("Hook address missing required flags");
+        validator.validateHookAddress(hook_bs_amp, Hooks.AFTER_SWAP_FLAG);
     }
+
+
 
     /**
      * @notice Tests manually encoding and decoding permissions flags and target address.
@@ -277,6 +300,3 @@ contract HooksTest is Test {
         assertEq(targetZeroBase, address(0), "Target address mismatch (zero base)");
     }
 }
-
-// Removed MockHooks and CustomHook as they are not needed for testing the library's core logic.
-// The tests now directly call the library functions.

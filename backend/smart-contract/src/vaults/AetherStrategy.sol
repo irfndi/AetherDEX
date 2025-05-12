@@ -14,6 +14,7 @@ import {ILayerZeroEndpoint} from "../interfaces/ILayerZeroEndpoint.sol";
 import {AetherVault} from "./AetherVault.sol";
 import {PoolKey} from "../types/PoolKey.sol";
 import {IPoolManager} from "../interfaces/IPoolManager.sol";
+import "forge-std/console.sol";
 
 /**
  * @title AetherStrategy
@@ -54,11 +55,14 @@ contract AetherStrategy is
      * @param amount The amount of yield to sync
      */
     function syncCrossChainYield(uint16 chainId, uint256 amount) external onlyVault {
+        console.log("AetherStrategy: Entered syncCrossChainYield. chainId:", chainId, " amount:", amount);
         require(chainConfigs[chainId].isActive, "Chain not configured"); // Check
         // Emit event *before* external call
         emit CrossChainYieldSynced(chainId, amount); // Effect (Event)
         // Update the vault with the cross-chain yield
+        console.log("AetherStrategy: Calling vault.syncCrossChainYield");
         vault.syncCrossChainYield(chainId, amount); // Interaction
+        console.log("AetherStrategy: Returned from vault.syncCrossChainYield");
     }
 
     event StrategyRebalanced(uint256 timestamp, uint256 totalYield);
@@ -83,6 +87,10 @@ contract AetherStrategy is
      * @param isActive Whether the chain is active
      */
     function configureChain(uint16 chainId, address remoteStrategy, bool isActive) external onlyVault {
+        console.log("AetherStrategy: Entered configureChain.");
+        console.log("chainId:", chainId);
+        console.log("remoteStrategy:", remoteStrategy);
+        console.log("isActive:", isActive);
         if (!chainConfigs[chainId].isActive && isActive) {
             supportedChains.push(chainId);
         }
@@ -90,6 +98,7 @@ contract AetherStrategy is
         chainConfigs[chainId] = ChainConfig({chainId: chainId, remoteStrategy: remoteStrategy, isActive: isActive});
 
         emit ChainConfigUpdated(chainId, remoteStrategy, isActive);
+        console.log("AetherStrategy: Exiting configureChain");
     }
 
     /**
@@ -97,13 +106,15 @@ contract AetherStrategy is
      * @param newRate New yield rate (per second, scaled by YIELD_RATE_PRECISION)
      */
     function updateBaseYieldRate(uint256 newRate) external onlyVault nonReentrant {
+        console.log("AetherStrategy: Entered updateBaseYieldRate");
         // Added nonReentrant modifier
         uint256 oldRate = baseYieldRate; // Effect (Read state)
         baseYieldRate = newRate; // Effect (Write state)
         // Emit event *before* external call
         emit YieldRateUpdated(oldRate, newRate); // Effect (Event)
-        // External interaction
+        console.log("AetherStrategy: Calling vault.updateYieldRate");
         vault.updateYieldRate(newRate); // Interaction
+        console.log("AetherStrategy: Returned from vault.updateYieldRate");
     }
 
     /**

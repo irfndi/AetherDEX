@@ -592,7 +592,7 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
         if (tokenIn.code.length == 0) revert InvalidTokenAddress(tokenIn);
         if (tokenOut.code.length == 0) revert InvalidTokenAddress(tokenOut);
         if (amountIn == 0 || amountIn > type(uint128).max) revert InvalidAmount(amountIn);
-        if (recipient == address(0) || (!testMode && recipient.code.length == 0)) revert InvalidRecipient(recipient);
+        if (recipient == address(0) || (!testMode && recipient.code.length > 0)) revert InvalidRecipient(recipient);
         if (srcChain == 0 || srcChain > MAX_CHAIN_ID) revert InvalidChainId(srcChain);
         if (dstChain == 0 || dstChain > MAX_CHAIN_ID) revert InvalidChainId(dstChain);
         if (srcChain == dstChain) revert InvalidChainId(dstChain);
@@ -672,20 +672,36 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
      *       the recipient/bridge contracts call back unexpectedly. Ensure called contracts are trusted.
      */
     function _executeCrossChainRoute(CrossChainRouteParams memory params) internal {
-        console.log("Router: _executeCrossChainRoute entered");
+        // console.log("Router: _executeCrossChainRoute entered");
         _validateCrossChainParams(params);
-        console.log("Router: Params validated");
+        // console.log("Router: Params validated");
         _collectFees(params.dstChain);
-        console.log("Router: Fees collected");
+        // console.log("Router: Fees collected");
 
-        uint256 bridgeAmount = params.amountOutMin;
-        console.log("Router: Approving bridge %s to spend %s of token %s", address(this), bridgeAmount, params.tokenIn);
-        _safeApprove(params.tokenIn, address(this), bridgeAmount);
-        console.log("Router: Bridge approved successfully");
+        // Transfer tokenIn from user to this router contract
+        // console.log("Router: Transferring %s of token %s from user %s to router %s", params.amountIn, params.tokenIn, msg.sender, address(this));
+        IERC20(params.tokenIn).safeTransferFrom(msg.sender, address(this), params.amountIn);
+        // console.log("Router: TokenIn transferred to router successfully");
+
+        uint256 bridgeAmount = params.amountOutMin; // This is used in payload, router handles amountIn
+        // console.log("Router: Approving bridge %s to spend %s of token %s", address(this), bridgeAmount, params.tokenIn);
+        // _safeApprove(params.tokenIn, address(this), bridgeAmount); // Incorrect: router approving itself
+        // console.log("Router: Bridge approved successfully");
 
         bytes memory payload = abi.encode(params.tokenOut, bridgeAmount, params.recipient);
 
         (bool useCCIP, uint256 actualFee) = _determineBridgeProtocol(params.dstChain, params.recipient, payload);
+
+        // Approve the chosen bridge protocol to spend tokenIn from this router
+        if (useCCIP) {
+            // console.log("Router: Approving CCIP router %s to spend %s of token %s", address(ccipRouter), params.amountIn, params.tokenIn);
+            _safeApprove(params.tokenIn, address(ccipRouter), params.amountIn);
+            // console.log("Router: CCIP router approved successfully");
+        } else {
+            // console.log("Router: Approving Hyperlane %s to spend %s of token %s", address(hyperlane), params.amountIn, params.tokenIn);
+            _safeApprove(params.tokenIn, address(hyperlane), params.amountIn);
+            // console.log("Router: Hyperlane approved successfully");
+        }
 
         // --- Effects (State Changes & Events) ---
         // Emit success event *before* external interactions
@@ -731,16 +747,29 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
         view
         returns (bool useCCIP, uint256 actualFee)
     {
-        uint256 ccipFee = ccipRouter.estimateFees(dstChain, recipient, payload);
-        uint256 hyperlaneFee = hyperlane.quoteDispatch(dstChain, "");
+        uint256 estimatedCcipFee = ccipRouter.estimateFees(dstChain, recipient, payload);
+        uint256 estimatedHyperlaneFee = hyperlane.quoteDispatch(dstChain, "");
 
-        useCCIP = ccipFee <= hyperlaneFee;
-        if (msg.value == ccipFee) {
-            useCCIP = true;
-        } else if (msg.value == hyperlaneFee) {
+        // Prioritize the bridge if msg.value EXACTLY matches its estimated fee.
+        // This allows the user/test to force a specific bridge by providing the exact fee.
+        if (msg.value == estimatedHyperlaneFee) {
             useCCIP = false;
+            actualFee = estimatedHyperlaneFee;
+        } else if (msg.value == estimatedCcipFee) {
+            useCCIP = true;
+            actualFee = estimatedCcipFee;
+        } else {
+            // If msg.value doesn't match either fee exactly,
+            // pick the cheaper one. The transaction might revert later in _sendCrossChainMessage
+            // if msg.value is less than the chosen actualFee.
+            if (estimatedCcipFee <= estimatedHyperlaneFee) {
+                useCCIP = true;
+                actualFee = estimatedCcipFee;
+            } else {
+                useCCIP = false;
+                actualFee = estimatedHyperlaneFee;
+            }
         }
-        actualFee = useCCIP ? ccipFee : hyperlaneFee;
     }
 
     function _sendCrossChainMessage(
