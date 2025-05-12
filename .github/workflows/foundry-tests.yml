@@ -2,15 +2,20 @@ name: Foundry Tests
 
 on:
   push:
-    branches: [ main, master, develop ]
+    branches: [main, master, develop]
     paths:
-      - 'backend/smart-contract/**'
-      - '.github/workflows/foundry-tests.yml'
+      - "backend/smart-contract/**"
+      - ".github/workflows/foundry-tests.yml"
   pull_request:
-    branches: [ main, master, develop ]
+    branches: [main, master, develop]
     paths:
-      - 'backend/smart-contract/**'
-      - '.github/workflows/foundry-tests.yml'
+      - "backend/smart-contract/**"
+      - ".github/workflows/foundry-tests.yml"
+
+# Add concurrency to prevent multiple workflows from running simultaneously
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -24,7 +29,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          submodules: 'recursive'
+          submodules: "recursive"
           fetch-depth: 0
 
       - name: Install Foundry
@@ -34,8 +39,9 @@ jobs:
 
       - name: Cache Foundry dependencies
         uses: actions/cache@v4
+        id: foundry-cache
         with:
-          path: |  
+          path: |
             ~/.foundry/cache
             ~/.cargo/bin
             ~/.cargo/registry
@@ -47,14 +53,16 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-foundry-
 
+      # Only install dependencies if cache miss
       - name: Install dependencies
+        if: steps.foundry-cache.outputs.cache-hit != 'true'
         run: forge install
 
       - name: Install Python and Vyper
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
-          cache: 'pip'
+          python-version: "3.10"
+          cache: "pip"
 
       - name: Install Vyper
         run: |
@@ -70,7 +78,7 @@ jobs:
           # Setup Vyper environment
           echo "Setting up Vyper environment..."
           echo "Using vyper path: $VYPER_PATH"
-          
+
           # Create a CI-specific foundry.toml
           echo "Creating CI-specific foundry.toml..."
           ORIGINAL_TOML="$(cat foundry.toml)"
@@ -78,7 +86,7 @@ jobs:
           echo "vyper_path = \"$VYPER_PATH\"" >> foundry.toml.ci
           mv foundry.toml.ci foundry.toml
           cat foundry.toml
-          
+
           # Run the tests with better error reporting
           echo "Running Forge tests..."
           forge clean
@@ -98,7 +106,7 @@ jobs:
           verbose: true
           flags: foundry-tests
           name: solidity-coverage
-          
+
       # Always provide a summary of the coverage report
       - name: Coverage report summary
         run: |
@@ -117,7 +125,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          submodules: 'recursive'
+          submodules: "recursive"
           fetch-depth: 0
 
       - name: Install Foundry
@@ -128,13 +136,14 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
-          cache: 'pip'
+          python-version: "3.10"
+          cache: "pip"
 
       - name: Cache Foundry dependencies
         uses: actions/cache@v4
+        id: foundry-cache-static
         with:
-          path: |  
+          path: |
             ~/.foundry/cache
             ~/.cargo/bin
             ~/.cargo/registry
@@ -142,55 +151,19 @@ jobs:
             backend/smart-contract/lib
             backend/smart-contract/cache
             backend/smart-contract/out
-          key: ${{ runner.os }}-foundry-${{ hashFiles('backend/smart-contract/foundry.toml', 'backend/smart-contract/lib/*/') }}
+          key: ${{ runner.os }}-foundry-static-${{ hashFiles('backend/smart-contract/foundry.toml', 'backend/smart-contract/lib/*/') }}
           restore-keys: |
-            ${{ runner.os }}-foundry-
+            ${{ runner.os }}-foundry-static-
 
       - name: Install dependencies
+        if: steps.foundry-cache-static.outputs.cache-hit != 'true'
         run: |
           forge clean
-          forge install
+          forge install --no-commit
 
-      - name: Install Python and uv
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-          cache: 'pip'
-
-      - name: Install Vyper for Slither
-        id: set_vyper_for_slither
+      - name: Install Python dependencies
         run: |
-          pip install vyper==0.3.10
-          VYPER_EXECUTABLE=$(which vyper)
-          echo "VYPER_PATH_FOR_SLITHER=${VYPER_EXECUTABLE}" >> $GITHUB_ENV # Keep for other potential uses
-          echo "vyper_exe_path=${VYPER_EXECUTABLE}" >> $GITHUB_OUTPUT     # Set as step output
-          echo "Vyper for Slither installed at: ${VYPER_EXECUTABLE}"
-
-      - name: Cache uv
-        uses: actions/cache@v4
-        with:
-          path: |  
-            ~/.cache/uv
-            ~/.local/bin/uv
-          key: ${{ runner.os }}-uv-${{ hashFiles('**/requirements*.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-uv-
-
-      - name: Install uv
-        run: curl -LsSf https://astral.sh/uv/install.sh | sh
-
-      - name: Cache Python packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
-      - name: Install Slither and dependencies
-        run: |
-          uv pip install --system slither-analyzer
-          pip install vyper==0.3.10
+          pip install vyper==0.3.10 slither-analyzer
           VYPER_EXECUTABLE=$(which vyper)
           echo "VYPER_PATH=${VYPER_EXECUTABLE}" >> $GITHUB_ENV
           echo "Vyper installed at: ${VYPER_EXECUTABLE}"
@@ -199,19 +172,30 @@ jobs:
         env:
           PATH: ${{ env.PATH }}:/opt/hostedtoolcache/Python/3.10.17/x64/bin
         run: |
+          echo "::group::Slither Analysis"
           echo "Executing Slither security analysis..."
           # Create build directory for Slither
           /bin/mkdir -p out/build-info
-          
+
           # Run forge build to generate build info
           forge build --build-info --skip */test/** */script/** || echo "::warning::Forge build had issues"
-          
+
           # Run slither with better configuration
           slither . --ignore-compile --json slither-report.json --sarif slither-results.sarif || echo "::warning::Slither found potential issues - check the report for details"
-          
+
           # Generate a summary of findings
           if [ -f "slither-report.json" ]; then
-            echo "::group::Slither Security Findings Summary"
+            echo "Slither Security Findings Summary:"
             jq -r '.results.detectors[] | "- [" + .impact + "] " + .check + ": " + .description' slither-report.json || echo "Could not parse Slither report"
-            echo "::endgroup::"
           fi
+          echo "::endgroup::"
+
+      - name: Upload Slither results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: slither-results
+          path: |
+            backend/smart-contract/slither-report.json
+            backend/smart-contract/slither-results.sarif
+          retention-days: 5
