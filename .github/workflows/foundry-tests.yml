@@ -49,6 +49,7 @@ jobs:
             backend/smart-contract/lib
             backend/smart-contract/cache
             backend/smart-contract/out
+            ~/.solc-select
           key: ${{ runner.os }}-foundry-${{ hashFiles('backend/smart-contract/foundry.toml', 'backend/smart-contract/lib/*/') }}
           restore-keys: |
             ${{ runner.os }}-foundry-
@@ -74,6 +75,7 @@ jobs:
       - name: Run tests
         env:
           FOUNDRY_PROFILE: ci
+          FOUNDRY_DISABLE_NIGHTLY_WARNING: true
         run: |
           # Setup Vyper environment
           echo "Setting up Vyper environment..."
@@ -93,7 +95,9 @@ jobs:
           forge test --via-ir -vvv --fail-fast
 
       - name: Generate LCOV report
-        run: forge coverage --report lcov
+        env:
+          FOUNDRY_DISABLE_NIGHTLY_WARNING: true
+        run: forge coverage --report lcov --via-ir
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -151,9 +155,22 @@ jobs:
             backend/smart-contract/lib
             backend/smart-contract/cache
             backend/smart-contract/out
+            ~/.solc-select
           key: ${{ runner.os }}-foundry-static-${{ hashFiles('backend/smart-contract/foundry.toml', 'backend/smart-contract/lib/*/') }}
           restore-keys: |
             ${{ runner.os }}-foundry-static-
+            ${{ runner.os }}-foundry-
+
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
+        id: python-cache
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.local/lib/python*/site-packages
+          key: ${{ runner.os }}-python-${{ hashFiles('**/requirements.txt', '**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-python-
 
       - name: Install dependencies
         if: steps.foundry-cache-static.outputs.cache-hit != 'true'
@@ -162,6 +179,7 @@ jobs:
           forge install
 
       - name: Install Python dependencies
+        if: steps.python-cache.outputs.cache-hit != 'true'
         run: |
           pip install vyper==0.3.10 slither-analyzer
           VYPER_EXECUTABLE=$(which vyper)
@@ -171,17 +189,25 @@ jobs:
       - name: Run Slither
         env:
           PATH: ${{ env.PATH }}:/opt/hostedtoolcache/Python/3.10.17/x64/bin
+          FOUNDRY_PROFILE: ci
+          FOUNDRY_DISABLE_NIGHTLY_WARNING: true
         run: |
           echo "::group::Slither Analysis"
           echo "Executing Slither security analysis..."
           # Create build directory for Slither
-          /bin/mkdir -p out/build-info
+          mkdir -p out/build-info
 
-          # Run forge build to generate build info
-          forge build --build-info --skip */test/** */script/** || echo "::warning::Forge build had issues"
+          # First compile with via-ir to avoid stack too deep errors
+          forge build --via-ir --build-info --skip */test/** */script/** 
+
+          # If forge build fails, fail the job (remove the || to make the job fail on errors)
+          if [ $? -ne 0 ]; then
+            echo "::error::Forge build failed, cannot continue with static analysis"
+            exit 1
+          fi
 
           # Run slither with better configuration
-          slither . --ignore-compile --json slither-report.json --sarif slither-results.sarif || echo "::warning::Slither found potential issues - check the report for details"
+          slither . --ignore-compile --json slither-report.json --sarif slither-results.sarif
 
           # Generate a summary of findings
           if [ -f "slither-report.json" ]; then
