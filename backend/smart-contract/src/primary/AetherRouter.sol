@@ -12,6 +12,7 @@ import {IAetherPool} from "../interfaces/IAetherPool.sol";
 import {BaseRouter} from "./BaseRouter.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Errors} from "../libraries/Errors.sol";
 
 /**
  * @title AetherRouter (Simplified)
@@ -31,6 +32,9 @@ contract AetherRouter is BaseRouter {
         uint256 deadline
     ) external nonReentrant checkDeadline(deadline) returns (uint256 amountA, uint256 amountB, uint256 liquidity) {
         require(pool != address(0), "InvalidPoolAddress");
+        uint256 forceReadDeadline = deadline; // Read 'deadline'
+        forceReadDeadline = forceReadDeadline; // "Use" the local variable to silence linter
+        // Parameter 'deadline' is used by the checkDeadline modifier
         // TODO: Implement liquidity addition via PoolManager and IAetherPool.mint
         // For now, we'll simulate the assignments and checks for parameters.
         // IAetherPool actualMintCall = IAetherPool(pool);
@@ -41,8 +45,12 @@ contract AetherRouter is BaseRouter {
         amountB = amountBDesired; // In a real scenario, amountB would come from the mint call
         liquidity = 0; // Placeholder, should be from mint call
 
-        require(amountA >= amountAMin, "AetherRouter: INSUFFICIENT_A_AMOUNT");
-        require(amountB >= amountBMin, "AetherRouter: INSUFFICIENT_B_AMOUNT");
+        if (amountA < amountAMin) {
+            revert Errors.InsufficientAAmount();
+        }
+        if (amountB < amountBMin) {
+            revert Errors.InsufficientBAmount();
+        }
         // require(liquidity >= liquidityMin, "AetherRouter: INSUFFICIENT_LIQUIDITY_MINTED"); // If liquidityMin were a param
     }
 
@@ -57,8 +65,12 @@ contract AetherRouter is BaseRouter {
         require(pool != address(0), "InvalidPoolAddress");
         _transferToPool(pool, pool, liquidity);
         (amountA, amountB) = IAetherPool(pool).burn(to, liquidity);
-        require(amountA >= amountAMin, "AetherRouter: INSUFFICIENT_A_AMOUNT");
-        require(amountB >= amountBMin, "AetherRouter: INSUFFICIENT_B_AMOUNT");
+        if (amountA < amountAMin) {
+            revert Errors.InsufficientAAmount();
+        }
+        if (amountB < amountBMin) {
+            revert Errors.InsufficientBAmount();
+        }
     }
 
     function swapExactTokensForTokens(
@@ -79,7 +91,9 @@ contract AetherRouter is BaseRouter {
         _transferToPool(tokenIn, pool, amountIn);
         uint256 amountOut = _swap(pool, amountIn, tokenIn, to, amountOutMin);
         amounts[1] = amountOut;
-        require(amountOut >= amountOutMin, "InsufficientOutputAmount");
+        if (amountOut < amountOutMin) {
+            revert Errors.InsufficientOutputAmount();
+        }
     }
 
     // Helper function to call permit on a token
@@ -94,7 +108,7 @@ contract AetherRouter is BaseRouter {
         bytes32 s
     ) private {
         // Cast to IERC20 to call allowance, as IERC20Permit does not define it.
-        if (IERC20(address(token)).allowance(owner, spender) < amount) { 
+        if (IERC20(address(token)).allowance(owner, spender) < amount) {
             token.permit(owner, spender, amount, deadline, v, r, s);
         }
     }
@@ -122,10 +136,19 @@ contract AetherRouter is BaseRouter {
         amounts[0] = amountIn;
 
         // Router now has allowance, so it transfers from msg.sender to the pool.
-        IERC20(tokenInAddress).safeTransferFrom(msg.sender, pool, amountIn); 
-        
+        IERC20(tokenInAddress).safeTransferFrom(msg.sender, pool, amountIn);
+
         uint256 amountOut = _swap(pool, amountIn, tokenInAddress, to, amountOutMin);
         amounts[1] = amountOut;
-        require(amountOut >= amountOutMin, "InsufficientOutputAmount");
+        if (amountOut < amountOutMin) {
+            revert Errors.InsufficientOutputAmount();
+        }
+    }
+
+    modifier checkDeadline(uint256 deadline) override {
+        if (deadline < block.timestamp) {
+            revert Errors.DeadlineExpired();
+        }
+        _;
     }
 }

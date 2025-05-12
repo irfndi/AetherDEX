@@ -359,7 +359,7 @@ def transferFrom(_from: address, _to: address, _value: uint256) -> bool:
     self.balanceOf[_to] += _value
     # Decrease allowance - Vyper does not automatically handle infinite allowance (uint256.max)
     # If _value is max, allowance remains max; otherwise, subtract.
-    if self.allowance[_from][msg.sender] != MAX_UINT256:
+    if self.allowance[_from][msg.sender] != max_value(uint256):
          self.allowance[_from][msg.sender] -= _value
     # Log event
     log Transfer(_from, _to, _value)

@@ -14,17 +14,18 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IAetherPool} from "../interfaces/IAetherPool.sol";
 import {IPoolManager} from "../interfaces/IPoolManager.sol";
 import {PoolKey} from "../types/PoolKey.sol";
+import {Errors} from "../libraries/Errors.sol";
 
 abstract contract BaseRouter is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    modifier checkDeadline(uint256 deadline) {
-        require(block.timestamp <= deadline, "DeadlineExpired");
+    modifier checkDeadline(uint256 deadline) virtual {
+        if (block.timestamp > deadline) revert Errors.DeadlineExpired();
         _;
     }
 
     function _transferToPool(address token, address pool, uint256 amount) internal {
-        require(pool != address(0), "InvalidPoolAddress");
+        if (pool == address(0)) revert Errors.InvalidPath(); // Using InvalidPath as closest error
         IERC20(token).safeTransferFrom(msg.sender, pool, amount);
     }
 
@@ -33,6 +34,6 @@ abstract contract BaseRouter is ReentrancyGuard {
         returns (uint256 amountOut)
     {
         amountOut = IAetherPool(pool).swap(amountIn, tokenIn, to);
-        require(amountOut >= minAmountOut, "SlippageExceeded");
+        if (amountOut < minAmountOut) revert Errors.InsufficientOutputAmount();
     }
 }

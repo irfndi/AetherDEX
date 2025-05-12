@@ -12,6 +12,8 @@ contract MockHyperlane {
     mapping(uint16 => mapping(uint16 => bool)) public routes;
     // Mapping to track verified messages between chains
     mapping(uint16 => mapping(uint16 => bool)) private _verified;
+    // Mapping to track deposited tokens
+    mapping(address => uint256) public depositedTokens;
 
     function quoteDispatch(uint16, bytes memory) external pure returns (uint256) {
         return 0.1 ether;
@@ -62,5 +64,11 @@ contract MockHyperlane {
     // Implement estimateGasPayment function from IHyperlane interface
     function estimateGasPayment(uint16, /* destination */ uint256 /* gasAmount */ ) external pure returns (uint256) {
         return 0.01 ether;
+    }
+    
+    // Implement depositToken function from IHyperlane interface
+    function depositToken(address token, uint256 amount) external returns (bool) {
+        depositedTokens[token] += amount;
+        return true;
     }
 }

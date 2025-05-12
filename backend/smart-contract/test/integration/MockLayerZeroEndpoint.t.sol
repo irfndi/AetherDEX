@@ -79,7 +79,7 @@ contract MockLayerZeroEndpoint {
         bytes calldata, /* _payload */
         bool _payInZRO,
         bytes calldata /* _adapterParam */
-    ) external view returns (uint256 nativeFee, uint256 zroFee) {
+    ) external pure returns (uint256 nativeFee, uint256 zroFee) {
         return (_payInZRO ? 0 : 0.01 ether, _payInZRO ? 1 ether : 0);
     }
 }
@@ -155,9 +155,17 @@ contract MockLayerZeroEndpointTest is Test {
         IPoolManager.ModifyPositionParams memory params =
             IPoolManager.ModifyPositionParams({tickLower: -100, tickUpper: 100, liquidityDelta: 1000});
 
+        // Determine actual deployed token addresses
+        address t0_addr = address(token0);
+        address t1_addr = address(token1);
+        // Determine sorted order (lower address first, then higher)
+        address lowerSortedAddress = t0_addr < t1_addr ? t0_addr : t1_addr;
+        address higherSortedAddress = t0_addr < t1_addr ? t1_addr : t0_addr;
+
         // Expect events from the hook only
         vm.expectEmit(false, false, false, true, address(srcHook));
-        emit CrossChainLiquidityHook.CrossChainLiquidityEvent(DST_CHAIN_ID, address(token0), address(token1), 1000);
+        // Based on trace, actual event emitted: event.token0 gets lower address, event.token1 gets higher address.
+        emit CrossChainLiquidityHook.CrossChainLiquidityEvent(DST_CHAIN_ID, lowerSortedAddress, higherSortedAddress, 1000);
 
         // Execute liquidity change on source chain as manager
         vm.prank(address(poolManager));
@@ -179,7 +187,7 @@ contract MockLayerZeroEndpointTest is Test {
         srcHook.afterModifyPosition(address(this), key, params, BalanceDelta({amount0: 0, amount1: 0}), "");
     }
 
-    function test_FeeEstimation() public {
+    function test_FeeEstimation() public view {
         (uint256 nativeFee, uint256 zroFee) = srcHook.estimateFees(DST_CHAIN_ID, address(token0), address(token1), 1000);
 
         assertEq(nativeFee, 0.01 ether, "Wrong native fee");

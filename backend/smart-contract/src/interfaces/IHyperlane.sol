@@ -20,4 +20,5 @@ interface IHyperlane {
     function quoteDispatch(uint16 destination, bytes calldata message) external view returns (uint256);
     function isRouteEnabled(uint16 srcChainId, uint16 dstChainId) external view returns (bool);
     function estimateGasPayment(uint16 destination, uint256 gasAmount) external view returns (uint256);
+    function depositToken(address token, uint256 amount) external returns (bool);
 }

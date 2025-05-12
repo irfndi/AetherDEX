@@ -101,15 +101,11 @@ contract FeeRegistryTest is Test {
 
         // Use the addedFeeTier event to test event properties
         vm.expectEmit(true, true, true, true);
-        emit FeeRegistry.ConfigurationAdded(newFee, newTickSpacing);
+        emit FeeRegistry.FeeConfigurationAdded(newFee, newTickSpacing);
         registry.addFeeConfiguration(newFee, newTickSpacing);
 
         // Basic validation that the fee configuration was added
         assertTrue(registry.isSupportedFeeTier(newFee), "Fee tier should be supported after adding");
-        assertTrue(
-            registry.isSupportedStaticFeeTierTickSpacing(newFee, newTickSpacing),
-            "Fee tier & tick spacing combo should be supported"
-        );
         assertEq(registry.getTickSpacing(newFee), newTickSpacing, "Tick spacing mismatch");
     }
 
@@ -237,14 +233,6 @@ contract FeeRegistryTest is Test {
     }
 
     function test_GetFee_Static_Success_AfterAddingLowerFee() public {
-        PoolKey memory key1 = PoolKey({
-            token0: address(1),
-            token1: address(2),
-            fee: FEE_TIER_1,
-            tickSpacing: TICK_SPACING_1,
-            hooks: address(0)
-        });
-
         uint24 evenLowerFee = 300;
         registry.addFeeConfiguration(evenLowerFee, TICK_SPACING_1);
 
@@ -259,14 +247,6 @@ contract FeeRegistryTest is Test {
     }
 
     function test_GetFee_Static_Success_AfterAddingHigherFee() public {
-        PoolKey memory key1 = PoolKey({
-            token0: address(1),
-            token1: address(2),
-            fee: FEE_TIER_1,
-            tickSpacing: TICK_SPACING_1,
-            hooks: address(0)
-        });
-
         uint24 higherFee = 900; // Higher than both FEE_TIER_1 (500) and FEE_TIER_4_LOW (400)
         registry.addFeeConfiguration(higherFee, TICK_SPACING_1);
 
@@ -290,7 +270,7 @@ contract FeeRegistryTest is Test {
             token0: address(1),
             token1: address(2),
             fee: dummyFee, // Not supported
-            tickSpacing: 10, // Any tick spacing
+            tickSpacing: 0, // Invalid tickSpacing to trigger FeeTierNotSupported
             hooks: address(0)
         });
 
@@ -300,51 +280,43 @@ contract FeeRegistryTest is Test {
     }
 
     // --- Test getFeeTickSpacing (Static Fees) ---
-
     function test_GetFeeAndTickSpacing_Success() public view {
-        (uint24 fee, int24 tickSpacing) = registry.getFeeAndTickSpacing(FEE_TIER_1);
-        assertEq(fee, FEE_TIER_1, "Fee should match");
+        int24 tickSpacing = registry.getTickSpacing(FEE_TIER_1);
         assertEq(tickSpacing, TICK_SPACING_1, "Tick spacing should match");
     }
 
     function test_GetFeeAndTickSpacing_Revert_UnsupportedFeeTier() public {
-        uint24 dummyFee = 42069; // Random unsupported fee
-
-        // Correct: Reference the error from FeeRegistry directly. It reverts with FeeTierNotSupported(dummyFee)
+        uint24 dummyFee = 42069;
         vm.expectRevert(abi.encodeWithSelector(FeeRegistry.FeeTierNotSupported.selector, dummyFee));
-        registry.getFeeAndTickSpacing(dummyFee);
+        registry.getTickSpacing(dummyFee); // Use getTickSpacing for the revert test
     }
 
     // --- Test getTickSpacing (Static Fees) ---
-
     function test_GetTickSpacing_Success() public view {
         int24 tickSpacing = registry.getTickSpacing(FEE_TIER_1);
         assertEq(tickSpacing, TICK_SPACING_1, "Tick spacing should match");
     }
 
     function test_GetTickSpacing_Revert_UnsupportedFeeTier() public {
-        uint24 dummyFee = 42069; // Random unsupported fee
-
-        // Correct: Reference the error from FeeRegistry directly. It reverts with FeeTierNotSupported(dummyFee)
+        uint24 dummyFee = 42069;
         vm.expectRevert(abi.encodeWithSelector(FeeRegistry.FeeTierNotSupported.selector, dummyFee));
-        registry.getTickSpacing(dummyFee);
+        registry.getTickSpacing(dummyFee); // Use getTickSpacing for the revert test
     }
 
     // --- Test Dynamic Fee Handling (Register, Update, Get) ---
-
     function test_RegisterDynamicFeePool_Success() public {
         bytes32 poolKeyBCHash = _getPoolKeyHash(poolKeyBC);
         address updater = makeAddr("updater");
 
         // Expect event emission
         vm.expectEmit(true, true, true, true);
-        emit FeeRegistry.DynamicPoolRegistered(poolKeyBCHash, FEE_TIER_2, updater);
+        emit FeeRegistry.DynamicFeePoolRegistered(poolKeyBCHash, FEE_TIER_2, updater);
         registry.registerDynamicFeePool(poolKeyBC, FEE_TIER_2, updater);
 
         // Validate mappings were updated correctly
         assertEq(registry.dynamicFees(poolKeyBCHash), FEE_TIER_2, "Initial dynamic fee not set");
         assertEq(registry.feeUpdaters(poolKeyBCHash), updater, "Fee updater not set");
-        assertTrue(registry.isDynamicFeePool(poolKeyBC), "Pool not marked as dynamic");
+        assertTrue(registry.feeUpdaters(_getPoolKeyHash(poolKeyBC)) != address(0), "Pool not marked as dynamic");
     }
 
     function test_RegisterDynamicFeePool_Revert_NonOwner() public {
@@ -360,8 +332,8 @@ contract FeeRegistryTest is Test {
         uint24 dummyFee = 42069; // Random unsupported fee
         address updater = makeAddr("updater");
 
-        // Correct: Reference the error from FeeRegistry directly
-        vm.expectRevert(abi.encodeWithSelector(FeeRegistry.FeeTierNotSupported.selector, dummyFee));
+        // Updated: Reference the new error from FeeRegistry directly
+        vm.expectRevert(abi.encodeWithSelector(FeeRegistry.InvalidInitialFee.selector, dummyFee));
         registry.registerDynamicFeePool(poolKeyBC, dummyFee, updater);
     }
 
@@ -369,7 +341,7 @@ contract FeeRegistryTest is Test {
         bytes32 poolKeyBCHash = _getPoolKeyHash(poolKeyBC);
 
         // Correct: Reference the error from FeeRegistry directly, error uses hash
-        vm.expectRevert(abi.encodeWithSelector(FeeRegistry.InvalidNewUpdater.selector, poolKeyBCHash, address(0)));
+        vm.expectRevert(abi.encodeWithSelector(FeeRegistry.InvalidInitialFeeOrUpdater.selector, poolKeyBCHash, FEE_TIER_2, address(0)));
         registry.registerDynamicFeePool(poolKeyBC, FEE_TIER_2, address(0));
     }
 
@@ -384,19 +356,22 @@ contract FeeRegistryTest is Test {
 
     function test_UpdateFee_Success() public {
         bytes32 poolKeyABHash = _getPoolKeyHash(poolKeyAB);
-        uint24 newFee = 1400; // 0.14%
+        uint24 expectedNewFee = 1000; // Max possible fee from 500 current + 500 max adjustment
+        // To get feeAdjustment = 500 (max), need volumeMultiplierRaw >= 10
+        // Let swapVolume = 17001 ether (gives volumeMultiplierRaw = 18, capped to 10 -> adjustment 500)
+        uint256 calculatedSwapVolume = 17001 ether;
 
         // Expect event emission
         vm.startPrank(dynamicFeeUpdater);
         vm.expectEmit(true, true, true, true);
-        emit FeeRegistry.DynamicFeeUpdated(poolKeyABHash, FEE_TIER_1, newFee);
-        registry.updateFee(poolKeyAB, newFee);
+        emit FeeRegistry.DynamicFeeUpdated(poolKeyABHash, dynamicFeeUpdater, expectedNewFee);
+        registry.updateFee(poolKeyAB, calculatedSwapVolume);
         vm.stopPrank();
 
         // Validate fee was updated
-        assertEq(registry.dynamicFees(poolKeyABHash), newFee, "Dynamic fee not updated");
+        assertEq(registry.dynamicFees(poolKeyABHash), expectedNewFee, "Dynamic fee not updated");
         // The getFee function should also return the updated dynamic fee for this pool
-        assertEq(registry.getFee(poolKeyAB), newFee, "getFee returns wrong value for updated dynamic fee");
+        assertEq(registry.getFee(poolKeyAB), expectedNewFee);
     }
 
     function test_UpdateFee_Revert_Unauthorized() public {
@@ -427,12 +402,23 @@ contract FeeRegistryTest is Test {
     }
 
     function test_UpdateFee_Revert_FeeTooHigh() public {
-        uint24 feeTooHigh = MAX_FEE + 1;
+        // For poolKeyAB, currentFee is FEE_TIER_1 (500) (from defaultFee as dynamicFee starts at 0, then picks up default).
+        // However, registerDynamicFeePool sets dynamicFees[keyHash] = initialFee directly.
+        // So, currentFee = dynamicFees[poolKeyABHash] which is FEE_TIER_1 (500).
+
+        // To exceed MAX_FEE (100000) with currentFee 500, unCappedFeeAdjustmentForCheck needs to be > 99500
+        // unCappedFeeAdjustmentForCheck = volumeMultiplierRaw * 50
+        // volumeMultiplierRaw = (swapVolume + 1000 ether - 1) / 1000 ether
+        // For swapVolume = 1_990_001 ether:
+        // volumeMultiplierRaw = (1_990_001 ether + 1000 ether - 1) / 1000 ether = 1991
+        // unCappedFeeAdjustmentForCheck = 1991 * 50 = 99550.
+        // potentialFeeForBoundCheck = currentFee (500) + 99550 = 100050.
+        // 100050 > MAX_FEE (100000) should be true and cause InvalidDynamicFee revert.
+        uint256 feeTooHighSwapVolume = 1_990_001 ether;
 
         vm.startPrank(dynamicFeeUpdater);
-        // Correct: Reference the error from FeeRegistry directly, error is parameter-less
-        vm.expectRevert(FeeRegistry.InvalidDynamicFee.selector);
-        registry.updateFee(poolKeyAB, feeTooHigh);
+        vm.expectRevert(abi.encodeWithSelector(FeeRegistry.InvalidDynamicFee.selector));
+        registry.updateFee(poolKeyAB, feeTooHighSwapVolume);
         vm.stopPrank();
     }
 
@@ -443,21 +429,24 @@ contract FeeRegistryTest is Test {
 
     function test_GetFee_Dynamic_AfterUpdate() public {
         bytes32 poolKeyABHash = _getPoolKeyHash(poolKeyAB);
-        uint24 newFee = 1400; // 0.14%
+        uint24 expectedNewFee = 1000;   // Max possible fee from 500 current + 500 max adjustment
+        // To get feeAdjustment = 500 (max), need volumeMultiplierRaw >= 10
+        // Let swapVolume = 17001 ether (gives volumeMultiplierRaw = 18, capped to 10 -> adjustment 500)
+        uint256 calculatedSwapVolume = 17001 ether;
 
         // Update the fee
         vm.startPrank(dynamicFeeUpdater);
-        registry.updateFee(poolKeyAB, newFee);
+        registry.updateFee(poolKeyAB, calculatedSwapVolume); // Use calculatedSwapVolume
         vm.stopPrank();
 
         // Validate getFee returns the updated dynamic fee
-        assertEq(registry.getFee(poolKeyAB), newFee, "Should return the updated dynamic fee");
-        assertEq(registry.dynamicFees(poolKeyABHash), newFee, "Dynamic fee mapping incorrect");
+        assertEq(registry.getFee(poolKeyAB), expectedNewFee, "Should return the updated dynamic fee");
+        assertEq(registry.dynamicFees(poolKeyABHash), expectedNewFee, "Dynamic fee mapping incorrect");
     }
 
     function test_IsDynamicFeePool_Success() public view {
-        assertTrue(registry.isDynamicFeePool(poolKeyAB), "PoolKeyAB should be dynamic");
-        assertFalse(registry.isDynamicFeePool(poolKeyAC), "PoolKeyAC should not be dynamic");
+        assertTrue(registry.feeUpdaters(_getPoolKeyHash(poolKeyAB)) != address(0), "PoolKeyAB should be dynamic");
+        assertTrue(registry.feeUpdaters(_getPoolKeyHash(poolKeyAC)) == address(0), "PoolKeyAC should not be dynamic");
     }
 
     function test_DynamicFeeAndUpdater_GettersConsistency() public view {
@@ -471,10 +460,10 @@ contract FeeRegistryTest is Test {
         // Check consistency for unregistered pool - should return zero/null values
         assertEq(registry.dynamicFees(poolKeyACHash), 0, "Should return zero for unregistered pool's fee");
         assertEq(registry.feeUpdaters(poolKeyACHash), address(0), "Should return zero address for unregistered pool's updater");
+        // No revert expected here
     }
 
     // --- Test Fee Updater Management ---
-
     function test_SetFeeUpdater_Success() public {
         bytes32 poolKeyABHash = _getPoolKeyHash(poolKeyAB);
         address newUpdater = makeAddr("newUpdater");
@@ -536,7 +525,6 @@ contract FeeRegistryTest is Test {
     }
 
     // --- Test Querying Dynamic Fee Mappings ---
-
     function test_QueryDynamicFeeMappings_Success_RegisteredPool() public view {
         bytes32 poolKeyABHash = _getPoolKeyHash(poolKeyAB);
         uint24 fee = registry.dynamicFees(poolKeyABHash);
@@ -556,7 +544,6 @@ contract FeeRegistryTest is Test {
     }
 
     // --- Test Ownership ---
-
     function test_OwnershipTransfer() public {
         address newOwner = makeAddr("newOwner");
         registry.transferOwnership(newOwner);

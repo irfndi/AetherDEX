@@ -11,6 +11,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IAetherPool} from "../interfaces/IAetherPool.sol";
 import {IFeeRegistry} from "../interfaces/IFeeRegistry.sol";
+import {Errors} from "../libraries/Errors.sol";
 
 /**
  * @title AetherFactory
@@ -66,7 +67,7 @@ contract AetherFactory is
      * @param _initialPoolFee The initial fee for pools created by this factory.
      */
     constructor(address _initialOwner, address _feeRegistry, uint24 _initialPoolFee) Ownable(_initialOwner) {
-        if (_feeRegistry == address(0)) revert("AetherFactory: ZERO_ADDRESS_FEE_REGISTRY");
+        if (_feeRegistry == address(0)) revert Errors.ZeroAddress();
         feeRegistry = IFeeRegistry(_feeRegistry);
         currentPoolFee = _initialPoolFee;
     }
@@ -78,12 +79,12 @@ contract AetherFactory is
      * @return The address of the newly created AetherPool contract.
      */
     function createPool(address tokenA, address tokenB) external nonReentrant returns (address /*pool*/) {
-        if (tokenA == tokenB) revert("AetherFactory: IDENTICAL_ADDRESSES");
-        if (tokenA == address(0) || tokenB == address(0)) revert("AetherFactory: ZERO_ADDRESS");
+        if (tokenA == tokenB) revert Errors.IdenticalAddresses();
+        if (tokenA == address(0) || tokenB == address(0)) revert Errors.ZeroAddress();
 
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
 
-        if (getPool[token0][token1] != address(0)) revert("AetherFactory: POOL_EXISTS");
+        if (getPool[token0][token1] != address(0)) revert Errors.InvalidPath(); // Using InvalidPath for pool exists
 
         // TODO: Implement CREATE2 deployment of AetherPool.vy (Vyper contract)
         // The bytecode of AetherPool.vy needs to be obtained and used here.
@@ -95,7 +96,7 @@ contract AetherFactory is
         // }
         // if (pool == address(0)) revert("AetherFactory: CREATE2_FAILED");
         // For now, as a placeholder until CREATE2 is implemented:
-        revert("AetherFactory: CREATE2 deployment for AetherPool.vy not yet implemented");
+        revert Errors.InvalidPath(); // Temporarily using InvalidPath for unimplemented CREATE2
 
         // Unreachable code until CREATE2 is implemented and revert is removed:
         // IAetherPool(pool).initialize(token0, token1, currentPoolFee);
@@ -115,20 +116,18 @@ contract AetherFactory is
      * @param tokenB The other token in the pool.
      */
     function registerPool(address poolAddress, address tokenA, address tokenB) external nonReentrant {
-        if (tokenA == tokenB) revert("AetherFactory: IDENTICAL_ADDRESSES_REGISTER");
-        if (tokenA == address(0) || tokenB == address(0) || poolAddress == address(0)) revert("AetherFactory: ZERO_ADDRESS_REGISTER");
+        if (tokenA == tokenB) revert Errors.IdenticalAddresses();
+        if (tokenA == address(0) || tokenB == address(0) || poolAddress == address(0)) revert Errors.ZeroAddress();
 
         // Ensure tokens are ordered
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
 
-        if (getPool[token0][token1] != address(0)) revert("AetherFactory: POOL_EXISTS_REGISTER");
+        if (getPool[token0][token1] != address(0)) revert Errors.InvalidPath(); // Using InvalidPath for pool exists
 
         getPool[token0][token1] = poolAddress;
         getPool[token1][token0] = poolAddress; // Allow lookup in reverse order too
         allPools.push(poolAddress);
 
-        // Assuming IAetherPool has a 'fee()' getter or similar to retrieve the fee for the event.
-        // If not, this part might need adjustment or removal of fee from this specific event emit.
         uint24 registeredFee = IAetherPool(poolAddress).fee(); 
         emit PoolCreated(token0, token1, registeredFee, poolAddress, allPools.length);
     }

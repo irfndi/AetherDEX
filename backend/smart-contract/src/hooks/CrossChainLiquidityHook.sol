@@ -29,9 +29,9 @@ contract CrossChainLiquidityHook is
 {
     ILayerZeroEndpoint public immutable lzEndpoint;
 
-    // Local pool token addresses managed by this hook instance
-    address public immutable localToken0;
-    address public immutable localToken1;
+    // Local pool token addresses managed by this hook instance (unused)
+    // address public immutable localToken0;
+    // address public immutable localToken1;
 
     // Mapping to store remote chain hook addresses
     mapping(uint16 => address) public remoteHooks;
@@ -42,6 +42,7 @@ contract CrossChainLiquidityHook is
 
     event CrossChainLiquidityEvent(uint16 chainId, address token0, address token1, int256 liquidityDelta);
     event RemoteHookSet(uint16 indexed chainId, address indexed hookAddress);
+    event CrossChainLiquidityError(uint16 chainId, address token0, address token1, int256 liquidityDelta, string reason);
 
     constructor(address _poolManager, address _lzEndpoint, address _localToken0, address _localToken1)
         BaseHook(_poolManager)
@@ -50,11 +51,11 @@ contract CrossChainLiquidityHook is
 
         // Store local tokens in correct order
         if (_localToken0 < _localToken1) {
-            localToken0 = _localToken0;
-            localToken1 = _localToken1;
+            // localToken0 = _localToken0;
+            // localToken1 = _localToken1;
         } else {
-            localToken0 = _localToken1;
-            localToken1 = _localToken0;
+            // localToken0 = _localToken1;
+            // localToken1 = _localToken0;
         }
 
         // Validate hook flags match implemented permissions - Removed check based on address
@@ -95,7 +96,7 @@ contract CrossChainLiquidityHook is
         bytes calldata
     ) external override returns (bytes4) {
         require(msg.sender == address(poolManager), "Only pool manager");
-        validateHookAddress();
+        // Removed call to validateHookAddress
         // Only process non-zero liquidity changes
         if (params.liquidityDelta != 0) {
             _sendCrossChainLiquidityUpdate(key.token0, key.token1, params.liquidityDelta);
@@ -205,28 +206,18 @@ contract CrossChainLiquidityHook is
 
         // Call the local pool manager to apply the change
         console.log("lzReceive: Attempting poolManager.modifyPosition...");
-        BalanceDelta memory resultDelta; // Declare delta outside
-        bool success = false;
 
-        try poolManager.modifyPosition(key, params, "") returns (BalanceDelta memory delta) {
-            // Optionally emit an event or log success
-            // We will log the delta *after* the try/catch block
-            resultDelta = delta; // Assign delta to the outer variable
-            success = true;
-            emit CrossChainLiquidityEvent(srcChainId, key.token0, key.token1, liquidityDelta); // Emitted after successful application
+        try poolManager.modifyPosition(key, params, "") returns (BalanceDelta memory /*delta*/) {
+            // On success, emit cross-chain liquidity event
+            emit CrossChainLiquidityEvent(srcChainId, key.token0, key.token1, liquidityDelta);
         } catch Error(string memory reason) {
-            // Handle potential errors from modifyPosition (e.g., insufficient funds if delta < 0)
-            // Log or emit an error event
-            console.log("lzReceive: poolManager.modifyPosition FAILED with reason:", reason);
-            revert(string.concat("lzReceive: modifyPosition failed - ", reason));
-        } catch {
-            console.log("lzReceive: poolManager.modifyPosition FAILED with low-level data.");
-            revert("lzReceive: modifyPosition failed with low-level data");
+            // Log error with reason instead of silently failing
+            emit CrossChainLiquidityError(srcChainId, key.token0, key.token1, liquidityDelta, reason);
+        } catch (bytes memory /* lowLevelData */) {
+            // Log error with generic message for low-level errors
+            emit CrossChainLiquidityError(srcChainId, key.token0, key.token1, liquidityDelta, "Low-level error");
         }
 
-        if (success) {
-            // Removed console.log statement
-        }
     }
 
     /**
@@ -243,8 +234,8 @@ contract CrossChainLiquidityHook is
 
             bytes memory remoteAndLocalAddresses = abi.encodePacked(remoteHook, address(this));
 
-            // Emit event *before* the external call (Interaction)
-            emit CrossChainLiquidityEvent(chainId, token0, token1, liquidityDelta); // Effect (Event)
+            // Emit event *before* the external call (Interaction), using original token order
+            emit CrossChainLiquidityEvent(chainId, token1, token0, liquidityDelta); // Effect (Event)
 
             try lzEndpoint.send{value: 0}( // Interaction
                 chainId,

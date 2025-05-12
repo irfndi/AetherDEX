@@ -21,8 +21,121 @@ import {CrossChainLiquidityHook} from "../../src/hooks/CrossChainLiquidityHook.s
 import {DynamicFeeHook} from "../../src/hooks/DynamicFeeHook.sol";
 import {Hooks} from "../../src/libraries/Hooks.sol"; // Import Hooks library
 import {MockPoolManager} from "../mocks/MockPoolManager.sol"; // Import MockPoolManager
+import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
 import {IPoolManager} from "../../src/interfaces/IPoolManager.sol"; // Import IPoolManager for structs
 import {PoolKey} from "../../src/types/PoolKey.sol"; // Import PoolKey
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol"; // Added for MockPool
+
+// Copied from SwapRouter.t.sol - Consider moving to a common mocks file later
+contract MockPool is IAetherPool {
+    address public immutable token0;
+    address public immutable token1;
+    uint24 public storedFee;
+
+    constructor(address _token0, address _token1, uint24 _fee) {
+        require(_token0 != address(0) && _token1 != address(0), "MockPool: ZERO_ADDRESS");
+        require(_token0 != _token1, "MockPool: IDENTICAL_ADDRESSES");
+        token0 = _token0 < _token1 ? _token0 : _token1;
+        token1 = _token0 < _token1 ? _token1 : _token0;
+        storedFee = _fee;
+    }
+
+    function fee() external view override returns (uint24) {
+        return storedFee;
+    }
+
+    function tokens() external view override returns (address, address) {
+        return (token0, token1);
+    }
+
+    function mint(address /* recipient */, uint128 amount) 
+        external 
+        pure 
+        override 
+        returns (uint256 amount0Minted, uint256 amount1Minted) 
+    {
+        if (amount > 0) {
+            amount0Minted = uint256(amount) * 100; 
+            amount1Minted = uint256(amount) * 150; 
+        } else {
+            amount0Minted = 0;
+            amount1Minted = 0;
+        }
+        return (amount0Minted, amount1Minted);
+    }
+
+    function mint(address /* to */, uint256 amount0Desired, uint256 amount1Desired)
+        external
+        pure
+        returns (uint256 amount0Out, uint256 amount1Out, uint256 liquidityOut)
+    {
+        amount0Out = amount0Desired;
+        amount1Out = amount1Desired;
+        liquidityOut = (amount0Desired + amount1Desired) / 2; 
+        if (liquidityOut == 0 && (amount0Desired > 0 || amount1Desired > 0)) {
+            liquidityOut = 1; 
+        }
+        return (amount0Out, amount1Out, liquidityOut);
+    }
+
+    function swap(uint256 amountIn, address tokenIn, address to)
+        external
+        override
+        returns (uint256 amountOut)
+    {
+        require(tokenIn == token0 || tokenIn == token1, "MockPool: INVALID_INPUT_TOKEN");
+        amountOut = amountIn / 2; 
+
+        if (amountOut > 0) {
+            address tokenToTransferOut;
+            if (tokenIn == token0) {
+                tokenToTransferOut = token1;
+            } else {
+                tokenToTransferOut = token0;
+            }
+            bool ok = IERC20(tokenToTransferOut).transfer(to, amountOut);
+            require(ok, "MockPool: TRANSFER_FAILED");
+        }
+        return amountOut;
+    }
+
+    function burn(address /* to */, uint256 liquidityToBurn) 
+        external 
+        pure
+        override 
+        returns (uint256 amount0Burned, uint256 amount1Burned)
+    {
+        if (liquidityToBurn > 0) {
+            amount0Burned = liquidityToBurn * 50; 
+            amount1Burned = liquidityToBurn * 75; 
+        } else {
+            amount0Burned = 0;
+            amount1Burned = 0;
+        }
+        return (amount0Burned, amount1Burned);
+    }
+
+    function addInitialLiquidity(uint256 amount0Desired, uint256 amount1Desired) 
+        external 
+        pure
+        override 
+        returns (uint256 liquidityOut)
+    {
+        liquidityOut = (amount0Desired + amount1Desired) / 3; 
+        if (liquidityOut == 0 && (amount0Desired > 0 || amount1Desired > 0)) {
+            liquidityOut = 1; 
+        }
+        return liquidityOut;
+    }
+    // Placeholder for initialize if needed by IPoolManager interactions
+    function initialize(address /*_token0*/, address /*_token1*/, uint24 /*_fee*/) external override {
+        // This function is required by IAetherPool.
+        // For the mock, it can be a no-op or could re-initialize if needed.
+        // For instance, it could update token0, token1, storedFee if the mock pool were mutable.
+        // However, our MockPool's token0, token1, and storedFee are set in the constructor.
+        // So, a no-op is fine for now.
+    }
+}
 
 contract FeatureIntegrationTest is Test {
     MockChainNetworks public networks;
@@ -59,25 +172,37 @@ contract FeatureIntegrationTest is Test {
 
     function _setupChainInfrastructure(uint16 chainId) internal {
         // Deploy factory and initial pool
-        address token0 = networks.getNativeToken(chainId);
-        address token1 = address(new MockERC20("USDC", "USDC", 6));
+        address nativeToken = networks.getNativeToken(chainId);
+        address usdcToken = address(new MockERC20("USDC", "USDC", 6));
 
         // Store token addresses for later use in PoolKey construction
-        token0Addresses[chainId] = token0 < token1 ? token0 : token1;
-        token1Addresses[chainId] = token0 < token1 ? token1 : token0;
-
-        // Use the stored sorted addresses
-        address poolToken0 = token0Addresses[chainId];
-        address poolToken1 = token1Addresses[chainId];
+        // Ensure tokens are sorted for PoolKey consistency
+        address poolToken0 = nativeToken < usdcToken ? nativeToken : usdcToken;
+        address poolToken1 = nativeToken < usdcToken ? usdcToken : nativeToken;
+        token0Addresses[chainId] = poolToken0;
+        token1Addresses[chainId] = poolToken1;
 
         // Setup factory with fee configuration
         factories[chainId] = new AetherVaultFactory(address(new MockLayerZeroEndpoint()), address(feeRegistry));
 
-        // --- Deploy Pool (Placeholder) ---
-        console2.log("Deploying Placeholder Pool for chain", chainId);
-        address deployedPoolAddress = address(0x1); // Placeholder for Vyper pool
-        require(deployedPoolAddress != address(0), "Pool deployment failed");
+        // --- Deploy Actual Mock Pool --- 
+        console2.log("Deploying MockPool for chain", chainId);
+        MockPool mockPoolInstance = new MockPool(poolToken0, poolToken1, DEFAULT_FEE);
+        address deployedPoolAddress = address(mockPoolInstance);
+        require(deployedPoolAddress != address(0), "MockPool deployment failed");
         pools[chainId] = IAetherPool(deployedPoolAddress); // Store pool interface
+
+        // Fund the MockPool with tokens so it can perform swaps
+        uint256 poolSupply = 1_000_000 * 10**18; // A large supply for the pool
+        
+        // Safely mint tokens to the pool, checking if the token supports the mint function
+        if (address(poolToken0).code.length > 0) {
+            try MockERC20(poolToken0).mint(address(mockPoolInstance), poolSupply) {} catch {}
+        }
+        
+        if (address(poolToken1).code.length > 0) {
+            try MockERC20(poolToken1).mint(address(mockPoolInstance), poolSupply) {} catch {}
+        }
 
         // Create pool manager first, passing the direct hook address
         MockPoolManager manager = new MockPoolManager(address(dynamicFeeHook)); // Pass only hook address
@@ -100,24 +225,11 @@ contract FeatureIntegrationTest is Test {
         console2.log("Pool registered with MockPoolManager. Pool ID:");
         console2.logBytes32(poolId);
 
-        // Calculate poolId to register with the manager
-        PoolKey memory key = PoolKey({
-            token0: poolToken0,
-            token1: poolToken1,
-            fee: DEFAULT_FEE,
-            tickSpacing: 60, // Assuming tickSpacing 60 for DEFAULT_FEE 3000
-            hooks: address(dynamicFeeHook) // Use the actual hook address for the key
-        });
-        bytes32 poolIdForRegistration = keccak256(abi.encode(key));
-
-        // Register the pool with the manager
-        manager.setPool(poolIdForRegistration, address(0)); // Register the pool with the manager
-
         // Register the pool for dynamic fees in the FeeRegistry, authorizing the hook
-        feeRegistry.registerDynamicFeePool(key, DEFAULT_FEE, address(dynamicFeeHook));
+        feeRegistry.registerDynamicFeePool(keyForRegistration, DEFAULT_FEE, address(dynamicFeeHook));
 
         // Add liquidity using the original (unsorted) token variables
-        _addInitialLiquidity(chainId, token0, token1);
+        _addInitialLiquidity(chainId, nativeToken, usdcToken);
 
         // Configure fees using the sorted tokens
         // Replace setFeeConfig with addFeeConfiguration
@@ -138,8 +250,8 @@ contract FeatureIntegrationTest is Test {
         MockERC20(token0).mint(address(this), INITIAL_LIQUIDITY);
         MockERC20(token1).mint(address(this), INITIAL_LIQUIDITY);
 
-        MockERC20(token0).approve(address(0), INITIAL_LIQUIDITY);
-        MockERC20(token1).approve(address(0), INITIAL_LIQUIDITY); // Approve the actual pool using mapping
+        MockERC20(token0).approve(address(poolManagers[chainId]), INITIAL_LIQUIDITY);
+        MockERC20(token1).approve(address(poolManagers[chainId]), INITIAL_LIQUIDITY); // Approve the actual pool using mapping
 
         // pools[chainId].mint(address(this), INITIAL_LIQUIDITY, INITIAL_LIQUIDITY); // Mint to the actual pool using mapping
     }
@@ -247,20 +359,22 @@ contract FeatureIntegrationTest is Test {
         require(address(manager) != address(0), "Manager not found for swap");
 
         // Retrieve token addresses for the chain
-        address token0 = token0Addresses[chainId];
-        address token1 = token1Addresses[chainId];
-        require(token0 != address(0) && token1 != address(0), "Tokens not found for swap chain");
+        address token0Addr = token0Addresses[chainId]; // Renamed for clarity
+        address token1Addr = token1Addresses[chainId]; // Renamed for clarity
+        require(token0Addr != address(0) && token1Addr != address(0), "Tokens not found for swap chain");
+
+        address tokenIn = zeroForOne ? token0Addr : token1Addr;
 
         // Mint and approve tokens for the test contract (msg.sender in manager.swap)
-        // MockERC20(tokenIn).mint(address(this), amount);
-        // // Approve the POOL address because the original pool.swap pulls from msg.sender
-        // MockERC20(tokenIn).approve(address(pool), amount);
+        MockERC20(tokenIn).mint(address(this), amount); // Mint to address(this)
+        // Approve the MockPoolManager to spend the tokens on behalf of address(this)
+        MockERC20(tokenIn).approve(address(manager), amount);
 
         // Construct PoolKey and SwapParams for the manager call
         // Ensure the key matches the one used for registration in setUp
         PoolKey memory key = PoolKey({
-            token0: token0,
-            token1: token1,
+            token0: token0Addr,
+            token1: token1Addr,
             fee: DEFAULT_FEE, // Use the same fee as in setUp
             tickSpacing: 60, // Use the same tickSpacing as assumed in setUp
             hooks: address(dynamicFeeHook) // Use the actual hook address
@@ -271,8 +385,24 @@ contract FeatureIntegrationTest is Test {
             sqrtPriceLimitX96: zeroForOne ? MIN_SQRT_RATIO + 1 : MAX_SQRT_RATIO - 1
         });
 
+        // Record balance before swap for verification
+        address tokenOut = zeroForOne ? token1Addr : token0Addr;
+        uint256 balanceBefore = MockERC20(tokenOut).balanceOf(address(this));
+        
         // Call swap via the MockPoolManager
-        manager.swap(key, params, "");
+        BalanceDelta memory delta = manager.swap(key, params, "");
+        
+        // Get the relevant amount from the delta based on zeroForOne
+        int256 amountOut = zeroForOne ? delta.amount1 : delta.amount0;
+        
+        // Assert that the output amount is negative (representing tokens sent from the pool)
+        assertTrue(amountOut < 0, "Output amount should be negative (representing tokens received)");
+        uint256 outputAmount = uint256(-amountOut);
+        assertTrue(outputAmount > 0, "Output amount should be greater than zero");
+        
+        // Assert that the recipient's balance has increased by the expected amount
+        uint256 balanceAfter = MockERC20(tokenOut).balanceOf(address(this));
+        assertEq(balanceAfter - balanceBefore, outputAmount, "Recipient balance should increase by the output amount");
     }
 
     uint160 constant MIN_SQRT_RATIO = 4295128739;

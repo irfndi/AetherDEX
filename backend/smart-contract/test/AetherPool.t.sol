@@ -255,13 +255,14 @@ contract AetherPoolTest is Test {
         require(address(factory) != address(0), "Test Setup Error: Factory address is zero!");
         // IAetherPool localTestPool = IAetherPool(address(factory)); // Invalid instantiation
 
-        PoolKey memory key = PoolKey({
-            token0: address(localToken0),
-            token1: address(localToken1),
-            fee: DEFAULT_FEE,
-            tickSpacing: 60,
-            hooks: address(0)
-        });
+        // Commented out unused variable
+        // PoolKey memory key = PoolKey({
+        //     token0: address(localToken0),
+        //     token1: address(localToken1),
+        //     fee: DEFAULT_FEE,
+        //     tickSpacing: 60,
+        //     hooks: address(0)
+        // });
 
         // Register the pool with the MockPoolManager
         // bytes32 localPoolId = keccak256(abi.encode(key)); // Unused variable

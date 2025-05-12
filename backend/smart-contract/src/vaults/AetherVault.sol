@@ -13,6 +13,7 @@ import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.so
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {PoolKey} from "../types/PoolKey.sol";
 import {IPoolManager} from "../interfaces/IPoolManager.sol";
+import "forge-std/console.sol";
 
 /**
  * @title AetherVault
@@ -108,11 +109,13 @@ contract AetherVault is ERC4626 {
      * Only callable by strategy
      */
     function updateYieldRate(uint256 newRate) external onlyStrategy {
+        console.log("AetherVault: Entered updateYieldRate");
         // Accrue any pending yield before updating rate
         _accruePendingYield();
         uint256 oldRate = yieldRate; // Read old value
         yieldRate = newRate; // Update state
         emit YieldRateUpdated(oldRate, newRate); // Emit event
+        console.log("AetherVault: Exiting updateYieldRate");
     }
 
     /**
@@ -121,14 +124,17 @@ contract AetherVault is ERC4626 {
      * @param yieldAmount Yield amount to sync
      */
     function syncCrossChainYield(uint16 srcChain, uint256 yieldAmount) external onlyStrategy {
+        console.log("AetherVault: Entered syncCrossChainYield. srcChain:", srcChain, " yieldAmount:", yieldAmount);
         totalYieldGenerated += yieldAmount;
         emit CrossChainYieldSynced(srcChain, yieldAmount);
+        console.log("AetherVault: Exiting syncCrossChainYield. totalYieldGenerated:", totalYieldGenerated);
     }
 
     /**
      * @dev Internal function to accrue pending yield
      */
     function _accruePendingYield() internal {
+        console.log("AetherVault: Entered _accruePendingYield");
         // Slither: Timestamp - Using block.timestamp is essential for calculating time-elapsed
         // yield accrual based on the configured yieldRate. This is a fundamental aspect of
         // yield-bearing vaults.
@@ -138,7 +144,11 @@ contract AetherVault is ERC4626 {
             totalYieldGenerated += yieldAmount;
             lastYieldTimestamp = block.timestamp;
             emit YieldGenerated(yieldAmount, block.timestamp);
+            console.log("AetherVault: Yield accrued in _accruePendingYield: ", yieldAmount);
+        } else {
+            console.log("AetherVault: No yield accrued in _accruePendingYield (timeElapsed or yieldRate is 0)");
         }
+        console.log("AetherVault: Exiting _accruePendingYield");
     }
 
     /**
