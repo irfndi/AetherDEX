@@ -79,10 +79,10 @@ jobs:
           mv foundry.toml.ci foundry.toml
           cat foundry.toml
           
-          # Run the tests with parallel execution and better error reporting
+          # Run the tests with better error reporting
           echo "Running Forge tests..."
           forge clean
-          forge test --via-ir -vvv --parallel --fail-fast
+          forge test --via-ir -vvv --fail-fast
 
       - name: Generate LCOV report
         run: forge coverage --report lcov --report-dir ./coverage
