@@ -32,7 +32,8 @@ jobs:
         uses: coderabbitai/ai-pr-reviewer@latest
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # Only use the OpenAI API key if it's available in secrets
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || '' }}
         with:
           debug: false
           review_simple_changes: true

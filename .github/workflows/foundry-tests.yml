@@ -82,7 +82,7 @@ jobs:
           # Run the tests with parallel execution and better error reporting
           echo "Running Forge tests..."
           forge clean
-          forge test --via-ir --coverage -vvv --parallel --fail-fast
+          forge test --via-ir -vvv --parallel --fail-fast
 
       - name: Generate LCOV report
         run: forge coverage --report lcov --report-dir ./coverage
@@ -91,7 +91,8 @@ jobs:
         uses: codecov/codecov-action@v4
         continue-on-error: true
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+          # Only use the token if it's available in secrets
+          token: ${{ secrets.CODECOV_TOKEN || '' }}
           directory: ./coverage
           fail_ci_if_error: false
           verbose: true
@@ -200,7 +201,7 @@ jobs:
         run: |
           echo "Executing Slither security analysis..."
           # Create build directory for Slither
-          mkdir -p out/build-info
+          /bin/mkdir -p out/build-info
           
           # Run forge build to generate build info
           forge build --build-info --skip */test/** */script/** || echo "::warning::Forge build had issues"
