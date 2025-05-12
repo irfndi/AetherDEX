@@ -93,7 +93,7 @@ jobs:
           forge test --via-ir -vvv --fail-fast
 
       - name: Generate LCOV report
-        run: forge coverage --report lcov --report-dir ./coverage
+        run: forge coverage --report lcov
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -101,7 +101,7 @@ jobs:
         with:
           # Only use the token if it's available in secrets
           token: ${{ secrets.CODECOV_TOKEN || '' }}
-          directory: ./coverage
+          directory: ./
           fail_ci_if_error: false
           verbose: true
           flags: foundry-tests
@@ -110,8 +110,8 @@ jobs:
       # Always provide a summary of the coverage report
       - name: Coverage report summary
         run: |
-          echo "Coverage report is available in the ./coverage directory."
-          ls -la ./coverage
+          echo "Coverage report is available in the lcov.info file."
+          ls -la lcov.info || echo "lcov.info file not found"
 
   static-analysis:
     name: Static Analysis
@@ -159,7 +159,7 @@ jobs:
         if: steps.foundry-cache-static.outputs.cache-hit != 'true'
         run: |
           forge clean
-          forge install --no-commit
+          forge install
 
       - name: Install Python dependencies
         run: |
