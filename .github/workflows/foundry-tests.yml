@@ -97,7 +97,7 @@ jobs:
       - name: Generate LCOV report
         env:
           FOUNDRY_DISABLE_NIGHTLY_WARNING: true
-        run: forge coverage --report lcov --via-ir
+        run: forge coverage --report lcov --ir-minimum
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -195,7 +195,7 @@ jobs:
           echo "::group::Slither Analysis"
           echo "Executing Slither security analysis..."
           # Create build directory for Slither
-          mkdir -p out/build-info
+          /bin/mkdir -p out/build-info
 
           # First compile with via-ir to avoid stack too deep errors
           forge build --via-ir --build-info --skip */test/** */script/** 
