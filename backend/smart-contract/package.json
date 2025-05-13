@@ -1,0 +1,20 @@
+{
+  "name": "smart-contract",
+  "version": "1.0.0",
+  "description": "This directory contains the smart contracts for AetherDEX, a decentralized exchange built with Solidity and the Foundry development framework. AetherDEX implements an automated market maker (AMM) model with concentrated liquidity and advanced features like time-weighted average price (TWAP) oracles and customizable hooks.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "lib": "lib",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "solhint": "^5.1.0"
+  }
+}

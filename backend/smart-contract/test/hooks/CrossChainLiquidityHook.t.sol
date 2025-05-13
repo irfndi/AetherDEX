@@ -1,0 +1,233 @@
+// SPDX-License-Identifier: GPL-3.0
+
+/*
+Created by irfndi (github.com/irfndi) - Apr 2025
+Email: join.mantap@gmail.com
+*/
+
+pragma solidity ^0.8.29;
+
+import {Test} from "forge-std/Test.sol";
+import {stdError} from "forge-std/StdError.sol";
+import "forge-std/console.sol"; // Import console for logging
+
+import {CrossChainLiquidityHook} from "../../src/hooks/CrossChainLiquidityHook.sol";
+import {ILayerZeroEndpoint} from "../../src/interfaces/ILayerZeroEndpoint.sol";
+import {MockERC20} from "../mocks/MockERC20.sol";
+import {IPoolManager} from "../../src/interfaces/IPoolManager.sol";
+import {PoolKey} from "../../src/types/PoolKey.sol";
+import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
+import {Hooks} from "../../src/libraries/Hooks.sol";
+import {MockPoolManager} from "../mocks/MockPoolManager.sol";
+import {HookFactory} from "../utils/HookFactory.sol";
+import {IAetherPool} from "../../src/interfaces/IAetherPool.sol"; // Correct interface import
+
+// Mock LayerZero Endpoint for testing
+contract MockLayerZeroEndpoint is ILayerZeroEndpoint {
+    mapping(uint16 => address) public remoteEndpoints;
+    mapping(address => bool) public trustedRemotes;
+
+    event MessageSent(uint16 dstChainId, bytes destination, bytes payload);
+    event MessageReceived(uint16 srcChainId, bytes srcAddress, address dstAddress, uint64 nonce, bytes payload);
+
+    function send(
+        uint16 _dstChainId,
+        bytes calldata _destination,
+        bytes calldata _payload,
+        address payable, /*_refundAddress*/
+        address, /*_zroPaymentAddress*/
+        bytes calldata /*_adapterParams*/
+    ) external payable {
+        emit MessageSent(_dstChainId, _destination, _payload);
+    }
+
+    function receivePayload(
+        uint16 _srcChainId,
+        bytes memory _srcAddress,
+        address _dstAddress,
+        uint64, /*_nonce*/
+        bytes memory _payload
+    ) external {
+        require(trustedRemotes[msg.sender], "Untrusted remote");
+        emit MessageReceived(_srcChainId, _srcAddress, _dstAddress, 0, _payload);
+    }
+
+    function estimateFees(
+        uint16, /*_dstChainId*/
+        address, /*_userApplication*/
+        bytes calldata, /*_payload*/
+        bool, /*useZro*/
+        bytes calldata /*_adapterParam*/
+    ) external pure returns (uint256 nativeFee, uint256 zroFee) {
+        return (0.01 ether, 0);
+    }
+
+    function setTrustedRemote(address _remote, bool _trusted) external {
+        trustedRemotes[_remote] = _trusted;
+    }
+
+    function setRemoteEndpoint(uint16 _chainId, address _endpoint) external {
+        remoteEndpoints[_chainId] = _endpoint;
+    }
+}
+
+contract CrossChainLiquidityHookTest is Test {
+    CrossChainLiquidityHook public hook;
+    MockPoolManager public mockPoolManager;
+    MockLayerZeroEndpoint public mockEndpoint;
+    MockERC20 public token0;
+    MockERC20 public token1;
+    HookFactory public hookFactory;
+    IAetherPool public mockPool; // Use interface
+    PoolKey public key;
+
+    uint16 public constant REMOTE_CHAIN_ID = 123;
+    address public constant REMOTE_HOOK = address(0x4567);
+
+    event CrossChainLiquidityEvent(uint16 chainId, address token0, address token1, int256 liquidityDelta);
+
+    function setUp() public {
+        // Deploy Mock contracts
+        token0 = new MockERC20("Token0", "T0", 18); // Add decimals back
+        token1 = new MockERC20("Token1", "T1", 18); // Add decimals back
+        mockEndpoint = new MockLayerZeroEndpoint();
+        hookFactory = new HookFactory();
+
+        // Deploy Pool (using Vyper version via vm.deployCode)
+        bytes memory poolBytecode = vm.getCode("src/security/AetherPool.vy");
+        bytes memory constructorArgs = abi.encode(address(token0), address(token1), 3000); // Example fee
+        bytes memory bytecode = abi.encodePacked(poolBytecode, constructorArgs);
+        address deployedPoolAddress;
+        assembly {
+            deployedPoolAddress := create(0, add(bytecode, 0x20), mload(bytecode))
+        }
+        require(deployedPoolAddress != address(0), "Pool deployment failed");
+        mockPool = IAetherPool(deployedPoolAddress); // Assign to interface variable
+
+        // Deploy the actual Pool Manager mock AFTER other mocks
+        mockPoolManager = new MockPoolManager(address(0)); // Pass address(0) as initial hook address
+
+        // --- Deploy the Hook with the CORRECT Pool Manager ---
+        // The hook needs to know the address of the *actual* manager it should trust
+        hook = hookFactory.deployCrossChainHook(address(mockPoolManager), address(mockEndpoint));
+
+        // --- ADDED: Set the hook address in the manager AFTER hook deployment --- //
+        mockPoolManager.setHookAddress(address(hook));
+
+        // Define PoolKey
+        key = PoolKey({
+            token0: address(token0) < address(token1) ? address(token0) : address(token1),
+            token1: address(token0) < address(token1) ? address(token1) : address(token0),
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: address(hook) // The hook itself is the hook address
+        });
+
+        // --- ADDED: Register the pool with the MockPoolManager --- //
+        bytes32 poolId = keccak256(abi.encode(key));
+        mockPoolManager.setPool(poolId, address(mockPool));
+
+        // Verify hook flags match implemented permissions
+        uint160 expectedFlags = uint160(Hooks.AFTER_MODIFY_POSITION_FLAG);
+
+        uint160 actualFlags = Hooks.permissionsToFlags(hook.getHookPermissions()); // Correct check
+        require((actualFlags & expectedFlags) == expectedFlags, "Hook flags mismatch");
+
+        // Set trusted remote on the LayerZero endpoint mock
+        mockEndpoint.setTrustedRemote(address(hook), true);
+
+        // Configure the remote hook for the test chain ID on the hook itself
+        // This allows the hook to know which addresses are valid sources for messages
+        vm.prank(address(mockPoolManager)); // Prank as the correct manager
+        hook.setRemoteHook(REMOTE_CHAIN_ID, REMOTE_HOOK); // This call requires the prank
+
+        // No stopPrank needed here as the setUp function ends
+    }
+
+    function testHookInitialization() public view {
+        // Verify hook flags match implemented permissions
+        uint160 expectedFlags = uint160(Hooks.AFTER_MODIFY_POSITION_FLAG);
+
+        uint160 actualFlags = Hooks.permissionsToFlags(hook.getHookPermissions()); // Correct check
+        assertEq((actualFlags & expectedFlags), expectedFlags);
+    }
+
+    function testCrossChainLiquiditySync() public {
+        IPoolManager.ModifyPositionParams memory params =
+            IPoolManager.ModifyPositionParams({tickLower: -100, tickUpper: 100, liquidityDelta: 1000});
+
+        vm.expectEmit(); // Check signature only
+        emit CrossChainLiquidityEvent(REMOTE_CHAIN_ID, address(token0), address(token1), 1000);
+
+        vm.prank(address(mockPoolManager));
+        hook.afterModifyPosition(address(this), key, params, BalanceDelta(100, 200), "");
+    }
+
+    function testCrossChainMessageReceive() public {
+        address srcAddress = REMOTE_HOOK;
+
+        // Prepare payload
+        bytes memory payload = abi.encode(address(token0), address(token1), int256(1000));
+        // Simulate call from endpoint
+        vm.prank(address(mockEndpoint));
+        hook.lzReceive(REMOTE_CHAIN_ID, srcAddress, 0, payload);
+    }
+
+    function testRevertOnUnauthorizedMessageSender() public {
+        address srcAddress = REMOTE_HOOK;
+
+        vm.expectRevert("Unauthorized");
+        hook.lzReceive(REMOTE_CHAIN_ID, srcAddress, 0, abi.encode(address(token0), address(token1), int256(1000)));
+    }
+
+    function testEstimateCrossChainMessageFees() public view {
+        uint16 dstChainId = 102;
+        bytes memory payload = abi.encode(address(token0), address(token1), int256(1000));
+
+        (uint256 nativeFee, uint256 zroFee) =
+            hook.lzEndpoint().estimateFees(dstChainId, address(hook), payload, false, "");
+
+        assertGt(nativeFee, 0);
+        assertEq(zroFee, 0);
+    }
+
+    function testRevertOnUnauthorizedCall() public {
+        IPoolManager.ModifyPositionParams memory params =
+            IPoolManager.ModifyPositionParams({tickLower: -100, tickUpper: 100, liquidityDelta: 1000});
+
+        vm.expectRevert("Only pool manager"); // Expect correct revert message
+        hook.afterModifyPosition(address(0x1234), key, params, BalanceDelta(100, 200), "");
+
+        // Verify hook still works with authorized call
+        vm.prank(address(mockPoolManager));
+        hook.afterModifyPosition(address(this), key, params, BalanceDelta(100, 200), "");
+    }
+
+    function testCrossChainLiquidityRebalance() public {
+        // Add liquidity
+        IPoolManager.ModifyPositionParams memory addParams =
+            IPoolManager.ModifyPositionParams({tickLower: -100, tickUpper: 100, liquidityDelta: 1000});
+
+        // --- ADDED: Expect the FIRST event --- //
+        vm.expectEmit(false, false, false, true);
+        emit CrossChainLiquidityEvent(REMOTE_CHAIN_ID, address(token0), address(token1), 1000);
+
+        vm.prank(address(mockPoolManager));
+        hook.afterModifyPosition(address(this), key, addParams, BalanceDelta(100, 200), "");
+
+        // Remove some liquidity
+        IPoolManager.ModifyPositionParams memory removeParams =
+            IPoolManager.ModifyPositionParams({tickLower: -100, tickUpper: 100, liquidityDelta: -500});
+
+        vm.expectEmit(false, false, false, true);
+        emit CrossChainLiquidityEvent(
+            REMOTE_CHAIN_ID,
+            address(token0),
+            address(token1),
+            -500 // Expect the delta from the second call
+        );
+
+        vm.prank(address(mockPoolManager));
+        hook.afterModifyPosition(address(this), key, removeParams, BalanceDelta(-50, -100), "");
+    }
+}

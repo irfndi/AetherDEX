@@ -1,0 +1,46 @@
+[profile.default]
+src = 'src'
+out = 'out'
+libs = ['lib']
+remappings = [
+    "ds-test/=lib/forge-std/lib/ds-test/src/",
+    "forge-std/=lib/forge-std/src/",
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+    "@uniswap/v4-core/=lib/v4-core/src/",
+    "@layerzerolabs/lz-evm-protocol-v2/=lib/layerzero-v2/packages/layerzero-v2/evm/protocol/",
+    "@layerzerolabs/lz-evm-oapp-v2/=lib/layerzero-v2/packages/layerzero-v2/evm/oapp/",
+    "@layerzerolabs/lz-evm-messagelib-v2/=lib/layerzero-v2/packages/layerzero-v2/evm/messagelib/",
+    "solidity-bytes-utils/=lib/solidity-bytes-utils/",
+    "interfaces/=src/interfaces/"
+]
+solc = "0.8.29"
+evm_version = "paris"
+optimizer = true
+optimizer_runs = 1_000_000
+via_ir = true
+
+# Fuzz testing configuration
+[fuzz]
+runs = 256
+max_test_rejects = 65536
+dictionary_weight = 40
+include_storage = true
+include_push_bytes = true
+
+[rpc_endpoints]
+localhost = "http://localhost:8545"
+# Add other chains as needed, e.g.:
+# mainnet = "https://mainnet.infura.io/v3/${INFURA_API_KEY}"
+# sepolia = "https://sepolia.infura.io/v3/${INFURA_API_KEY}"
+
+[etherscan]
+# Add Etherscan API keys for verification
+# sepolia = "YOUR_ETHERSCAN_API_KEY_FOR_SEPOLIA"
+# mainnet = "YOUR_ETHERSCAN_API_KEY_FOR_MAINNET"
+
+# Vyper configuration (if you have .vy files)
+[vyper]
+# Ensure this path is correct or remove if Vyper is in PATH
+# path = "/Users/irfandi/Coding/2025/AetherDEX/backend/smart-contract/venv/bin/vyper"
+
+# See more config options https://github.com/foundry-rs/foundry/tree/master/config
