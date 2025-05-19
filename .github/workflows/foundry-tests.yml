@@ -100,7 +100,7 @@ jobs:
         run: forge coverage --report lcov --ir-minimum
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         continue-on-error: true
         with:
           # Only use the token if it's available in secrets
