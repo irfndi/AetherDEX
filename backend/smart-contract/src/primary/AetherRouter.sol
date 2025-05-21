@@ -22,6 +22,13 @@ import {Errors} from "../libraries/Errors.sol";
 contract AetherRouter is BaseRouter {
     using SafeERC20 for IERC20;
 
+    struct PermitDetails {
+        uint256 deadline; // Deadline for the permit signature
+        uint8 v;
+        bytes32 r;
+        bytes32 s;
+    }
+
     function addLiquidity(
         address pool,
         uint256 amountADesired,
@@ -119,10 +126,7 @@ contract AetherRouter is BaseRouter {
         address[] calldata path,
         address to,
         uint256 deadline, // Deadline for the swap itself
-        uint256 permitDeadline, // Deadline for the permit signature
-        uint8 v,
-        bytes32 r,
-        bytes32 s
+        PermitDetails calldata permitDetails
     ) external nonReentrant checkDeadline(deadline) returns (uint256[] memory amounts) {
         require(path.length == 3, "InvalidPath");
         address tokenInAddress = path[0];
@@ -130,7 +134,16 @@ contract AetherRouter is BaseRouter {
         require(pool != address(0), "InvalidPoolAddress");
 
         // Permit the router to spend tokenIn on behalf of msg.sender
-        _permitToken(IERC20Permit(tokenInAddress), msg.sender, address(this), amountIn, permitDeadline, v, r, s);
+        _permitToken(
+            IERC20Permit(tokenInAddress),
+            msg.sender,
+            address(this),
+            amountIn,
+            permitDetails.deadline,
+            permitDetails.v,
+            permitDetails.r,
+            permitDetails.s
+        );
 
         amounts = new uint256[](2);
         amounts[0] = amountIn;
