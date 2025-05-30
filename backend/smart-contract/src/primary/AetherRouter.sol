@@ -32,26 +32,38 @@ contract AetherRouter is BaseRouter {
         uint256 deadline
     ) external nonReentrant checkDeadline(deadline) returns (uint256 amountA, uint256 amountB, uint256 liquidity) {
         require(pool != address(0), "InvalidPoolAddress");
-        uint256 forceReadDeadline = deadline; // Read 'deadline'
-        forceReadDeadline = forceReadDeadline; // "Use" the local variable to silence linter
-        // Parameter 'deadline' is used by the checkDeadline modifier
-        // TODO: Implement liquidity addition via PoolManager and IAetherPool.mint
-        // For now, we'll simulate the assignments and checks for parameters.
-        // IAetherPool actualMintCall = IAetherPool(pool);
-        // (amountA, amountB, liquidity) = actualMintCall.mint(to, amountADesired, amountBDesired); // Example, if mint returns all three
+        require(pool != address(0), "InvalidPoolAddress"); // Already present
 
-        // Placeholder logic until PoolManager/mint is integrated:
-        amountA = amountADesired; // In a real scenario, amountA would come from the mint call
-        amountB = amountBDesired; // In a real scenario, amountB would come from the mint call
-        liquidity = 0; // Placeholder, should be from mint call
+        // Get pool tokens
+        (address token0, address token1) = IAetherPool(pool).tokens();
 
+        // Transfer tokens from msg.sender to the pool
+        // Assuming amountADesired corresponds to token0 and amountBDesired to token1
+        // A more robust router might take tokenA, tokenB as params and sort them.
+        IERC20(token0).safeTransferFrom(msg.sender, pool, amountADesired);
+        IERC20(token1).safeTransferFrom(msg.sender, pool, amountBDesired);
+
+        // Call the new addLiquidityNonInitial function on the pool
+        // The pool is expected to handle the logic of how much of the desired amounts are actually used
+        // and how much liquidity is minted.
+        // For now, passing empty bytes for hookData.
+        (uint256 amount0Actual, uint256 amount1Actual, uint256 liquidityMinted) =
+            IAetherPool(pool).addLiquidityNonInitial(to, amountADesired, amountBDesired, "");
+
+        // Assign to return variables
+        amountA = amount0Actual;
+        amountB = amount1Actual;
+        liquidity = liquidityMinted;
+
+        // Check slippage against minimum amounts
         if (amountA < amountAMin) {
             revert Errors.InsufficientAAmount();
         }
         if (amountB < amountBMin) {
             revert Errors.InsufficientBAmount();
         }
-        // require(liquidity >= liquidityMin, "AetherRouter: INSUFFICIENT_LIQUIDITY_MINTED"); // If liquidityMin were a param
+        // A check for liquidityMin could be added if it were a parameter:
+        // require(liquidity >= liquidityMin, "AetherRouter: INSUFFICIENT_LIQUIDITY_MINTED");
     }
 
     function removeLiquidity(

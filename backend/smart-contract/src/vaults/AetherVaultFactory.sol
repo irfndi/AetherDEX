@@ -61,54 +61,56 @@ contract AetherVaultFactory is
      * @param asset The underlying asset token
      * @param name Vault token name
      * @param symbol Vault token symbol
-     * @return vault The deployed vault address
-     * @return strategy The deployed strategy address
+     * @return vaultAddress The deployed vault address
+     * @return trueStrategyAddress The true (unflagged) deployed strategy address
      */
     function deployVault(address asset, string memory name, string memory symbol)
         external
         onlyOwner
         nonReentrant // Added nonReentrant modifier
-        returns (address vault, address strategy)
+        returns (address vaultAddress, address trueStrategyAddress) // Renamed return variables
     {
         // --- Checks ---
         require(asset != address(0), "Invalid asset address");
-        // Slither: Timestamp - This check verifies if a vault already exists for the asset by checking
-        // the vault address in the mapping. It does not directly use block.timestamp in its logic,
-        // although the VaultInfo struct contains a `deployedAt` timestamp. This is a standard existence check.
         require(vaults[asset].vault == address(0), "Vault already exists");
 
         // --- Interactions (Deploy contracts first) ---
         // Deploy vault
-        vault = address(new AetherVault(IERC20(asset), name, symbol, poolManager));
+        vaultAddress = address(new AetherVault(IERC20(asset), name, symbol, poolManager));
 
-        // Deploy strategy
-        strategy = address(
-            uint160(
-                address(
-                    new AetherStrategy{salt: keccak256(abi.encode(name, symbol))}(
-                        vault, address(lzEndpoint), address(poolManager), DEFAULT_REBALANCE_INTERVAL
-                    )
-                )
-            ) | uint160(HookFlags.Flags.AFTER_MODIFY_POSITION) | uint160(HookFlags.Flags.AFTER_SWAP)
+        // Deploy strategy and get its true address
+        trueStrategyAddress = address(
+            new AetherStrategy{salt: keccak256(abi.encode(name, symbol))}(
+                vaultAddress, address(lzEndpoint), address(poolManager), DEFAULT_REBALANCE_INTERVAL
+            )
+        );
+
+        // Create the flagged strategy address for hook registration / storage
+        address flaggedStrategyAddress = address(
+            uint160(trueStrategyAddress) |
+            uint160(HookFlags.Flags.AFTER_MODIFY_POSITION) |
+            uint160(HookFlags.Flags.AFTER_SWAP)
         );
 
         // --- Effects (Update state *before* external setStrategy call) ---
         // Store vault info
         vaults[asset] = VaultInfo({
-            vault: vault,
-            strategy: strategy,
+            vault: vaultAddress,
+            strategy: flaggedStrategyAddress, // Store the flagged address
             asset: asset,
             isActive: true,
             tvl: 0,
             deployedAt: block.timestamp
         });
-        allVaults.push(vault);
-        emit VaultDeployed(vault, strategy, asset, name, symbol); // Emit event before external call
+        allVaults.push(vaultAddress);
+        // Emit event with the flagged strategy address, assuming it's the identifier used elsewhere
+        emit VaultDeployed(vaultAddress, flaggedStrategyAddress, asset, name, symbol); // Event logs the flagged address as 'strategy'
 
         // --- Interaction (Initialize vault with strategy) ---
-        AetherVault(vault).setStrategy(strategy);
+        // Vault's internal 'strategy' state variable should be the true, callable address
+        AetherVault(vaultAddress).setStrategy(trueStrategyAddress);
 
-        // return vault, strategy; // Implicitly returned
+        // Returns (vaultAddress, trueStrategyAddress) due to named returns
     }
 
     /**

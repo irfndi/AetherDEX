@@ -231,15 +231,15 @@ contract HooksTest is Test {
         // -- Test invalid cases (these should revert) --
         
         // Invalid: Address zero with any permission requested (should revert)
-        vm.expectRevert("Hook address missing required flags");
+        vm.expectRevert(); // Changed: Expect generic revert due to revert_strings = 'strip'
         validator.validateHookAddress(address(0), Hooks.BEFORE_SWAP_FLAG);
 
         // Invalid: Address with no flags requesting any permission
-        vm.expectRevert("Hook address missing required flags");
+        vm.expectRevert(); // Changed: Expect generic revert due to revert_strings = 'strip'
         validator.validateHookAddress(hook_none, Hooks.BEFORE_INITIALIZE_FLAG);
 
         // Invalid: Address with some flags requesting a flag it doesn't have
-        vm.expectRevert("Hook address missing required flags");
+        vm.expectRevert(); // Changed: Expect generic revert due to revert_strings = 'strip'
         validator.validateHookAddress(hook_bs_amp, Hooks.AFTER_SWAP_FLAG);
     }
 
