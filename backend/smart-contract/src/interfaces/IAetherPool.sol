@@ -83,4 +83,20 @@ interface IAetherPool {
     /// @notice Returns the current fee for the pool.
     /// @return fee The current pool fee.
     function fee() external view returns (uint24 fee);
+
+    /// @notice Adds liquidity to an existing pool.
+    /// @dev Must be called after initial liquidity has been provided. The router (caller) is expected to have transferred tokens to this pool contract before calling this.
+    /// @param recipient The address to receive the LP tokens.
+    /// @param amount0Desired The desired amount of token0 that has been sent to the pool.
+    /// @param amount1Desired The desired amount of token1 that has been sent to the pool.
+    /// @param data Optional data to pass to a hook (if any).
+    /// @return amount0Actual The actual amount of token0 used from the desired amounts.
+    /// @return amount1Actual The actual amount of token1 used from the desired amounts.
+    /// @return liquidityMinted The amount of LP tokens minted.
+    function addLiquidityNonInitial(
+        address recipient,
+        uint256 amount0Desired,
+        uint256 amount1Desired,
+        bytes calldata data
+    ) external returns (uint256 amount0Actual, uint256 amount1Actual, uint256 liquidityMinted);
 }
