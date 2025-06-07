@@ -9,15 +9,17 @@ pragma solidity ^0.8.29;
 
 import {Test} from "forge-std/Test.sol";
 import {console} from "forge-std/console.sol"; // Add import for console.sol
-import {AetherRouter} from "src/primary/AetherRouter.sol";
-import {IAetherPool} from "src/interfaces/IAetherPool.sol"; // Correct interface import
-import {IPoolManager} from "src/interfaces/IPoolManager.sol"; // Keep this standard import
-import {MockPoolManager} from "./mocks/MockPoolManager.sol"; // Import MockPoolManager
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol"; // Import Ownable for error
-import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol"; // Import Pausable for error
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol"; // Import ReentrancyGuard for the error
-import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol"; // Import TickMath
-import "src/libraries/TransferHelper.sol";
+// import {AetherRouter} from "../src/primary/AetherRouter.sol"; // Old Router
+import {LiquidityRouter, SimpleSwapRouter} from "@primary/RouterImports.sol";
+// Note: Using SimpleSwapRouter directly below for clarity. AliasedSwapRouter was removed from RouterImports.
+import {IAetherPool} from "@interfaces/IAetherPool.sol";
+import {IPoolManager} from "@interfaces/IPoolManager.sol";
+import {MockPoolManager} from "@mocks/MockPoolManager.sol"; // Using remapping
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {TickMath} from "v4-core/libraries/TickMath.sol"; // Using remapping
+import {TransferHelper} from "@libraries/TransferHelper.sol"; // Using remapping
 
 error InvalidAmount(uint256 amount);
 error InvalidTokenAddress(address token);
@@ -127,94 +129,66 @@ contract MockHyperlane {
 }
 
 contract MaliciousContract {
-    AetherRouter public router;
-    address public pool; // Store the pool address
+    SimpleSwapRouter public swapRouterInstance; // Changed to SimpleSwapRouter
+    address public pool;
     address public sorted_token0;
     address public sorted_token1;
     uint24 public fee_val;
 
-    event FallbackCalled(); // Event to signal fallback execution
+    event FallbackCalled();
 
-    // MODIFIED Constructor to accept router, POOL, SORTED token addresses, and fee
-    constructor(AetherRouter _router, address _pool, address _sorted_token0, address _sorted_token1, uint24 _fee) {
-        router = _router;
-        pool = _pool; // Store pool
+    constructor(SimpleSwapRouter _swapRouter, address _pool, address _sorted_token0, address _sorted_token1, uint24 _fee) { // Changed to SimpleSwapRouter
+        swapRouterInstance = _swapRouter;
+        pool = _pool;
         sorted_token0 = _sorted_token0;
         sorted_token1 = _sorted_token1;
         fee_val = _fee;
     }
 
-    // Function to initiate the first swap (called by the test)
     function startAttack(address _tokenIn, address _tokenOut, uint256 amountIn, uint256 amountOutMin, uint256 deadline)
         external
     {
-        // Approval happens in the test context before this call
-        // Construct the path for swapExactTokensForTokens: [tokenIn, tokenOut, poolAddress]
         address[] memory path = new address[](3);
         path[0] = _tokenIn;
         path[1] = _tokenOut;
-        path[2] = pool; // Use the stored pool address
-
-        // Call the correct swap function, sending output to this contract
-        router.swapExactTokensForTokens(amountIn, amountOutMin, path, address(this), deadline);
+        path[2] = pool;
+        swapRouterInstance.swapExactTokensForTokens(amountIn, amountOutMin, path, address(this), deadline);
     }
 
-    // Fallback function attempts the reentrant call
     fallback() external payable {
-        emit FallbackCalled(); // Emit event when fallback is triggered
-        // Attempt to call back into the router using the stored SORTED tokens
-        // Construct the path for the reentrant swap attempt
+        emit FallbackCalled();
         address[] memory path = new address[](3);
         path[0] = sorted_token0;
         path[1] = sorted_token1;
-        path[2] = pool; // Use the stored pool address
-
-        // Call the swap function again, sending output to this contract
-        // Using 100 amountIn and 0 amountOutMin as placeholders from the original executeRoute call
-        router.swapExactTokensForTokens(100, 0, path, address(this), block.timestamp);
+        path[2] = pool;
+        swapRouterInstance.swapExactTokensForTokens(100, 0, path, address(this), block.timestamp);
     }
 
     receive() external payable {}
 }
 
 contract AetherRouterTest is Test, IEvents {
-    // Event definition for expectEmit - Updated to match Factory
-    // event PoolCreated(bytes32 indexed poolId, address indexed pool, PoolKey key);
-
-    // Ensure all necessary state variables are declared publicly
-    AetherRouter public router;
+    LiquidityRouter public liquidityRouter;
+    SimpleSwapRouter public swapRouter; // Changed to SimpleSwapRouter
     MockToken public tokenA;
     MockToken public tokenB;
-    // FeeRegistry public feeRegistry; // Commented out due to abstract contract issues
-    IAetherPool public pool; // Reference to the deployed pool
+    IAetherPool public pool;
     address public owner = address(1);
-    address public user = address(2); // Make user public for potential inspection
-    uint24 public constant DEFAULT_FEE = 500; // Define default fee
+    address public user = address(2);
+    uint24 public constant DEFAULT_FEE = 500;
 
-    // Store sorted tokens globally for tests
     address public token0Addr;
     address public token1Addr;
 
     function setUp() public {
-        // Assign owner address first
         owner = address(1);
-
-        // Deploy tokens
         tokenA = new MockToken("TokenA", "TKNA", 18);
         tokenB = new MockToken("TokenB", "TKNB", 18);
-
-        // --- Deploy Fee Registry ---
-        vm.startPrank(owner); // Prank as owner for deployment
-        // feeRegistry = new FeeRegistry(owner); // Assuming constructor takes initial owner
-        // Add the default fee tier (e.g., 500 with tick spacing 10)
-        // feeRegistry.addFeeTier(DEFAULT_FEE, 10);
-        // FeeRegistry usage commented out to allow testing core router/pool interaction
+        vm.startPrank(owner);
         vm.stopPrank();
+        liquidityRouter = new LiquidityRouter();
+        swapRouter = new SimpleSwapRouter(); // Changed to SimpleSwapRouter
 
-        // --- Deploy Router ---
-        router = new AetherRouter();
-
-        // --- Get Sorted Tokens ---
         if (address(tokenA) < address(tokenB)) {
             token0Addr = address(tokenA);
             token1Addr = address(tokenB);
@@ -223,44 +197,45 @@ contract AetherRouterTest is Test, IEvents {
             token1Addr = address(tokenA);
         }
 
-        // --- Deploy Pool ---
-        bytes memory poolBytecode = vm.getCode("../src/security/AetherPool.sol");
+        bytes memory poolBytecode = vm.getCode("../src/security/AetherPool.vy"); // Corrected to .vy and path is already relative
         bytes memory constructorArgs = abi.encode(token0Addr, token1Addr, DEFAULT_FEE);
-        address deployedPoolAddress; // Declare outside
+        address deployedPoolAddress;
         assembly {
-            deployedPoolAddress := create(0, add(poolBytecode, 0x20), mload(poolBytecode)) // Assign inside
+            deployedPoolAddress := create(0, add(poolBytecode, 0x20), mload(poolBytecode))
         }
         require(deployedPoolAddress != address(0), "Pool deployment failed");
-        pool = IAetherPool(deployedPoolAddress); // Now accessible
+        pool = IAetherPool(deployedPoolAddress);
 
-        // --- Add Initial Liquidity via Router ---
         uint256 amountADesired = 1000 * 10 ** 18;
         uint256 amountBDesired = 10000 * 10 ** 18;
-
-        // Mint tokens to the test contract (or user)
         tokenA.mint(address(this), amountADesired);
         tokenB.mint(address(this), amountBDesired);
+        tokenA.approve(address(liquidityRouter), type(uint256).max);
+        tokenB.approve(address(liquidityRouter), type(uint256).max);
+        tokenA.approve(address(swapRouter), type(uint256).max);
+        tokenB.approve(address(swapRouter), type(uint256).max);
 
-        // Approve the router to spend tokens
-        tokenA.approve(address(router), type(uint256).max);
-        tokenB.approve(address(router), type(uint256).max);
-
-        // Add liquidity using the router
-        uint256 amountAMin = 0; // No slippage for initial seed
-        uint256 amountBMin = 0; // No slippage for initial seed
+        uint256 amountAMin = 0;
+        uint256 amountBMin = 0;
         uint256 deadline = block.timestamp + 1;
 
-        ( /*amountAActual*/ , /*amountBActual*/, uint256 liquidity) = router.addLiquidity(
-            address(pool), amountADesired, amountBDesired, amountAMin, amountBMin, address(this), deadline
-        );
-
-        // Optional: Assert initial liquidity added successfully
+        LiquidityRouter.AddLiquidityParams memory params = LiquidityRouter.AddLiquidityParams({
+            tokenA: address(tokenA),
+            tokenB: address(tokenB),
+            pool: address(pool),
+            amountADesired: amountADesired,
+            amountBDesired: amountBDesired,
+            amountAMin: amountAMin,
+            amountBMin: amountBMin,
+            to: address(this),
+            deadline: deadline
+        });
+        ( /*uint256 amountAActual*/ , /*uint256 amountBActual*/, uint256 liquidity) = liquidityRouter.addLiquidity(params);
         assertTrue(liquidity > 0, "Initial liquidity minting failed");
         console.log("Pool Deployed: %s", address(pool));
         console.log("Initial Liquidity Added: %s", liquidity);
     }
 
-    // Helper function to get sorted token addresses
     function _getSortedTokens() internal view returns (address _token0, address _token1) {
         if (address(tokenA) < address(tokenB)) {
             return (address(tokenA), address(tokenB));
@@ -268,46 +243,4 @@ contract AetherRouterTest is Test, IEvents {
             return (address(tokenB), address(tokenA));
         }
     }
-
-    /*
-    function test_executeRoute() public {
-        // ... function body ...
-        // This whole function is commented out pending refactoring
-    }
-    */
-
-    // TODO: Refactor ALL remaining test cases below this point
-    //==============================================================================================
-    //=====================   BELOW TESTS NEED COMPLETE REFACTORING ===================================
-    //==============================================================================================
-    // The following tests were written for the old AetherPool.sol and direct pool interactions.
-    // They need to be rewritten to:
-    // 1. Interact with the `AetherRouter.sol` contract.
-    // 2. Target the deployed `AetherPool.vy` instance (`vyperPool`).
-    // 3. Use appropriate router functions (addLiquidity, removeLiquidity, swap*).
-    // 4. Adjust assertions to check router events, Vyper pool events, and state changes correctly.
-    // 5. Use vm.startPrank/stopPrank for sender simulation.
-    // 6. Remove references to the old `pool`, `factory`, `mockPoolManager`.
-    //==============================================================================================
-    //==============================================================================================
-    //==============================================================================================
-
-    // ... Rest of the tests ...
-
-    //==============================================================================================
-    //=====================   BELOW TESTS NEED COMPLETE REFACTORING ===================================
-    //==============================================================================================
-    // The following tests were written for the old AetherPool.sol and direct pool interactions.
-    // They need to be rewritten to:
-    // 1. Interact with the `AetherRouter.sol` contract.
-    // 2. Target the deployed `AetherPool.vy` instance (`vyperPool`).
-    // 3. Use appropriate router functions (addLiquidity, removeLiquidity, swap*).
-    // 4. Adjust assertions to check router events, Vyper pool events, and state changes correctly.
-    // 5. Use vm.startPrank/stopPrank for sender simulation.
-    // 6. Remove references to the old `pool`, `factory`, `mockPoolManager`.
-    //==============================================================================================
-    //==============================================================================================
-    //==============================================================================================
-
-    // ... Rest of the tests ...
 }

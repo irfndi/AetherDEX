@@ -8,19 +8,25 @@ Email: join.mantap@gmail.com
 pragma solidity ^0.8.29;
 
 import {Test} from "forge-std/Test.sol";
-import {MockERC20} from "./mocks/MockERC20.sol";
-import {AetherFactory} from "../src/primary/AetherFactory.sol";
-import {AetherRouter} from "../src/primary/AetherRouter.sol";
-import {IAetherPool} from "../src/interfaces/IAetherPool.sol";
-import {FeeRegistry} from "../src/primary/FeeRegistry.sol";
-import {MockPoolManager} from "./mocks/MockPoolManager.sol";
-import {MockCCIPRouter} from "./mocks/MockCCIPRouter.sol";
-import {MockHyperlane} from "./mocks/MockHyperlane.sol";
+import {MockERC20} from "@mocks/MockERC20.sol"; // Using remapping
+import {AetherFactory} from "@primary/AetherFactory.sol"; // Using remapping
+// import {AetherRouter} from "@primary/AetherRouter.sol"; // Old Router is deleted
+import {LiquidityRouter, SimpleSwapRouter} from "@primary/RouterImports.sol";
+// Note: SwapRouter from RouterImports.sol is an alias for SimpleSwapRouter. Using SimpleSwapRouter directly.
+import {IAetherPool} from "@interfaces/IAetherPool.sol"; // Using remapping
+import {FeeRegistry} from "@primary/FeeRegistry.sol"; // Using remapping
+import {MockPoolManager} from "@mocks/MockPoolManager.sol"; // Using remapping
+import {MockCCIPRouter} from "@mocks/MockCCIPRouter.sol"; // Using remapping
+import {MockHyperlane} from "@mocks/MockHyperlane.sol"; // Using remapping
 import {console} from "forge-std/console.sol";
-import {PoolKey} from "../src/types/PoolKey.sol";
+import {PoolKey} from "@types/PoolKey.sol"; // Using remapping
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol"; // For addLiquidity tests
+import {Errors} from "@libraries/Errors.sol"; // Using remapping
 
 contract AetherRouterTest is Test {
-    AetherRouter public router;
+    // AetherRouter public router; // Old router, now an empty shell
+    LiquidityRouter public liquidityRouter_AetherRouterTest; // For addLiquidity calls if any were here
+    SimpleSwapRouter public swapRouter_AetherRouterTest;       // For swap calls if any were here
     AetherFactory public factory;
     FeeRegistry public feeRegistry;
     IAetherPool public pool;
@@ -83,8 +89,10 @@ contract AetherRouterTest is Test {
         console.log("Mock contracts deployed.");
         console.log("Deploying router with owner:", address(this));
         // Deploy router with required constructor args
-        router = new AetherRouter(); // Default constructor takes no arguments
-        console.log("Router deployed at:", address(router));
+        // router = new AetherRouter(); // Old router is empty
+        liquidityRouter_AetherRouterTest = new LiquidityRouter();
+        swapRouter_AetherRouterTest = new SimpleSwapRouter();
+        console.log("Routers deployed for AetherRouterTest.");
 
         // Create pools with proper token ordering
         console.log("Deploying and registering WETH/USDC pool (placeholder)...");
@@ -110,10 +118,15 @@ contract AetherRouterTest is Test {
         // Approve sufficient allowance for router with explicit amounts
         console.log("Approving router...");
         uint256 maxAmount = type(uint256).max;
-        weth.approve(address(router), maxAmount);
-        usdc.approve(address(router), maxAmount);
-        dai.approve(address(router), maxAmount);
-        console.log("Router approved.");
+        // Approvals for LiquidityRouter if used by _addLiquidityToPoolWithApprovals if it were calling a router
+        weth.approve(address(liquidityRouter_AetherRouterTest), maxAmount);
+        usdc.approve(address(liquidityRouter_AetherRouterTest), maxAmount);
+        dai.approve(address(liquidityRouter_AetherRouterTest), maxAmount);
+        // Approvals for SwapRouter if used by any test in AetherRouterTest
+        weth.approve(address(swapRouter_AetherRouterTest), maxAmount);
+        usdc.approve(address(swapRouter_AetherRouterTest), maxAmount);
+        dai.approve(address(swapRouter_AetherRouterTest), maxAmount);
+        console.log("Routers approved for AetherRouterTest.");
 
         // Add initial liquidity to pools with explicit approvals, balancing for decimals
         console.log("Adding liquidity to WETH/USDC pool...");
@@ -165,11 +178,14 @@ contract AetherRouterTest is Test {
         // Approve router for test accounts
         console.log("Approving router for Alice...");
         vm.startPrank(alice);
-        weth.approve(address(router), type(uint256).max);
-        usdc.approve(address(router), type(uint256).max);
-        dai.approve(address(router), type(uint256).max);
+        weth.approve(address(liquidityRouter_AetherRouterTest), type(uint256).max);
+        usdc.approve(address(liquidityRouter_AetherRouterTest), type(uint256).max);
+        dai.approve(address(liquidityRouter_AetherRouterTest), type(uint256).max);
+        weth.approve(address(swapRouter_AetherRouterTest), type(uint256).max);
+        usdc.approve(address(swapRouter_AetherRouterTest), type(uint256).max);
+        dai.approve(address(swapRouter_AetherRouterTest), type(uint256).max);
         vm.stopPrank();
-        console.log("Router approved for Alice.");
+        console.log("Routers approved for Alice.");
 
         console.log("Funding Bob...");
         vm.deal(bob, 100 ether);
@@ -190,13 +206,8 @@ contract AetherRouterTest is Test {
         uint256 approvalAmount // Use a single approval amount for simplicity (max uint)
     ) internal {
         require(poolAddress != address(0), "Pool not found");
-        // IAetherPool pool = IAetherPool(poolAddress); // Commented out shadowed variable
-
-        // address poolToken0 = IAetherPool(poolAddress).token0(); // Incorrect: IAetherPool has tokens()
-        // address poolToken1 = IAetherPool(poolAddress).token1(); // Incorrect: IAetherPool has tokens()
         (address poolToken0, address poolToken1) = IAetherPool(poolAddress).tokens();
 
-        // Determine the correct amounts based on the pool's token order
         uint256 amount0ForPool;
         uint256 amount1ForPool;
 
@@ -207,29 +218,319 @@ contract AetherRouterTest is Test {
             amount0ForPool = amountB;
             amount1ForPool = amountA;
         } else {
-            revert("Helper token mismatch"); // Should not happen if poolId is correct
+            revert("Helper token mismatch");
         }
 
-        // Tokens should already be minted in setUp to address(this)
-
-        // Approve the pool to take the tokens from this contract (address(this))
-        // Use the pool's actual token0 and token1 for approval targets
         console.log("Approving pool %s for token0 %s amount %s", poolAddress, poolToken0, approvalAmount);
         MockERC20(poolToken0).approve(poolAddress, approvalAmount);
         console.log("Approving pool %s for token1 %s amount %s", poolAddress, poolToken1, approvalAmount);
         MockERC20(poolToken1).approve(poolAddress, approvalAmount);
         console.log("Pool approved for both tokens.");
 
-        // Call mint with the correctly ordered amounts
         console.log(
             "Calling pool.mint for pool %s with amount0 %s, amount1 %s", poolAddress, amount0ForPool, amount1ForPool
         );
         // TODO: Add liquidity via PoolManager or update test logic
-        // IAetherPool(poolAddress).mint(address(this), amount0ForPool, amount1ForPool); // Old incompatible call
         console.log("pool.mint called successfully.");
     }
+}
 
-    // function test_SwapWithMultipleHops() public {
-    //     // Test swapping WETH -> DAI -> USDC
-    // }
+// --- Tests for addLiquidity ---
+abstract contract ControllableMockIAetherPool is IAetherPool {
+    address public _token0;
+    address public _token1;
+
+    uint256 public expectedAmount0Actual;
+    uint256 public expectedAmount1Actual;
+    uint256 public expectedLiquidityMinted;
+    bool public shouldRevertAddLiquidityNonInitial;
+    string public revertMessageAddLiquidityNonInitial_str;
+
+    function tokens() external view virtual override returns (address token0, address token1) {
+        return (_token0, _token1);
+    }
+
+    function addLiquidityNonInitial(
+        address recipient,
+        uint256 amount0Desired,
+        uint256 amount1Desired,
+        bytes calldata data
+    ) external virtual override returns (uint256 amount0Actual, uint256 amount1Actual, uint256 liquidityMinted) {
+        if (shouldRevertAddLiquidityNonInitial) {
+            revert(revertMessageAddLiquidityNonInitial_str);
+        }
+        return (expectedAmount0Actual, expectedAmount1Actual, expectedLiquidityMinted);
+    }
+
+    function setTokens(address t0, address t1) external {
+        if (t0 < t1) {
+            _token0 = t0;
+            _token1 = t1;
+        } else {
+            _token0 = t1;
+            _token1 = t0;
+        }
+    }
+
+    function setExpectedAddLiquidityNonInitialValues(uint256 amt0Actual, uint256 amt1Actual, uint256 liqMinted) external {
+        expectedAmount0Actual = amt0Actual;
+        expectedAmount1Actual = amt1Actual;
+        expectedLiquidityMinted = liqMinted;
+    }
+
+    function setRevertAddLiquidityNonInitial(bool revertFlag, string memory message) external {
+        shouldRevertAddLiquidityNonInitial = revertFlag;
+        revertMessageAddLiquidityNonInitial_str = message;
+    }
+
+    function fee() external view virtual override returns (uint24) { return 3000; }
+    function reserve0() external view virtual override returns (uint256) { return 1000e18; }
+    function reserve1() external view virtual override returns (uint256) { return 1000e18; }
+    function mint(address, uint128) external virtual override returns (uint256, uint256) { revert("Mock: Unimplemented"); }
+    function burn(address, uint256) external virtual override returns (uint256, uint256) { revert("Mock: Unimplemented"); }
+    function swap(uint256, address, address) external virtual override returns (uint256) { revert("Mock: Unimplemented"); }
+    function initialize(address, address, uint24) external virtual override { /* no-op */ }
+    function addInitialLiquidity(uint256, uint256) external virtual override returns (uint256) { revert("Mock: Unimplemented"); }
+}
+
+contract AetherRouterAddLiquidityTest is Test {
+    LiquidityRouter liquidityRouter;
+    ControllableMockIAetherPool mockPool;
+    MockERC20 tokenA;
+    MockERC20 tokenB;
+
+    address alice = vm.addr(1);
+    address bob_recipient = vm.addr(2);
+
+    uint256 constant ONE_ETHER = 1 ether;
+
+    function setUp() public {
+        liquidityRouter = new LiquidityRouter();
+
+        tokenA = new MockERC20("TokenA", "TKNA", 18);
+        tokenB = new MockERC20("TokenB", "TKNB", 18);
+
+        vm.etch(address(123), type(ConcreteMockPool).creationCode);
+        mockPool = ControllableMockIAetherPool(address(123));
+
+        mockPool.setTokens(address(tokenA), address(tokenB));
+
+        tokenA.mint(alice, 1000 * ONE_ETHER);
+        tokenB.mint(alice, 1000 * ONE_ETHER);
+
+        vm.startPrank(alice);
+        tokenA.approve(address(liquidityRouter), type(uint256).max);
+        tokenB.approve(address(liquidityRouter), type(uint256).max);
+        vm.stopPrank();
+    }
+
+    function test_AddLiquidity_HappyPath() public {
+        uint256 amountADesired = 100 * ONE_ETHER;
+        uint256 amountBDesired = 100 * ONE_ETHER;
+        uint256 amountAMin = 99 * ONE_ETHER;
+        uint256 amountBMin = 99 * ONE_ETHER;
+        uint256 expectedLiquidity = 100 * ONE_ETHER;
+
+        mockPool.setExpectedAddLiquidityNonInitialValues(amountADesired, amountBDesired, expectedLiquidity);
+        mockPool.setRevertAddLiquidityNonInitial(false, "");
+
+        vm.expectCall(
+            address(tokenA),
+            abi.encodeWithSelector(IERC20.transferFrom.selector, alice, address(mockPool), amountADesired)
+        );
+        vm.expectCall(
+            address(tokenB),
+            abi.encodeWithSelector(IERC20.transferFrom.selector, alice, address(mockPool), amountBDesired)
+        );
+
+        (address poolToken0, ) = mockPool.tokens();
+        uint256 expectedAmount0DesiredForPool;
+        uint256 expectedAmount1DesiredForPool;
+
+        if (address(tokenA) == poolToken0) {
+            expectedAmount0DesiredForPool = amountADesired;
+            expectedAmount1DesiredForPool = amountBDesired;
+        } else {
+            expectedAmount0DesiredForPool = amountBDesired;
+            expectedAmount1DesiredForPool = amountADesired;
+        }
+
+        vm.expectCall(
+            address(mockPool),
+            abi.encodeWithSelector(IAetherPool.addLiquidityNonInitial.selector,
+                                   bob_recipient,
+                                   expectedAmount0DesiredForPool,
+                                   expectedAmount1DesiredForPool,
+                                   bytes(""))
+        );
+
+        vm.expectEmit(true, true, true, true, address(liquidityRouter));
+        emit LiquidityRouter.LiquidityAdded(alice, address(tokenA), address(tokenB), address(mockPool), amountADesired, amountBDesired, expectedLiquidity);
+
+        vm.startPrank(alice);
+        LiquidityRouter.AddLiquidityParams memory params = LiquidityRouter.AddLiquidityParams({
+            tokenA: address(tokenA),
+            tokenB: address(tokenB),
+            pool: address(mockPool),
+            amountADesired: amountADesired,
+            amountBDesired: amountBDesired,
+            amountAMin: amountAMin,
+            amountBMin: amountBMin,
+            to: bob_recipient,
+            deadline: block.timestamp + 60
+        });
+        (uint256 amountAActual, uint256 amountBActual, uint256 liquidityActual) = liquidityRouter.addLiquidity(params);
+        vm.stopPrank();
+
+        assertEq(amountAActual, amountADesired, "amountAActual mismatch");
+        assertEq(amountBActual, amountBDesired, "amountBActual mismatch");
+        assertEq(liquidityActual, expectedLiquidity, "liquidityActual mismatch");
+    }
+
+    function test_AddLiquidity_SlippageFailure_AmountA() public {
+        uint256 amountADesired = 100 * ONE_ETHER;
+        uint256 amountBDesired = 100 * ONE_ETHER;
+        uint256 amountAMin = 101 * ONE_ETHER;
+        uint256 amountBMin = 99 * ONE_ETHER;
+        uint256 expectedLiquidity = 100 * ONE_ETHER;
+
+        mockPool.setExpectedAddLiquidityNonInitialValues(amountADesired, amountBDesired, expectedLiquidity);
+        mockPool.setRevertAddLiquidityNonInitial(false, "");
+
+        vm.startPrank(alice);
+        LiquidityRouter.AddLiquidityParams memory paramsSlippageA = LiquidityRouter.AddLiquidityParams({
+            tokenA: address(tokenA),
+            tokenB: address(tokenB),
+            pool: address(mockPool),
+            amountADesired: amountADesired,
+            amountBDesired: amountBDesired,
+            amountAMin: amountAMin,
+            amountBMin: amountBMin,
+            to: bob_recipient,
+            deadline: block.timestamp + 60
+        });
+        vm.expectRevert(Errors.InsufficientAAmount.selector);
+        liquidityRouter.addLiquidity(paramsSlippageA);
+        vm.stopPrank();
+    }
+
+    function test_AddLiquidity_SlippageFailure_AmountB() public {
+        uint256 amountADesired = 100 * ONE_ETHER;
+        uint256 amountBDesired = 100 * ONE_ETHER;
+        uint256 amountAMin = 99 * ONE_ETHER;
+        uint256 amountBMin = 101 * ONE_ETHER;
+        uint256 expectedLiquidity = 100 * ONE_ETHER;
+
+        mockPool.setExpectedAddLiquidityNonInitialValues(amountADesired, amountBDesired, expectedLiquidity);
+        mockPool.setRevertAddLiquidityNonInitial(false, "");
+
+        vm.startPrank(alice);
+        LiquidityRouter.AddLiquidityParams memory paramsSlippageB = LiquidityRouter.AddLiquidityParams({
+            tokenA: address(tokenA),
+            tokenB: address(tokenB),
+            pool: address(mockPool),
+            amountADesired: amountADesired,
+            amountBDesired: amountBDesired,
+            amountAMin: amountAMin,
+            amountBMin: amountBMin,
+            to: bob_recipient,
+            deadline: block.timestamp + 60
+        });
+        vm.expectRevert(Errors.InsufficientBAmount.selector);
+        liquidityRouter.addLiquidity(paramsSlippageB);
+        vm.stopPrank();
+    }
+
+    function test_AddLiquidity_DeadlineExpired() public {
+        uint256 amountADesired = 100 * ONE_ETHER;
+        uint256 amountBDesired = 100 * ONE_ETHER;
+        uint256 amountAMin = 99 * ONE_ETHER;
+        uint256 amountBMin = 99 * ONE_ETHER;
+        uint256 pastDeadline = block.timestamp - 1;
+
+        vm.startPrank(alice);
+        LiquidityRouter.AddLiquidityParams memory paramsDeadline = LiquidityRouter.AddLiquidityParams({
+            tokenA: address(tokenA),
+            tokenB: address(tokenB),
+            pool: address(mockPool),
+            amountADesired: amountADesired,
+            amountBDesired: amountBDesired,
+            amountAMin: amountAMin,
+            amountBMin: amountBMin,
+            to: bob_recipient,
+            deadline: pastDeadline
+        });
+        vm.expectRevert(Errors.DeadlineExpired.selector);
+        liquidityRouter.addLiquidity(paramsDeadline);
+        vm.stopPrank();
+    }
+
+    function test_AddLiquidity_PoolReverts() public {
+        uint256 amountADesired = 100 * ONE_ETHER;
+        uint256 amountBDesired = 100 * ONE_ETHER;
+        uint256 amountAMin = 99 * ONE_ETHER;
+        uint256 amountBMin = 99 * ONE_ETHER;
+        string memory revertMsg = "Pool: Custom Revert";
+
+        mockPool.setRevertAddLiquidityNonInitial(true, revertMsg);
+
+        vm.startPrank(alice);
+        LiquidityRouter.AddLiquidityParams memory paramsPoolRevert = LiquidityRouter.AddLiquidityParams({
+            tokenA: address(tokenA),
+            tokenB: address(tokenB),
+            pool: address(mockPool),
+            amountADesired: amountADesired,
+            amountBDesired: amountBDesired,
+            amountAMin: amountAMin,
+            amountBMin: amountBMin,
+            to: bob_recipient,
+            deadline: block.timestamp + 60
+        });
+        vm.expectRevert(bytes(revertMsg));
+        liquidityRouter.addLiquidity(paramsPoolRevert);
+        vm.stopPrank();
+    }
+
+    function test_AddLiquidity_InvalidPoolAddress() public {
+        vm.startPrank(alice);
+        LiquidityRouter.AddLiquidityParams memory paramsInvalidPool = LiquidityRouter.AddLiquidityParams({
+            tokenA: address(tokenA),
+            tokenB: address(tokenB),
+            pool: address(0),
+            amountADesired: 1,
+            amountBDesired: 1,
+            amountAMin: 0,
+            amountBMin: 0,
+            to: bob_recipient,
+            deadline: block.timestamp + 60
+        });
+        vm.expectRevert(Errors.ZeroAddress.selector);
+        liquidityRouter.addLiquidity(paramsInvalidPool);
+        vm.stopPrank();
+    }
+
+    function test_AddLiquidity_TokenMismatch() public {
+        MockERC20 tokenC = new MockERC20("TokenC", "TKNC", 18);
+        vm.startPrank(alice);
+        tokenC.mint(alice, 100 * ONE_ETHER);
+        tokenC.approve(address(liquidityRouter), 100 * ONE_ETHER);
+
+        vm.expectRevert(Errors.InvalidPath.selector);
+        LiquidityRouter.AddLiquidityParams memory paramsTokenMismatch = LiquidityRouter.AddLiquidityParams({
+            tokenA: address(tokenC),
+            tokenB: address(tokenB),
+            pool: address(mockPool),
+            amountADesired: 100 * ONE_ETHER,
+            amountBDesired: 100 * ONE_ETHER,
+            amountAMin: 0,
+            amountBMin: 0,
+            to: bob_recipient,
+            deadline: block.timestamp + 60
+        });
+        liquidityRouter.addLiquidity(paramsTokenMismatch);
+        vm.stopPrank();
+    }
+}
+
+contract ConcreteMockPool is ControllableMockIAetherPool {
 }

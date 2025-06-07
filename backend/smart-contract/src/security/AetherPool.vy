@@ -514,6 +514,111 @@ def mint(recipient: address, amount: uint128) -> (uint256, uint256):
 
     return amount0, amount1
 
+@external
+@nonreentrant('lock')
+def addLiquidityNonInitial(
+    recipient: address,
+    amount0Desired: uint256,
+    amount1Desired: uint256,
+    data: Bytes[1] # data is unused as per spec, using Bytes[1]
+) -> (uint256, uint256, uint256):
+    """
+    @notice Adds liquidity to an existing pool.
+    @dev Must be called after initial liquidity has been provided.
+         The router (caller, msg.sender) is expected to have transferred tokens
+         to this pool contract *before* calling this function.
+    @param recipient The address to receive the LP tokens and any refunds.
+    @param amount0Desired The desired amount of token0 that has been sent to the pool.
+    @param amount1Desired The desired amount of token1 that has been sent to the pool.
+    @param data Optional data (currently unused).
+    @return amount0Actual The actual amount of token0 used from the desired amounts.
+    @return amount1Actual The actual amount of token1 used from the desired amounts.
+    @return liquidityMinted The amount of LP tokens minted.
+    """
+    # --- Checks ---
+    assert self.initialized, "POOL_NOT_INITIALIZED"
+    assert self.totalSupply > 0, "NON_INITIAL_LIQUIDITY_ONLY" # Must have existing liquidity
+    assert recipient != EMPTY_ADDRESS, "RECIPIENT_ZERO_ADDRESS"
+
+    _reserve0: uint256 = self.reserve0
+    _reserve1: uint256 = self.reserve1
+    _totalSupply: uint256 = self.totalSupply
+
+    # This function assumes tokens are already transferred to the pool by the router.
+    # amount0Desired and amount1Desired are the amounts received by the pool.
+
+    # --- Calculate Actual Amounts to Use (Optimal Proportions) ---
+    amount0Actual: uint256 = 0
+    amount1Actual: uint256 = 0
+
+    # Check if reserves are zero, which shouldn't happen if totalSupply > 0, but as a safeguard:
+    assert _reserve0 > 0 and _reserve1 > 0, "ZERO_RESERVES"
+
+    # Vyper does not support uint256 * uint256 that might overflow before division.
+    # We need to compare amount0Desired / _reserve0 with amount1Desired / _reserve1
+    # To avoid precision loss with integer division, we cross-multiply:
+    # amount0Desired * _reserve1 vs amount1Desired * _reserve0
+
+    val0: uint256 = amount0Desired * _reserve1 # Potential overflow if amounts are huge
+    val1: uint256 = amount1Desired * _reserve0 # Potential overflow if amounts are huge
+
+    # To handle potential overflows with the cross-multiplication for ratio checking,
+    # especially if reserves are small and desired amounts are large, or vice-versa.
+    # A more robust way without large intermediate products, if inputs are very large:
+    # if convert(amount0Desired, decimal) / convert(_reserve0, decimal) < convert(amount1Desired, decimal) / convert(_reserve1, decimal):
+    # However, direct multiplication is standard if inputs are within reasonable bounds for uint256 intermediate products.
+    # Assuming inputs are within typical token amount ranges where product fits uint256.
+
+    if val0 < val1: # amount0Desired provides the limiting factor
+        amount0Actual = amount0Desired
+        # amount1Actual = amount0Desired * _reserve1 / _reserve0 (original formula prone to precision loss)
+        # Calculate amount1Actual based on amount0Actual and reserves
+        # To prevent precision loss, ensure multiplication happens before division
+        amount1Actual = (amount0Desired * _reserve1) / _reserve0
+    elif val0 > val1: # amount1Desired provides the limiting factor
+        amount1Actual = amount1Desired
+        # amount0Actual = amount1Desired * _reserve0 / _reserve1 (original formula prone to precision loss)
+        amount0Actual = (amount1Desired * _reserve0) / _reserve1
+    else: # Optimal proportion or one of the desired amounts is zero (handled by next check)
+        amount0Actual = amount0Desired
+        amount1Actual = amount1Desired
+
+    assert amount0Actual > 0 and amount1Actual > 0, "ZERO_ACTUAL_AMOUNTS"
+
+    # --- Calculate Liquidity to Mint ---
+    # liquidityMinted = min(amount0Actual * _totalSupply / _reserve0, amount1Actual * _totalSupply / _reserve1)
+    # Since amounts are now proportional, either can be used. Let's use amount0Actual.
+    liquidityMinted: uint256 = (amount0Actual * _totalSupply) / _reserve0
+    assert liquidityMinted > 0, "ZERO_LIQUIDITY_MINTED"
+
+    # --- Refund Excess Tokens ---
+    # These are tokens sent by the router but not used due to ratio adjustments.
+    refund0: uint256 = amount0Desired - amount0Actual
+    refund1: uint256 = amount1Desired - amount1Actual
+
+    if refund0 > 0:
+        res0: bool = ERC20(self.poolToken0).transfer(recipient, refund0)
+        assert res0, "REFUND0_FAILED"
+
+    if refund1 > 0:
+        res1: bool = ERC20(self.poolToken1).transfer(recipient, refund1)
+        assert res1, "REFUND1_FAILED"
+
+    # --- Update State (Reserves and Supply) ---
+    self.reserve0 += amount0Actual
+    self.reserve1 += amount1Actual
+    self.totalSupply += liquidityMinted
+
+    # --- Mint LP Tokens to Recipient ---
+    self.balanceOf[recipient] += liquidityMinted
+    log Transfer(EMPTY_ADDRESS, recipient, liquidityMinted) # Standard ERC20 mint event
+
+    # --- Emit Custom Mint Event ---
+    # msg.sender is the router calling this function
+    log Mint(msg.sender, recipient, amount0Actual, amount1Actual, liquidityMinted)
+
+    return amount0Actual, amount1Actual, liquidityMinted
+
 # --- Internal Helper Functions ---
 
 @internal

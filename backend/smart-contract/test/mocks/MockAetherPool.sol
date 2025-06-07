@@ -4,7 +4,7 @@ pragma solidity ^0.8.29;
 import {IAetherPool} from "../../src/interfaces/IAetherPool.sol";
 import {MockERC20} from "./MockERC20.sol"; // Assuming SafeERC20/transfer simulation might be needed later
 
-contract MockAetherPool is IAetherPool {
+contract MockAetherPool is IAetherPool { // Removed abstract
     address public token0;
     address public token1;
     uint24 public _fee;
@@ -94,5 +94,26 @@ contract MockAetherPool is IAetherPool {
 
         emit Mint(msg.sender, msg.sender, amount0Desired, amount1Desired, liquidity);
         return liquidity;
+    }
+
+    function addLiquidityNonInitial(
+        address recipient,
+        uint256 amount0Desired,
+        uint256 amount1Desired,
+        bytes calldata data
+    ) external virtual override returns (uint256 amount0Actual, uint256 amount1Actual, uint256 liquidityMinted) {
+        // To satisfy recipient, amount0Desired, amount1Desired, data usage & avoid warnings
+        if (recipient == address(0) || amount0Desired == 0 || amount1Desired == 0 || data.length == 0) {
+            // Silly conditions to use variables
+        }
+        revert("Mock: addLiquidityNonInitial not implemented");
+    }
+
+    function reserve0() external view virtual override returns (uint256) {
+        return 1000e18; // Mock value
+    }
+
+    function reserve1() external view virtual override returns (uint256) {
+        return 1000e18; // Mock value
     }
 }

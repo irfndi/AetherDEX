@@ -10,19 +10,14 @@ via_ir = true
 ffi = true # General ffi for default profile
 # Security settings
 strict = true
-revert_strings = 'strip'
+revert_strings = 'strip' # This will affect vm.expectRevert(bytes("message")) style tests
 
     [profile.default.vyper]
     version = "0.3.10"
+    # path = "/home/swebot/.local/bin/vyper" # REMOVED - Let Foundry find Vyper in system PATH
     # Let Foundry find Vyper in PATH instead of using a hardcoded path that won't work in CI
 
-[profile.remappings]
-'forge-std' = 'lib/forge-std/src/'
-'@openzeppelin/contracts/' = 'lib/openzeppelin-contracts/contracts/' # Revert to standard
-'v4-core/' = 'lib/v4-core/src/' # Use v4-core key
-'v4-core/interfaces/' = 'lib/v4-core/src/interfaces/' # Use v4-core key
-
-# [profile.compiler] section removed as its contents are merged into profile.default
+# [profile.remappings] section removed to defer to remappings.txt
 
 [profile.test]
 # ffi = true # Assuming default ffi=true is sufficient, or can be re-added if test needs specific

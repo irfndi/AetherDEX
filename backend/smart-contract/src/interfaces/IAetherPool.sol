@@ -84,6 +84,14 @@ interface IAetherPool {
     /// @return fee The current pool fee.
     function fee() external view returns (uint24 fee);
 
+    /// @notice Returns the current reserve of token0 in the pool.
+    /// @return reserve0 The current reserve of token0.
+    function reserve0() external view returns (uint256);
+
+    /// @notice Returns the current reserve of token1 in the pool.
+    /// @return reserve1 The current reserve of token1.
+    function reserve1() external view returns (uint256);
+
     /// @notice Adds liquidity to an existing pool.
     /// @dev Must be called after initial liquidity has been provided. The router (caller) is expected to have transferred tokens to this pool contract before calling this.
     /// @param recipient The address to receive the LP tokens.

@@ -10,12 +10,14 @@ pragma solidity ^0.8.29;
 import "forge-std/console2.sol";
 
 import "forge-std/Test.sol";
-import "../src/primary/AetherFactory.sol";
-import "../src/primary/FeeRegistry.sol"; // Added FeeRegistry import
-import {AetherRouter} from "../src/primary/AetherRouter.sol";
-import {IAetherPool} from "../src/interfaces/IAetherPool.sol";
-import {PoolKey} from "../src/types/PoolKey.sol"; // Specifically import PoolKey struct
-import "../src/libraries/TransferHelper.sol"; // Import TransferHelper for safeTransfer
+import {AetherFactory} from "@primary/AetherFactory.sol"; // Using remapping
+import {FeeRegistry} from "@primary/FeeRegistry.sol"; // Using remapping
+// import {AetherRouter} from "@primary/AetherRouter.sol"; // Old
+import {LiquidityRouter, SimpleSwapRouter} from "@primary/RouterImports.sol";
+// Note: RouterImports.sol aliases SimpleSwapRouter as SwapRouter. Using SimpleSwapRouter directly for clarity.
+import {IAetherPool} from "@interfaces/IAetherPool.sol"; // Using remapping
+import {PoolKey} from "@types/PoolKey.sol";  // Using remapping
+import "@libraries/TransferHelper.sol"; // Using remapping
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol"; // Import IERC20
 
 // Simple MockToken contract for testing
@@ -69,7 +71,7 @@ contract MockToken is
 }
 
 // Define MockPool for testing IAetherPool interactions
-contract MockPool is IAetherPool {
+contract MockPool is IAetherPool { // Removed abstract
     uint24 public storedFee = 3000;
     address public token0;
     address public token1;
@@ -183,6 +185,27 @@ contract MockPool is IAetherPool {
     }
 
     // Implement other IAetherPool functions if they become necessary for tests, possibly with reverts or default values.
+
+    function addLiquidityNonInitial(
+        address recipient,
+        uint256 amount0Desired,
+        uint256 amount1Desired,
+        bytes calldata data
+    ) external virtual override returns (uint256 amount0Actual, uint256 amount1Actual, uint256 liquidityMinted) {
+        // To satisfy recipient, amount0Desired, amount1Desired, data usage & avoid warnings
+        if (recipient == address(0) || amount0Desired == 0 || amount1Desired == 0 || data.length == 0) {
+            // Silly conditions to use variables
+        }
+        revert("Mock: addLiquidityNonInitial not implemented");
+    }
+
+    function reserve0() external view virtual override returns (uint256) {
+        return 1000e18; // Mock value
+    }
+
+    function reserve1() external view virtual override returns (uint256) {
+        return 1000e18; // Mock value
+    }
     // --- End IAetherPool Implementation ---
 }
 
@@ -192,7 +215,8 @@ contract SwapRouterTest is
     IAetherPool public pool; // Use Interface
     AetherFactory public factory;
     FeeRegistry public feeRegistry; // Added FeeRegistry instance
-    AetherRouter public router; // Add Router instance
+    LiquidityRouter public liquidityRouter;
+    SimpleSwapRouter public swapRouter;       // Changed from NewSwapRouter to actual type SimpleSwapRouter
     MockToken public tokenA; // Use MockToken instead of MockERC20
     MockToken public tokenB;
     PoolKey public poolKeyAB; // Store the key used in setUp
@@ -223,7 +247,8 @@ contract SwapRouterTest is
         // --- Deploy Core Contracts ---
         feeRegistry = new FeeRegistry(address(this)); // Deploy FeeRegistry
         factory = new AetherFactory(address(this), address(feeRegistry), 3000); // Pass owner, registry, and initial pool fee of 0.3%
-        router = new AetherRouter(); // Deploy Router (no constructor args)
+        liquidityRouter = new LiquidityRouter();
+        swapRouter = new SimpleSwapRouter();       // Changed from NewSwapRouter
 
         // Define PoolKey parameters (assuming 3000 fee, 60 tickSpacing, no hooks)
         uint24 fee = 3000;
@@ -268,14 +293,25 @@ contract SwapRouterTest is
         uint256 deadline = block.timestamp + 60; // Set deadline
 
         // Approve the ROUTER to spend tokens
-        tokenA.approve(address(router), type(uint256).max);
-        tokenB.approve(address(router), type(uint256).max);
+        tokenA.approve(address(liquidityRouter), type(uint256).max); // Changed
+        tokenB.approve(address(liquidityRouter), type(uint256).max); // Changed
+        tokenA.approve(address(swapRouter), type(uint256).max);    // Added
+        tokenB.approve(address(swapRouter), type(uint256).max);    // Added
 
         // Call router's addLiquidity
         vm.startPrank(address(this)); // Simulate 'this' as the caller
-        ( /* uint256 amountAActual */ , /* uint256 amountBActual */, uint256 liquidity) = router.addLiquidity(
-            address(pool), amountADesired, amountBDesired, amountAMin, amountBMin, address(this), deadline
-        );
+        LiquidityRouter.AddLiquidityParams memory params = LiquidityRouter.AddLiquidityParams({ // Changed
+            tokenA: address(tokenA),
+            tokenB: address(tokenB),
+            pool: address(pool),
+            amountADesired: amountADesired,
+            amountBDesired: amountBDesired,
+            amountAMin: amountAMin,
+            amountBMin: amountBMin,
+            to: address(this),
+            deadline: deadline
+        });
+        ( /* uint256 amountAActual */ , /* uint256 amountBActual */, uint256 liquidity) = liquidityRouter.addLiquidity(params); // Changed
         vm.stopPrank();
 
         console2.log("Initial liquidity added via router. Liquidity tokens:", liquidity);
@@ -299,7 +335,7 @@ contract SwapRouterTest is
         uint256 balanceBeforeSwap = tokenA.balanceOf(address(this));
 
         // Approve ROUTER to spend tokenA
-        tokenA.approve(address(router), amountIn);
+        tokenA.approve(address(swapRouter), amountIn); // Changed
 
         // Construct path for router swap
         address[] memory path = new address[](3);
@@ -313,7 +349,7 @@ contract SwapRouterTest is
         // Execute swap via Router
         vm.startPrank(address(this));
         uint256[] memory amounts =
-            router.swapExactTokensForTokens(amountIn, amountOutMin, path, address(this), deadline);
+            swapRouter.swapExactTokensForTokens(amountIn, amountOutMin, path, address(this), deadline); // Changed
         vm.stopPrank();
 
         // Check final state
@@ -338,7 +374,7 @@ contract SwapRouterTest is
         uint256 balanceBeforeSwap = tokenB.balanceOf(address(this));
 
         // Approve ROUTER to spend tokenB
-        tokenB.approve(address(router), amountIn);
+        tokenB.approve(address(swapRouter), amountIn); // Changed
 
         // Construct path for router swap (reverse)
         address[] memory path = new address[](3);
@@ -352,7 +388,7 @@ contract SwapRouterTest is
         // Execute swap via Router
         vm.startPrank(address(this));
         uint256[] memory amounts =
-            router.swapExactTokensForTokens(amountIn, amountOutMin, path, address(this), deadline);
+            swapRouter.swapExactTokensForTokens(amountIn, amountOutMin, path, address(this), deadline); // Changed
         vm.stopPrank();
 
         // Check final state

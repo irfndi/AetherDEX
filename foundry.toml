@@ -1,0 +1,16 @@
+[profile.default]
+src = 'backend/smart-contract/src'
+test = 'backend/smart-contract/test'
+libs = ['lib'] # Only use root 'lib' for third-party libraries
+cache_path = 'cache_foundry'
+out = 'out_foundry'
+auto_detect_remappings = true
+vyper = { version = "0.3.10" }
+
+[fmt]
+line_length = 120
+multiline_func_header = "attributes_first"
+bracket_spacing = true
+
+[rpc_endpoints]
+localhost = "http://localhost:8545"
