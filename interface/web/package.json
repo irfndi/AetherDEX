@@ -38,6 +38,6 @@
     "@web3modal/wagmi": "^5.1.11"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.5.3"
+    "@biomejs/biome": "^2.0.6"
   }
 }
