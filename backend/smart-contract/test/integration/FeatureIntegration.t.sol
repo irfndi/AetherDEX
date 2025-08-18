@@ -23,7 +23,9 @@ import {Hooks} from "../../src/libraries/Hooks.sol"; // Import Hooks library
 import {MockPoolManager} from "../mocks/MockPoolManager.sol"; // Import MockPoolManager
 import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
 import {IPoolManager} from "../../src/interfaces/IPoolManager.sol"; // Import IPoolManager for structs
-import {PoolKey} from "../../src/types/PoolKey.sol"; // Import PoolKey
+import {PoolKey} from "../../lib/v4-core/src/types/PoolKey.sol"; // Import PoolKey
+import {Currency} from "v4-core/types/Currency.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol"; // Added for MockPool
 
 // Copied from SwapRouter.t.sol - Consider moving to a common mocks file later
@@ -40,7 +42,11 @@ contract MockPool is IAetherPool {
         storedFee = _fee;
     }
 
-    function fee() external view override returns (uint24) {
+    function fee() external view returns (uint24) {
+        return storedFee;
+    }
+
+    function getFee() external view override returns (uint24) {
         return storedFee;
     }
 
@@ -155,7 +161,7 @@ contract FeatureIntegrationTest is Test {
 
     function setUp() public {
         networks = new MockChainNetworks();
-        feeRegistry = new FeeRegistry(address(this)); // Pass initialOwner
+        feeRegistry = new FeeRegistry(address(this), address(this), 500); // Pass initialOwner, protocolTreasury, protocolFeePercentage
         // Deploy the hook, passing placeholder for poolManager and the actual feeRegistry
         dynamicFeeHook = new DynamicFeeHook(address(this), address(feeRegistry)); // Placeholder manager for hook deployment
         _setupTestEnvironment();
@@ -212,11 +218,11 @@ contract FeatureIntegrationTest is Test {
         // Construct the key needed to calculate the poolId for registration
         int24 tickSpacing = 60; // Assuming tickSpacing 60 for DEFAULT_FEE
         PoolKey memory keyForRegistration = PoolKey({
-            token0: poolToken0,
-            token1: poolToken1,
+            currency0: Currency.wrap(poolToken0),
+            currency1: Currency.wrap(poolToken1),
             fee: DEFAULT_FEE,
             tickSpacing: tickSpacing,
-            hooks: address(dynamicFeeHook) // Use the actual hook address
+            hooks: IHooks(address(dynamicFeeHook)) // Use the actual hook address
         });
         bytes32 poolId = keccak256(abi.encode(keyForRegistration));
 
@@ -312,11 +318,11 @@ contract FeatureIntegrationTest is Test {
 
         // Construct the correct PoolKey (including hook address)
         PoolKey memory key = PoolKey({
-            token0: token0,
-            token1: token1,
+            currency0: Currency.wrap(token0),
+            currency1: Currency.wrap(token1),
             fee: DEFAULT_FEE,
             tickSpacing: 60, // Assuming tickSpacing 60 from setup
-            hooks: address(dynamicFeeHook) // Use the actual hook address
+            hooks: IHooks(address(dynamicFeeHook)) // Use the actual hook address
         });
 
         // Record initial fee using the correct key
@@ -373,15 +379,15 @@ contract FeatureIntegrationTest is Test {
         // Construct PoolKey and SwapParams for the manager call
         // Ensure the key matches the one used for registration in setUp
         PoolKey memory key = PoolKey({
-            token0: token0Addr,
-            token1: token1Addr,
+            currency0: Currency.wrap(token0Addr),
+            currency1: Currency.wrap(token1Addr),
             fee: DEFAULT_FEE, // Use the same fee as in setUp
             tickSpacing: 60, // Use the same tickSpacing as assumed in setUp
-            hooks: address(dynamicFeeHook) // Use the actual hook address
+            hooks: IHooks(address(dynamicFeeHook)) // Use the actual hook address
         });
         IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
             zeroForOne: zeroForOne,
-            amountSpecified: int256(amount), // Exact input amount
+            amountSpecified: int256(amount),
             sqrtPriceLimitX96: zeroForOne ? MIN_SQRT_RATIO + 1 : MAX_SQRT_RATIO - 1
         });
 

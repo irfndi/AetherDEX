@@ -36,5 +36,37 @@ library Errors {
     // Liquidity Pool Errors
     error InsufficientLiquidity();
     error AmountTooLow();
-    error KInvariantFailed(); 
+    error KInvariantFailed();
+    error PoolNotFound();
+    error NotInitialized();
+    error AlreadyInitialized();
+    error InvalidInitialization();
+    error PoolAlreadyInitialized();
+    error InsufficientLiquidityBurned();
+    error InvalidFee();
+    error InvalidToken();
+    
+    // Additional Router Errors
+    error InvalidFeeTier();
+    error SwapFailed();
+    error TokenTransferFailed();
+    error InvalidSlippage();
+    error InvalidRecipient();
+    error InvalidChainId();
+    error InsufficientFee();
+    error OperationFailed();
+    error InvalidState();
+    error UnauthorizedAccess();
+    
+    // Factory-specific errors
+    error PoolAlreadyExists();
+    error PoolCreationFailed();
+    
+    // Additional missing errors
+    error Overflow();
+    error TokenBlacklisted();
+    error TooManyHops();
+    error InvalidPoolKey();
+    error InvalidTickSpacing();
+    error PoolPaused();
 }

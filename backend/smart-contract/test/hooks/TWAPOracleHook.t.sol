@@ -9,7 +9,9 @@ pragma solidity ^0.8.29;
 
 import {Test} from "forge-std/Test.sol";
 import {TWAPOracleHook} from "../../src/hooks/TWAPOracleHook.sol";
-import {PoolKey} from "../../src/types/PoolKey.sol";
+import {PoolKey} from "../../lib/v4-core/src/types/PoolKey.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "../../src/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
@@ -60,11 +62,11 @@ contract TWAPOracleHookTest is Test {
 
         // Create pool key
         poolKey = PoolKey({
-            token0: address(token0),
-            token1: address(token1),
+            currency0: Currency.wrap(address(token0)),
+            currency1: Currency.wrap(address(token1)),
             fee: 3000,
             tickSpacing: 60,
-            hooks: address(twapHook)
+            hooks: IHooks(address(twapHook))
         });
 
         // Initialize oracle
@@ -116,11 +118,11 @@ contract TWAPOracleHookTest is Test {
         }
 
         PoolKey memory poolKey2 = PoolKey({
-            token0: address(token2),
-            token1: address(token3),
+            currency0: Currency.wrap(address(token2)),
+            currency1: Currency.wrap(address(token3)),
             fee: 3000,
             tickSpacing: 60,
-            hooks: address(twapHook)
+            hooks: IHooks(address(twapHook))
         });
 
         twapHook.initializeOracle(poolKey2, INITIAL_PRICE);

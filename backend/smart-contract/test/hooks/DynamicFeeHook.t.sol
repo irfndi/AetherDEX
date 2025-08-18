@@ -12,8 +12,10 @@ import {DynamicFeeHook} from "../../src/hooks/DynamicFeeHook.sol";
 import {IPoolManager} from "../../src/interfaces/IPoolManager.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {FeeRegistry} from "../../src/primary/FeeRegistry.sol";
-import {PoolKey} from "../../src/types/PoolKey.sol";
+import {PoolKey} from "../../lib/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {Hooks} from "../../src/libraries/Hooks.sol";
 import {MockPoolManager} from "../mocks/MockPoolManager.sol";
 import {HookFactory} from "../utils/HookFactory.sol";
@@ -55,7 +57,7 @@ contract DynamicFeeHookImprovedTest is Test {
         }
 
         // Deploy FeeRegistry with test contract as owner
-        feeRegistry = new FeeRegistry(address(this));
+        feeRegistry = new FeeRegistry(address(this), address(this), 500);
 
         // Deploy factory for hook deployment
         factory = new HookFactory();
@@ -83,7 +85,7 @@ contract DynamicFeeHookImprovedTest is Test {
      */
     function _createPoolKey(uint24 fee) internal view returns (PoolKey memory) {
         return
-            PoolKey({token0: address(token0), token1: address(token1), fee: fee, tickSpacing: 60, hooks: address(hook)});
+            PoolKey({currency0: Currency.wrap(address(token0)), currency1: Currency.wrap(address(token1)), fee: fee, tickSpacing: 60, hooks: IHooks(address(hook))});
     }
 
     // Removed incomplete comment block that was causing compilation errors
@@ -128,7 +130,7 @@ contract DynamicFeeHookImprovedTest is Test {
      */
     function test_BeforeSwap_InvalidToken0() public {
         PoolKey memory key = _createPoolKey(INITIAL_FEE);
-        key.token0 = address(0);
+        key.currency0 = Currency.wrap(address(0));
 
         vm.expectRevert(DynamicFeeHook.InvalidTokenAddress.selector);
         hook.beforeSwap(
@@ -144,7 +146,7 @@ contract DynamicFeeHookImprovedTest is Test {
      */
     function test_BeforeSwap_InvalidToken1() public {
         PoolKey memory key = _createPoolKey(INITIAL_FEE);
-        key.token1 = address(0);
+        key.currency1 = Currency.wrap(address(0));
 
         vm.expectRevert(DynamicFeeHook.InvalidTokenAddress.selector);
         hook.beforeSwap(

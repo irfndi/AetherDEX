@@ -165,7 +165,7 @@ contract SmartRoutingIntegrationTest is Test {
     function _deployRoutersAndBridges() internal {
         ccipRouter = new MockCCIPRouter();
         hyperlane = new MockHyperlane();
-        feeRegistry = new FeeRegistry(address(this));
+        feeRegistry = new FeeRegistry(address(this), address(this), 500);
 
         // Deploy router with messaging integration
         router = new AetherRouterCrossChain(
@@ -259,117 +259,76 @@ contract SmartRoutingIntegrationTest is Test {
     }
 
     function test_CrossChain_OneHop_ETH_ARB() public {
-        // Remove the skip and implement a proper test
-        // vm.skip(true);
         TestParams memory params = _setupCrossChainTestOneHop();
-
-        // User (Alice) needs tokenIn and ETH
-        deal(address(params.tokenIn), alice, params.amountIn);
-        vm.deal(alice, 1 ether); // Make sure Alice has enough ETH
-
+        _setupAliceTokens(params);
+        
         vm.startPrank(alice);
         IERC20(params.tokenIn).approve(address(router), params.amountIn);
-
-        // Record initial balances
-        uint256 aliceInitialBalance = IERC20(params.tokenIn).balanceOf(alice);
-        uint256 routerInitialBalance = IERC20(params.tokenIn).balanceOf(address(router));
-
-        // Enhanced mocking of external interactions
-
-        // 1. Mock CCIP router calls with more complete setup
-        bytes32 mockCcipMessageId = bytes32(uint256(1)); // Non-zero message ID
-
-        // Mock fee estimation
-        vm.mockCall(
-            address(ccipRouter),
-            abi.encodeWithSelector(
-                ccipRouter.estimateFees.selector,
-                params.path[1],
-                alice,
-                abi.encode(params.tokenOut, params.amountOutMin, params.recipient)
-            ),
-            abi.encode(0.05 ether)
-        );
-
-        // Mock token deposit
+        
+        (uint256 aliceInitialBalance, uint256 routerInitialBalance) = _recordInitialBalances(params.tokenIn);
+        _setupMockCalls();
+        
+        bool callSuccess = _executeCrossChainRoute(aliceInitialBalance, routerInitialBalance);
+        assertTrue(callSuccess, "Cross-chain route execution should succeed");
+        
+        vm.stopPrank();
+    }
+    
+    function _setupAliceTokens(TestParams memory params) private {
+        deal(address(params.tokenIn), alice, params.amountIn);
+        vm.deal(alice, 1 ether);
+    }
+    
+    function _recordInitialBalances(address tokenIn) private view returns (uint256 aliceBalance, uint256 routerBalance) {
+        aliceBalance = IERC20(tokenIn).balanceOf(alice);
+        routerBalance = IERC20(tokenIn).balanceOf(address(router));
+    }
+    
+    function _setupMockCalls() private {
+        // Mock CCIP router calls
+        bytes32 mockCcipMessageId = bytes32(uint256(1));
+        vm.mockCall(address(ccipRouter), abi.encodeWithSelector(ccipRouter.estimateFees.selector), abi.encode(0.05 ether));
         vm.mockCall(address(ccipRouter), abi.encodeWithSelector(ccipRouter.depositToken.selector), abi.encode(true));
-
-        // Mock message sending
-        vm.mockCall(
-            address(ccipRouter), abi.encodeWithSelector(ccipRouter.sendMessage.selector), abi.encode(mockCcipMessageId)
-        );
-
-        // 2. Mock Hyperlane calls with more complete setup
-        bytes32 mockHyperlaneMessageId = bytes32(uint256(2)); // Non-zero message ID
-
-        // Mock fee estimation
-        vm.mockCall(
-            address(hyperlane),
-            abi.encodeWithSelector(hyperlane.quoteDispatch.selector),
-            abi.encode(0.04 ether) // Slightly lower than CCIP to test protocol selection
-        );
-
-        // Mock token deposit
+        vm.mockCall(address(ccipRouter), abi.encodeWithSelector(ccipRouter.sendMessage.selector), abi.encode(mockCcipMessageId));
+        
+        // Mock Hyperlane calls
+        bytes32 mockHyperlaneMessageId = bytes32(uint256(2));
+        vm.mockCall(address(hyperlane), abi.encodeWithSelector(hyperlane.quoteDispatch.selector), abi.encode(0.04 ether));
         vm.mockCall(address(hyperlane), abi.encodeWithSelector(hyperlane.depositToken.selector), abi.encode(true));
-
-        // Mock message sending - use wildcard parameters for broader matching
-        vm.mockCall(
-            address(hyperlane), abi.encodeWithSelector(hyperlane.dispatch.selector), abi.encode(mockHyperlaneMessageId)
-        );
-
-        // 3. Execute a simplified cross-chain route
-        uint256 amountInDirect = 1 ether;
-        uint256 amountOutMinDirect = amountInDirect * 95 / 100; // 5% slippage
+        vm.mockCall(address(hyperlane), abi.encodeWithSelector(hyperlane.dispatch.selector), abi.encode(mockHyperlaneMessageId));
+    }
+    
+    function _executeCrossChainRoute(uint256 aliceInitialBalance, uint256 routerInitialBalance) private returns (bool callSuccess) {
         address tokenInDirect = address(weth);
         address tokenOutDirect = address(usdc);
-        address recipientDirect = alice;
-        uint16 srcChain = networks.ETHEREUM_CHAIN_ID();
-        uint16 dstChain = networks.ARBITRUM_CHAIN_ID();
-
-        // Additional token for the test
+        uint256 amountInDirect = 1 ether;
+        uint256 amountOutMinDirect = amountInDirect * 95 / 100;
+        
         deal(tokenInDirect, alice, amountInDirect);
         IERC20(tokenInDirect).approve(address(router), amountInDirect);
-
-        // Ensure router contract has ETH for internal transfers
         vm.deal(address(router), 5 ether);
-
-        // Execute with enough bridge fee
-        uint256 bridgeFee = 0.05 ether;
-
-        // Track if the call was successful
-        bool callSuccess = false;
-
-        try router.executeCrossChainRoute{value: bridgeFee}(
-            tokenInDirect, tokenOutDirect, amountInDirect, amountOutMinDirect, recipientDirect, srcChain, dstChain, ""
+        
+        try router.executeCrossChainRoute{value: 0.05 ether}(
+            tokenInDirect, tokenOutDirect, amountInDirect, amountOutMinDirect, alice, 
+            networks.ETHEREUM_CHAIN_ID(), networks.ARBITRUM_CHAIN_ID(), ""
         ) {
             callSuccess = true;
             console2.log("Cross-chain route execution succeeded!");
-
-            // Check balances after execution
+            
             uint256 aliceFinalBalance = IERC20(tokenInDirect).balanceOf(alice);
             uint256 routerFinalBalance = IERC20(tokenInDirect).balanceOf(address(router));
-
-            // In our test, all tokens are transferred from Alice
-            // The actual implementation might behave differently than expected in our test setup
+            
             console2.log("Alice initial balance:", aliceInitialBalance);
             console2.log("Alice final balance:", aliceFinalBalance);
             console2.log("Router final balance:", routerFinalBalance);
-
-            // Just verify that router received tokens and Alice has less tokens
+            
             assertTrue(aliceFinalBalance < aliceInitialBalance, "Alice's balance should decrease");
             assertTrue(routerFinalBalance > routerInitialBalance, "Router's balance should increase");
         } catch Error(string memory reason) {
             console2.log("Cross-chain route execution reverted with reason:", reason);
-            // Continue test despite error to see what might be happening
         } catch (bytes memory lowLevelData) {
             console2.log("Cross-chain route execution reverted with low-level data:", vm.toString(lowLevelData));
-            // Continue test despite error to see what might be happening
         }
-
-        // Assert that the test was successful
-        assertTrue(callSuccess, "Cross-chain route execution should succeed");
-
-        vm.stopPrank();
     }
 
     function test_CrossChain_TwoHops_ETH_ARB_OP() public {

@@ -16,7 +16,9 @@ import {IHyperlane} from "../interfaces/IHyperlane.sol";
 import {IAetherPool} from "../interfaces/IAetherPool.sol"; 
 import {IPoolManager} from "../interfaces/IPoolManager.sol"; 
 import {AetherFactory} from "./AetherFactory.sol"; 
-import {PoolKey} from "../types/PoolKey.sol";
+import {PoolKey} from "../../lib/v4-core/src/types/PoolKey.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {BalanceDelta} from "../types/BalanceDelta.sol";
 import {Hooks} from "../libraries/Hooks.sol";
 import {Errors} from "../libraries/Errors.sol";
@@ -415,11 +417,11 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
         address _token1 = tokenIn < tokenOut ? tokenOut : tokenIn;
 
         key = PoolKey({
-            token0: _token0,
-            token1: _token1,
+            currency0: Currency.wrap(_token0),
+            currency1: Currency.wrap(_token1),
             fee: fee,
             tickSpacing: 0, 
-            hooks: address(0) 
+            hooks: IHooks(address(0)) 
         });
     }
 
@@ -435,7 +437,7 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
         internal
         returns (BalanceDelta memory balanceDelta, bool zeroForOne)
     {
-        zeroForOne = tokenIn == key.token0;
+        zeroForOne = tokenIn == Currency.unwrap(key.currency0);
 
         address poolAddress = poolManager.getPool(key);
         if (poolAddress == address(0)) revert Errors.InvalidPath(); // Using InvalidPath for pool not found
@@ -483,7 +485,7 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
             revert InsufficientOutputAmount(amountOut, amountOutMin);
         }
 
-        address tokenOutAddress = zeroForOne ? key.token1 : key.token0;
+        address tokenOutAddress = zeroForOne ? Currency.unwrap(key.currency1) : Currency.unwrap(key.currency0);
         if (IERC20(tokenOutAddress).balanceOf(address(this)) < amountOut) {
             revert Errors.InsufficientLiquidity(); // Using InsufficientLiquidity for insufficient output token balance
         }
@@ -758,6 +760,28 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
         uint16[] calldata path,
         bytes[] calldata routeData
     ) external payable nonReentrant whenNotPaused validFee(msg.value) returns (uint256 amountOut) {
+        _validateMultiPathParams(tokenIn, tokenOut, amountIn, recipient, path, routeData);
+
+        IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
+        uint256 currentAmount = amountIn;
+
+        for (uint256 i = 0; i < path.length - 1; i++) {
+            currentAmount = currentAmount * 98 / 100;
+            currentAmount = _executeBridgeHop(tokenIn, tokenOut, currentAmount, recipient, path[i + 1], i % 2 == 0);
+        }
+
+        require(currentAmount >= amountOutMin, "Insufficient output amount");
+        return currentAmount;
+    }
+
+    function _validateMultiPathParams(
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn,
+        address recipient,
+        uint16[] calldata path,
+        bytes[] calldata routeData
+    ) private view {
         if (tokenIn.code.length == 0) revert InvalidTokenAddress(tokenIn);
         if (tokenOut.code.length == 0) revert InvalidTokenAddress(tokenOut);
         if (amountIn == 0 || amountIn > type(uint128).max) revert InvalidAmount(amountIn);
@@ -765,38 +789,33 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
         if (path.length <= 1) revert InvalidPathLength(path.length);
         if (path.length != routeData.length + 1) revert InvalidRouteData(path.length, routeData.length);
         if (msg.value == 0) revert InsufficientFee(0.1 ether, msg.value);
+    }
 
-        IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
-        uint256 currentAmount = amountIn;
-
-        for (uint256 i = 0; i < path.length - 1; i++) {
-            currentAmount = currentAmount * 98 / 100;
-            bytes memory payload = abi.encode(tokenOut, currentAmount, recipient);
-            bool useCCIP = i % 2 == 0;
+    function _executeBridgeHop(
+        address tokenIn,
+        address tokenOut,
+        uint256 amount,
+        address recipient,
+        uint16 dstChain,
+        bool useCCIP
+    ) private returns (uint256) {
+        bytes memory payload = abi.encode(tokenOut, amount, recipient);
+        
+        if (useCCIP) {
+            _safeApprove(tokenIn, address(ccipRouter), amount);
+            require(ccipRouter.depositToken(tokenIn, amount), "CCIP token deposit failed");
             
-            // Approve tokens for the appropriate bridge before sending the message
-            if (useCCIP) {
-                _safeApprove(tokenIn, address(ccipRouter), currentAmount);
-                // Send tokens to the CCIP router
-                bool depositSuccess = ccipRouter.depositToken(tokenIn, currentAmount);
-                require(depositSuccess, "CCIP token deposit failed");
-                
-                bytes32 messageId = ccipRouter.sendMessage{value: 0.1 ether}(path[i + 1], recipient, payload);
-                require(messageId != bytes32(0), "CCIP sendMessage failed in multi-path");
-            } else {
-                _safeApprove(tokenIn, address(hyperlane), currentAmount);
-                // Send tokens to the Hyperlane router
-                bool depositSuccess = hyperlane.depositToken(tokenIn, currentAmount);
-                require(depositSuccess, "Hyperlane token deposit failed");
-                
-                bytes32 messageId =
-                    hyperlane.dispatch{value: 0.1 ether}(path[i + 1], abi.encodePacked(recipient), payload);
-                require(messageId != bytes32(0), "Hyperlane dispatch failed in multi-path");
-            }
+            bytes32 messageId = ccipRouter.sendMessage{value: 0.1 ether}(dstChain, recipient, payload);
+            require(messageId != bytes32(0), "CCIP sendMessage failed in multi-path");
+        } else {
+            _safeApprove(tokenIn, address(hyperlane), amount);
+            require(hyperlane.depositToken(tokenIn, amount), "Hyperlane token deposit failed");
+            
+            bytes32 messageId = hyperlane.dispatch{value: 0.1 ether}(dstChain, abi.encodePacked(recipient), payload);
+            require(messageId != bytes32(0), "Hyperlane dispatch failed in multi-path");
         }
-
-        require(currentAmount >= amountOutMin, "Insufficient output amount");
-        return currentAmount;
+        
+        return amount;
     }
 
     /**

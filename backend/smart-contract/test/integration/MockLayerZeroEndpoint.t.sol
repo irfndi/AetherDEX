@@ -12,8 +12,10 @@ import {CrossChainLiquidityHook} from "../../src/hooks/CrossChainLiquidityHook.s
 import {MockPoolManager} from "../mocks/MockPoolManager.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {IPoolManager} from "../../src/interfaces/IPoolManager.sol";
-import {PoolKey} from "../../src/types/PoolKey.sol";
+import {PoolKey} from "../../lib/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IAetherPool} from "../../src/interfaces/IAetherPool.sol";
 
 contract MockLayerZeroEndpoint {
@@ -108,11 +110,11 @@ contract MockLayerZeroEndpointTest is Test {
 
         // Register placeholder pool with manager
         PoolKey memory key = PoolKey({
-            token0: address(token0) < address(token1) ? address(token0) : address(token1),
-            token1: address(token0) < address(token1) ? address(token1) : address(token0),
+            currency0: Currency.wrap(address(token0) < address(token1) ? address(token0) : address(token1)),
+            currency1: Currency.wrap(address(token0) < address(token1) ? address(token1) : address(token0)),
             fee: 3000,
             tickSpacing: 60, // Assume default
-            hooks: address(0) // No hook for this specific setup
+            hooks: IHooks(address(0)) // No hook for this specific setup
         });
         bytes32 poolId = keccak256(abi.encode(key));
         poolManager.setPool(poolId, placeholderPoolAddress);
@@ -150,7 +152,7 @@ contract MockLayerZeroEndpointTest is Test {
     function test_CrossChainMessageDelivery() public {
         // Create test data
         PoolKey memory key =
-            PoolKey({token0: address(token0), token1: address(token1), fee: 3000, tickSpacing: 60, hooks: address(0)});
+            PoolKey({currency0: Currency.wrap(address(token0)), currency1: Currency.wrap(address(token1)), fee: 3000, tickSpacing: 60, hooks: IHooks(address(0))});
 
         IPoolManager.ModifyPositionParams memory params =
             IPoolManager.ModifyPositionParams({tickLower: -100, tickUpper: 100, liquidityDelta: 1000});
@@ -177,7 +179,7 @@ contract MockLayerZeroEndpointTest is Test {
         lzEndpoint.setRemoteEndpoint(DST_CHAIN_ID, address(0));
 
         PoolKey memory key =
-            PoolKey({token0: address(token0), token1: address(token1), fee: 3000, tickSpacing: 60, hooks: address(0)});
+            PoolKey({currency0: Currency.wrap(address(token0)), currency1: Currency.wrap(address(token1)), fee: 3000, tickSpacing: 60, hooks: IHooks(address(0))});
 
         IPoolManager.ModifyPositionParams memory params =
             IPoolManager.ModifyPositionParams({tickLower: -100, tickUpper: 100, liquidityDelta: 1000});

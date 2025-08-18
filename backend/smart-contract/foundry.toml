@@ -4,10 +4,6 @@ out = 'out'
 libs = ['lib', 'node_modules']
 test = 'test'
 
-    [profile.default.vyper]
-    version = "0.3.10"
-    # Let Foundry find Vyper in PATH instead of using a hardcoded path that won't work in CI
-
 [profile.remappings]
 'forge-std' = 'lib/forge-std/src/'
 '@openzeppelin/contracts/' = 'lib/openzeppelin-contracts/contracts/' # Revert to standard
@@ -15,7 +11,7 @@ test = 'test'
 'v4-core/interfaces/' = 'lib/v4-core/src/interfaces/' # Use v4-core key
 
 [profile.compiler]
-solc_version = '0.8.29'
+solc_version = '0.8.24'
 optimizer = true
 optimizer_runs = 1000
 via_ir = true

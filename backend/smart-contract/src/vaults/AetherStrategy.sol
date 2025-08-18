@@ -12,7 +12,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol"; // Import ReentrancyGuard
 import {ILayerZeroEndpoint} from "../interfaces/ILayerZeroEndpoint.sol";
 import {AetherVault} from "./AetherVault.sol";
-import {PoolKey} from "../types/PoolKey.sol";
+import {PoolKey} from "../../lib/v4-core/src/types/PoolKey.sol";
 import {IPoolManager} from "../interfaces/IPoolManager.sol";
 import "forge-std/console.sol";
 

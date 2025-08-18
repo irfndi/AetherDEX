@@ -14,7 +14,10 @@ import "../src/primary/AetherFactory.sol";
 import "../src/primary/FeeRegistry.sol"; // Added FeeRegistry import
 import {AetherRouter} from "../src/primary/AetherRouter.sol";
 import {IAetherPool} from "../src/interfaces/IAetherPool.sol";
-import {PoolKey} from "../src/types/PoolKey.sol"; // Specifically import PoolKey struct
+import {PoolKey} from "../lib/v4-core/src/types/PoolKey.sol"; // Specifically import PoolKey struct
+import {Currency} from "v4-core/types/Currency.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
+import {IPoolManager} from "../src/interfaces/IPoolManager.sol";
 import "../src/libraries/TransferHelper.sol"; // Import TransferHelper for safeTransfer
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol"; // Import IERC20
 
@@ -81,7 +84,11 @@ contract MockPool is IAetherPool {
         storedFee = _fee;
     }
 
-    function fee() external view override returns (uint24) {
+    function fee() external view returns (uint24) {
+        return storedFee;
+    }
+
+    function getFee() external view override returns (uint24) {
         return storedFee;
     }
 
@@ -205,7 +212,7 @@ contract SwapRouterTest is
         returns (PoolKey memory key, bytes32 poolId)
     {
         require(token0 < token1, "UNSORTED_TOKENS");
-        key = PoolKey({token0: token0, token1: token1, fee: fee, tickSpacing: tickSpacing, hooks: hooks});
+        key = PoolKey({currency0: Currency.wrap(token0), currency1: Currency.wrap(token1), fee: fee, tickSpacing: tickSpacing, hooks: IHooks(hooks)});
         poolId = keccak256(abi.encode(key));
     }
 
@@ -221,9 +228,9 @@ contract SwapRouterTest is
         address _token1 = address(tokenA) < address(tokenB) ? address(tokenB) : address(tokenA);
 
         // --- Deploy Core Contracts ---
-        feeRegistry = new FeeRegistry(address(this)); // Deploy FeeRegistry
+        feeRegistry = new FeeRegistry(address(this), address(this), 500); // Deploy FeeRegistry with treasury and 5% protocol fee
         factory = new AetherFactory(address(this), address(feeRegistry), 3000); // Pass owner, registry, and initial pool fee of 0.3%
-        router = new AetherRouter(); // Deploy Router (no constructor args)
+        router = new AetherRouter(address(factory), address(this), address(this), 1000000, 1000 ether); // Deploy Router with factory and roleManager
 
         // Define PoolKey parameters (assuming 3000 fee, 60 tickSpacing, no hooks)
         uint24 fee = 3000;
@@ -284,14 +291,14 @@ contract SwapRouterTest is
 
     function test_createPool() public view {
         // Use poolId calculated in setUp
-        assertEq(address(pool), factory.getPool(poolKeyAB.token0, poolKeyAB.token1), "Pool address mismatch"); // Correct: Access mapping with token addresses
+        assertEq(address(pool), factory.getPoolAddress(address(uint160(Currency.unwrap(poolKeyAB.currency0))), address(uint160(Currency.unwrap(poolKeyAB.currency1))), poolKeyAB.fee), "Pool address mismatch"); // Correct: Use getPoolAddress with fee parameter
     }
 
     function test_swapTokens() public {
         uint256 amountIn = 10 ether;
 
         // Calculate expected amount using x*y=k formula and the actual pool fee
-        // uint256 currentFee = pool.fee(); // Get actual fee from pool
+        // uint256 currentFee = pool.getFee(); // Get actual fee from pool
         // uint256 amountInWithFee = (amountIn * (10000 - currentFee)) / 10000; // Unused variable
 
         // Mint tokens to 'this' for swapping
@@ -330,7 +337,7 @@ contract SwapRouterTest is
         uint256 amountIn = 10 ether;
 
         // Calculate expected amount using x*y=k formula and the actual pool fee
-        // uint256 currentFee = pool.fee(); // Get actual fee from pool
+        // uint256 currentFee = pool.getFee(); // Get actual fee from pool
         // uint256 amountInWithFee = (amountIn * (10000 - currentFee)) / 10000; // Unused variable
 
         // Mint tokens to 'this' for swapping

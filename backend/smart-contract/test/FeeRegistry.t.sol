@@ -11,7 +11,9 @@ import {Test, console2} from "forge-std/Test.sol";
 import {FeeRegistry} from "../src/primary/FeeRegistry.sol";
 import {IFeeRegistry} from "../src/interfaces/IFeeRegistry.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol"; // Import OpenZeppelin's Ownable to match FeeRegistry
-import {PoolKey} from "../src/types/PoolKey.sol";
+import {PoolKey} from "../lib/v4-core/src/types/PoolKey.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 
 contract FeeRegistryTest is Test {
@@ -52,7 +54,7 @@ contract FeeRegistryTest is Test {
         user = makeAddr("user");
         dynamicFeeUpdater = makeAddr("dynamicFeeUpdater");
 
-        registry = new FeeRegistry(owner); // Pass initial owner directly
+        registry = new FeeRegistry(owner, address(this), 500); // Pass initial owner, treasury, and 5% protocol fee
 
         tokenA = new MockERC20("TokenA", "TKNA", 18);
         tokenB = new MockERC20("TokenB", "TKNB", 18);
@@ -66,27 +68,27 @@ contract FeeRegistryTest is Test {
 
         // Initialize PoolKeys (ensure canonical ordering if applicable, though not strictly needed for registry key)
         poolKeyAB = PoolKey({
-            token0: address(tokenA) < address(tokenB) ? address(tokenA) : address(tokenB),
-            token1: address(tokenA) < address(tokenB) ? address(tokenB) : address(tokenA),
+            currency0: Currency.wrap(address(tokenA) < address(tokenB) ? address(tokenA) : address(tokenB)),
+            currency1: Currency.wrap(address(tokenA) < address(tokenB) ? address(tokenB) : address(tokenA)),
             fee: FEE_TIER_1, // Use a supported static fee tier initially
             tickSpacing: TICK_SPACING_1,
-            hooks: address(0) // No hooks for simplicity here
+            hooks: IHooks(address(0)) // No hooks for simplicity here
         });
 
         poolKeyBC = PoolKey({
-            token0: address(tokenB) < address(tokenC) ? address(tokenB) : address(tokenC),
-            token1: address(tokenB) < address(tokenC) ? address(tokenC) : address(tokenB),
+            currency0: Currency.wrap(address(tokenB) < address(tokenC) ? address(tokenB) : address(tokenC)),
+            currency1: Currency.wrap(address(tokenB) < address(tokenC) ? address(tokenC) : address(tokenB)),
             fee: FEE_TIER_2,
             tickSpacing: TICK_SPACING_2,
-            hooks: address(0)
+            hooks: IHooks(address(0))
         });
 
         poolKeyAC = PoolKey({
-            token0: address(tokenA) < address(tokenC) ? address(tokenA) : address(tokenC),
-            token1: address(tokenA) < address(tokenC) ? address(tokenC) : address(tokenA),
+            currency0: Currency.wrap(address(tokenA) < address(tokenC) ? address(tokenA) : address(tokenC)),
+            currency1: Currency.wrap(address(tokenA) < address(tokenC) ? address(tokenC) : address(tokenA)),
             fee: FEE_TIER_3,
             tickSpacing: TICK_SPACING_3,
-            hooks: address(0)
+            hooks: IHooks(address(0))
         });
 
         // Register one pool for dynamic fee testing
@@ -165,11 +167,11 @@ contract FeeRegistryTest is Test {
         assertTrue(registry.isSupportedFeeTier(lowerFee), "New lower fee tier should be supported");
 
         PoolKey memory key1 = PoolKey({
-            token0: address(1),
-            token1: address(2),
+            currency0: Currency.wrap(address(1)),
+            currency1: Currency.wrap(address(2)),
             fee: FEE_TIER_1,
             tickSpacing: TICK_SPACING_1,
-            hooks: address(0)
+            hooks: IHooks(address(0))
         });
 
         // Even though the key specifies FEE_TIER_1, the lowest fee for TICK_SPACING_1 is returned
@@ -180,11 +182,11 @@ contract FeeRegistryTest is Test {
         registry.addFeeConfiguration(evenLowerFee, TICK_SPACING_1);
         assertTrue(registry.isSupportedFeeTier(evenLowerFee), "Even lower fee tier should be supported");
         PoolKey memory key3 = PoolKey({
-            token0: address(1),
-            token1: address(2),
+            currency0: Currency.wrap(address(1)),
+            currency1: Currency.wrap(address(2)),
             fee: evenLowerFee,
             tickSpacing: TICK_SPACING_1,
-            hooks: address(0)
+            hooks: IHooks(address(0))
         });
         assertEq(registry.getFee(key3), evenLowerFee, "getFee should return the new lowest fee");
     }
@@ -209,11 +211,11 @@ contract FeeRegistryTest is Test {
 
     function test_GetFee_Static_Success_SingleFeeForTickSpacing() public view {
         PoolKey memory key2 = PoolKey({
-            token0: address(1),
-            token1: address(2),
+            currency0: Currency.wrap(address(1)),
+            currency1: Currency.wrap(address(2)),
             fee: FEE_TIER_2,
             tickSpacing: TICK_SPACING_2,
-            hooks: address(0)
+            hooks: IHooks(address(0))
         });
 
         assertEq(registry.getFee(key2), FEE_TIER_2, "Should return FEE_TIER_2");
@@ -223,11 +225,11 @@ contract FeeRegistryTest is Test {
         // FEE_TIER_1 and FEE_TIER_4_LOW are both configured for TICK_SPACING_1
         // FEE_TIER_4_LOW < FEE_TIER_1
         PoolKey memory key1 = PoolKey({
-            token0: address(1),
-            token1: address(2),
+            currency0: Currency.wrap(address(1)),
+            currency1: Currency.wrap(address(2)),
             fee: FEE_TIER_1,
             tickSpacing: TICK_SPACING_1,
-            hooks: address(0)
+            hooks: IHooks(address(0))
         });
         assertEq(registry.getFee(key1), FEE_TIER_4_LOW, "Should return lowest fee");
     }
@@ -237,11 +239,11 @@ contract FeeRegistryTest is Test {
         registry.addFeeConfiguration(evenLowerFee, TICK_SPACING_1);
 
         PoolKey memory keyLower = PoolKey({
-            token0: address(1),
-            token1: address(2),
+            currency0: Currency.wrap(address(1)),
+            currency1: Currency.wrap(address(2)),
             fee: evenLowerFee,
             tickSpacing: TICK_SPACING_1,
-            hooks: address(0)
+            hooks: IHooks(address(0))
         });
         assertEq(registry.getFee(keyLower), evenLowerFee);
     }
@@ -251,11 +253,11 @@ contract FeeRegistryTest is Test {
         registry.addFeeConfiguration(higherFee, TICK_SPACING_1);
 
         PoolKey memory keyHigher = PoolKey({
-            token0: address(1),
-            token1: address(2),
+            currency0: Currency.wrap(address(1)),
+            currency1: Currency.wrap(address(2)),
             fee: higherFee,
             tickSpacing: TICK_SPACING_1,
-            hooks: address(0)
+            hooks: IHooks(address(0))
         });
 
         // Still returns the lowest fee for the tick spacing
@@ -267,11 +269,11 @@ contract FeeRegistryTest is Test {
     function test_GetFee_Static_Revert_UnsupportedFeeTier() public {
         uint24 dummyFee = 42069; // Random unsupported fee
         PoolKey memory key = PoolKey({
-            token0: address(1),
-            token1: address(2),
+            currency0: Currency.wrap(address(1)),
+            currency1: Currency.wrap(address(2)),
             fee: dummyFee, // Not supported
             tickSpacing: 0, // Invalid tickSpacing to trigger FeeTierNotSupported
-            hooks: address(0)
+            hooks: IHooks(address(0))
         });
 
         // Correct: Reference the error from FeeRegistry directly. It reverts with FeeTierNotSupported(dummyFee)

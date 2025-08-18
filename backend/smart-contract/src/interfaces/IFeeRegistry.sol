@@ -7,6 +7,8 @@ Email: join.mantap@gmail.com
 
 pragma solidity ^0.8.29;
 
+import "../../lib/v4-core/src/types/PoolKey.sol";
+
 /**
  * @title Interface for FeeRegistry
  * @notice Defines the external functions exposed by FeeRegistry.sol.
@@ -78,6 +80,21 @@ interface IFeeRegistry {
      * @return fee The current fee (static or dynamic).
      */
     function getCurrentFee(address tokenA, address tokenB) external view returns (uint24 fee);
+
+    /**
+     * @notice Gets the current applicable fee for a pool key.
+     * @param key The pool key containing token addresses and other pool parameters.
+     * @return fee The current fee (static or dynamic).
+     */
+    function getFee(PoolKey calldata key) external view returns (uint24 fee);
+
+    /**
+     * @notice Updates the dynamic fee for a registered pool based on recent swap volume.
+     * @dev Only callable by the authorized fee updater for the pool.
+     * @param key The PoolKey identifying the pool.
+     * @param swapVolume The recent swap volume used to potentially adjust the fee.
+     */
+    function updateFee(PoolKey calldata key, uint256 swapVolume) external;
 
     /**
      * @notice Authorizes or deauthorizes an address to update dynamic fees.

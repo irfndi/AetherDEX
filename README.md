@@ -25,12 +25,13 @@
 
 AetherDEX is a comprehensive decentralized exchange platform built on Ethereum and compatible L2 networks, offering:
 
-- **Automated Market Maker (AMM)**: Efficient constant product formula (x\*y=k) for token swaps
-- **Concentrated Liquidity**: Capital-efficient liquidity provision in custom price ranges
+- **Advanced Routing**: Multi-hop swaps with optimal path finding and slippage protection
+- **Concentrated Liquidity**: Capital-efficient liquidity provision using Uniswap V4 integration
 - **TWAP Oracle**: Time-weighted average price calculations for reliable price feeds
-- **Extensible Architecture**: Customizable hooks for pre and post-swap operations
-- **Gas Optimized**: Designed for minimal gas consumption on Ethereum and L2 networks
-- **Modern UI/UX**: Intuitive interface for traders and liquidity providers
+- **Extensible Hooks**: Customizable hook architecture for advanced trading strategies
+- **Gas Optimized**: Sophisticated algorithms for minimal gas consumption
+- **Modern Stack**: Next.js 15 + React 19 frontend with Go backend infrastructure
+- **Real-time Data**: WebSocket integration for live price feeds and market data
 
 ## Architecture
 
@@ -38,23 +39,28 @@ AetherDEX is structured as a monorepo with the following components:
 
 ```
 AetherDEX/
-├── backend/                # Backend services
+├── backend/                # Go backend services and smart contracts
 │   ├── smart-contract/     # Solidity smart contracts (Foundry)
-│   └── web/                # Backend web services
+│   ├── api/                # REST API endpoints
+│   ├── internal/           # Internal Go packages
+│   └── pkg/                # Shared Go packages
 ├── interface/              # Frontend applications
-│   └── web/                # Web interface
-├── documents/              # Documentation and specifications
-└── scripts/                # Utility scripts
+│   └── web/                # Next.js web interface
+├── docs/                   # Project documentation
+├── infrastructure/         # Docker and deployment configs
+└── scripts/                # Utility and deployment scripts
 ```
 
 ## Getting Started
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) (v16+)
+- [Node.js](https://nodejs.org/) (v24+)
 - [Foundry](https://book.getfoundry.sh/) for smart contract development
-- [bun](https://bunpkg.com/) or [npm](https://www.npmjs.com/) for package management
+- [Bun](https://bun.sh/) (v1.2+) for package management
+- [Go](https://golang.org/) (v1.25+) for backend development
 - An Ethereum wallet (e.g., MetaMask)
+- PostgreSQL and Redis for backend services
 - Basic understanding of DeFi and AMM concepts
 
 ### Installation
@@ -76,6 +82,10 @@ AetherDEX/
    # Frontend
    cd ../../interface/web
    bun install
+
+   # Backend API
+   cd ../../backend
+   go mod download
    ```
 
 ## Development

@@ -11,8 +11,10 @@ import {Test} from "forge-std/Test.sol";
 import {Hooks} from "../../src/libraries/Hooks.sol";
 import {Permissions} from "../../src/interfaces/Permissions.sol";
 import {IPoolManager} from "../../src/interfaces/IPoolManager.sol";
-import {PoolKey} from "../../src/types/PoolKey.sol";
+import {PoolKey} from "../../lib/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
 
 /**
  * @title HooksValidator
@@ -43,7 +45,7 @@ contract HooksTest is Test {
      * @notice Sets up the test environment by initializing dummy struct variables.
      */
     function setUp() public {
-        DUMMY_POOL_KEY = PoolKey(address(0), address(0), 0, 0, address(0));
+        DUMMY_POOL_KEY = PoolKey(Currency.wrap(address(0)), Currency.wrap(address(0)), 0, 0, IHooks(address(0)));
         DUMMY_SWAP_PARAMS = IPoolManager.SwapParams(true, 100, 1);
         DUMMY_MODIFY_PARAMS = IPoolManager.ModifyPositionParams(0, 0, 0);
         DUMMY_DELTA = BalanceDelta(10, 20);

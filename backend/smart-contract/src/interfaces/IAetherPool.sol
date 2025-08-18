@@ -82,5 +82,5 @@ interface IAetherPool {
 
     /// @notice Returns the current fee for the pool.
     /// @return fee The current pool fee.
-    function fee() external view returns (uint24 fee);
+    function getFee() external view returns (uint24 fee);
 }

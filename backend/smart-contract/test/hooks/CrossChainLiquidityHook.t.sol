@@ -15,8 +15,10 @@ import {CrossChainLiquidityHook} from "../../src/hooks/CrossChainLiquidityHook.s
 import {ILayerZeroEndpoint} from "../../src/interfaces/ILayerZeroEndpoint.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {IPoolManager} from "../../src/interfaces/IPoolManager.sol";
-import {PoolKey} from "../../src/types/PoolKey.sol";
+import {PoolKey} from "../../lib/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {Hooks} from "../../src/libraries/Hooks.sol";
 import {MockPoolManager} from "../mocks/MockPoolManager.sol";
 import {HookFactory} from "../utils/HookFactory.sol";
@@ -113,11 +115,11 @@ contract CrossChainLiquidityHookTest is Test {
 
         // Define PoolKey
         key = PoolKey({
-            token0: address(token0) < address(token1) ? address(token0) : address(token1),
-            token1: address(token0) < address(token1) ? address(token1) : address(token0),
+            currency0: Currency.wrap(address(token0) < address(token1) ? address(token0) : address(token1)),
+            currency1: Currency.wrap(address(token0) < address(token1) ? address(token1) : address(token0)),
             fee: 3000,
             tickSpacing: 60,
-            hooks: address(hook) // The hook itself is the hook address
+            hooks: IHooks(address(hook)) // The hook itself is the hook address
         });
 
         // --- ADDED: Register the pool with the MockPoolManager --- //

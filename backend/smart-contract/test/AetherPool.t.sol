@@ -16,8 +16,9 @@ import {AetherFactory} from "../src/primary/AetherFactory.sol";
 import {FeeRegistry} from "../src/primary/FeeRegistry.sol";
 import {IPoolManager} from "../src/interfaces/IPoolManager.sol";
 import {IHooks} from "../lib/v4-core/src/interfaces/IHooks.sol";
-import {PoolKey} from "../src/types/PoolKey.sol";
+import {PoolKey} from "../lib/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "../src/types/BalanceDelta.sol";
+import {Currency} from "../lib/v4-core/src/types/Currency.sol";
 import {Permissions} from "../src/interfaces/Permissions.sol";
 import {console2} from "forge-std/console2.sol";
 import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
@@ -52,7 +53,7 @@ contract AetherPoolTest is Test {
             (token0, token1) = (token1, token0);
         }
 
-        feeRegistry = new FeeRegistry(address(this)); // Deploy FeeRegistry with owner
+        feeRegistry = new FeeRegistry(address(this), address(this), 500); // Deploy FeeRegistry with owner, treasury, and protocol fee (5%)
         factory = new AetherFactory(address(this), address(feeRegistry), 3000); // Pass owner, feeRegistry, and initial pool fee of 0.3%
         assertNotEq(address(factory), address(0), "Factory address is zero"); // Check factory address
 
@@ -78,11 +79,11 @@ contract AetherPoolTest is Test {
 
         // Construct PoolKey using state variables
         poolKey = PoolKey({
-            token0: address(token0),
-            token1: address(token1),
+            currency0: Currency.wrap(address(token0)),
+            currency1: Currency.wrap(address(token1)),
             fee: DEFAULT_FEE,
             tickSpacing: 60,
-            hooks: address(0) // Assuming no hooks for basic pool tests
+            hooks: IHooks(address(0)) // Assuming no hooks for basic pool tests
         });
 
         // Calculate poolId using the state variable
@@ -190,8 +191,9 @@ contract AetherPoolTest is Test {
         IPoolManager.ModifyPositionParams memory params =
             IPoolManager.ModifyPositionParams({tickLower: -60, tickUpper: 60, liquidityDelta: 1000});
 
-        // Use the state variable poolKey
-        poolManager.modifyPosition(poolKey, params, bytes(""));
+        // Use the state variable poolKey (convert to memory)
+        PoolKey memory key = poolKey;
+        poolManager.modifyPosition(key, params, bytes(""));
 
         // Assertions: Check liquidity, balances etc. (Add specific checks later)
         // Example: Fetch liquidity from pool and check if it increased
@@ -212,8 +214,9 @@ contract AetherPoolTest is Test {
         // Cast pool address to IERC20 to call approve
         IERC20(address(pool)).approve(address(poolManager), type(uint128).max); // Approve PoolManager for LP tokens
 
-        // Use the state variable poolKey
-        poolManager.modifyPosition(poolKey, removeParams, bytes(""));
+        // Use the state variable poolKey (convert to memory)
+        PoolKey memory key = poolKey;
+        poolManager.modifyPosition(key, removeParams, bytes(""));
 
         // Assertions: Check liquidity decreased, user received tokens
     }
@@ -223,8 +226,9 @@ contract AetherPoolTest is Test {
         // Add some initial liquidity first
         token0.approve(address(poolManager), 1e20); // Approve manager for token0
         token1.approve(address(poolManager), 1e20); // Approve manager for token1
+        PoolKey memory addKey = poolKey;
         poolManager.modifyPosition(
-            poolKey, IPoolManager.ModifyPositionParams({tickLower: -60, tickUpper: 60, liquidityDelta: 1000}), ""
+            addKey, IPoolManager.ModifyPositionParams({tickLower: -60, tickUpper: 60, liquidityDelta: 1000}), ""
         ); // Add liquidity
 
         // Now try to burn more than exists (this part is likely simplified/wrong in mock)
@@ -237,8 +241,9 @@ contract AetherPoolTest is Test {
         IERC20(address(pool)).approve(address(poolManager), type(uint128).max); // Approve pool manager for LP tokens
 
         vm.expectRevert(bytes("INSUFFICIENT_LIQUIDITY_OWNED")); 
+        PoolKey memory key = poolKey;
         poolManager.modifyPosition(
-            poolKey, IPoolManager.ModifyPositionParams({tickLower: -60, tickUpper: 60, liquidityDelta: -1001}), ""
+            key, IPoolManager.ModifyPositionParams({tickLower: -60, tickUpper: 60, liquidityDelta: -1001}), ""
         );
     }
 
@@ -295,9 +300,9 @@ contract AetherPoolTest is Test {
 
         // --- Debug Logging ---
         console2.log("--- test_RevertOnInsufficientOutputAmount ---");
-        console2.log("poolKey.token0:", poolKey.token0);
-        console2.log("poolKey.token1:", poolKey.token1);
-        console2.log("poolKey.hooks:", poolKey.hooks);
+        console2.log("poolKey.currency0:", Currency.unwrap(poolKey.currency0));
+        console2.log("poolKey.currency1:", Currency.unwrap(poolKey.currency1));
+        console2.log("poolKey.hooks:", address(poolKey.hooks));
         console2.log("poolKey.fee:", poolKey.fee);
         console2.log("poolKey.tickSpacing:", poolKey.tickSpacing); // Log correct field
         console2.log("poolManager address:", address(poolManager));
@@ -311,7 +316,8 @@ contract AetherPoolTest is Test {
         // We're testing a MockPoolManager that may revert without specific error message
         // So we'll just check that it reverts for any reason
         vm.expectRevert();
-        poolManager.swap(poolKey, swapParams, bytes(""));
+        PoolKey memory key = poolKey;
+        poolManager.swap(key, swapParams, bytes(""));
         vm.stopPrank();
     }
 
@@ -321,7 +327,8 @@ contract AetherPoolTest is Test {
         token0.approve(address(poolManager), 1e20);
 
         vm.expectRevert(); 
-        poolManager.swap(poolKey, IPoolManager.SwapParams({ 
+        PoolKey memory key = poolKey;
+        poolManager.swap(key, IPoolManager.SwapParams({ 
             zeroForOne: true, 
             amountSpecified: 1e18,
             sqrtPriceLimitX96: 0

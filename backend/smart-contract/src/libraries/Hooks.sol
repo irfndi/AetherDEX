@@ -7,9 +7,9 @@ Email: join.mantap@gmail.com
 
 pragma solidity ^0.8.29;
 
-import {PoolKey} from "../types/PoolKey.sol";
+import {PoolKey} from "../../lib/v4-core/src/types/PoolKey.sol";
 import {IPoolManager} from "../interfaces/IPoolManager.sol";
-import {BalanceDelta} from "../interfaces/IPoolManager.sol";
+import {BalanceDelta} from "../types/BalanceDelta.sol";
 
 /**
  * @title Hooks

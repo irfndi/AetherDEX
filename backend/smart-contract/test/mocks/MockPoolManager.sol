@@ -11,8 +11,9 @@ import {IPoolManager} from "../../src/interfaces/IPoolManager.sol";
 import {IAetherPool} from "../../src/interfaces/IAetherPool.sol";
 import {BaseHook} from "../../src/hooks/BaseHook.sol";
 import {Hooks} from "../../src/libraries/Hooks.sol";
-import {PoolKey} from "../../src/types/PoolKey.sol";
+import {PoolKey} from "../../lib/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
+import {Currency} from "../../lib/v4-core/src/types/Currency.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {TransferHelper} from "../../src/libraries/TransferHelper.sol";
 import {TickMath} from "../../lib/v4-core/src/libraries/TickMath.sol";
@@ -74,7 +75,7 @@ contract MockPoolManager is IPoolManager {
         IAetherPool targetPool = IAetherPool(poolAddress); // Use the validated address
 
         // Determine tokenIn and amountIn
-        address tokenIn = params.zeroForOne ? key.token0 : key.token1;
+        address tokenIn = params.zeroForOne ? Currency.unwrap(key.currency0) : Currency.unwrap(key.currency1);
         uint256 amountIn = uint256(params.amountSpecified);
         require(amountIn > 0, "MPM: Invalid swap amount");
 
@@ -120,10 +121,10 @@ contract MockPoolManager is IPoolManager {
         // Validate tokens against the retrieved pool instance
         IAetherPool targetPool = IAetherPool(poolAddress);
         (address poolToken0, address poolToken1) = targetPool.tokens();
-        require(key.token0 == poolToken0, "MPM: Invalid token0");
-        require(key.token1 == poolToken1, "MPM: Invalid token1");
+        require(Currency.unwrap(key.currency0) == poolToken0, "MPM: Invalid token0");
+        require(Currency.unwrap(key.currency1) == poolToken1, "MPM: Invalid token1");
         // Hook validation remains the same, assuming hookAddress is global for the mock
-        require(key.hooks == hookAddress, "MPM: Invalid hook address");
+        require(address(key.hooks) == hookAddress, "MPM: Invalid hook address");
     }
 
     function _handleBeforeSwapHook(PoolKey calldata key, SwapParams calldata params, bytes calldata hookData)
@@ -229,10 +230,10 @@ contract MockPoolManager is IPoolManager {
             // 2. Transfer required tokens FROM msg.sender TO pool
             //    (Requires approval in test setup)
             if (requiredAmount0 > 0) {
-                TransferHelper.safeTransferFrom(key.token0, msg.sender, address(targetPool), requiredAmount0);
+                TransferHelper.safeTransferFrom(Currency.unwrap(key.currency0), msg.sender, address(targetPool), requiredAmount0);
             }
             if (requiredAmount1 > 0) {
-                TransferHelper.safeTransferFrom(key.token1, msg.sender, address(targetPool), requiredAmount1);
+                TransferHelper.safeTransferFrom(Currency.unwrap(key.currency1), msg.sender, address(targetPool), requiredAmount1);
             }
 
             // 3. Calculate delta (positive = pool received)
@@ -258,31 +259,31 @@ contract MockPoolManager is IPoolManager {
     }
 
     // Marked as pure as they only revert
-    function donate(PoolKey calldata, uint256, uint256, bytes calldata) external pure override {
+    function donate(PoolKey calldata, uint256, uint256, bytes calldata) external pure {
         revert("MPM: Not implemented");
     }
 
     // Marked as pure as they only revert
-    function take(PoolKey calldata, address, uint256, uint256, bytes calldata) external pure override {
+    function take(PoolKey calldata, address, uint256, uint256, bytes calldata) external pure {
         revert("MPM: Not implemented");
     }
 
     // Marked as pure as they only revert
-    function settle(address) external pure override returns (BalanceDelta memory, BalanceDelta memory) {
+    function settle(address) external pure returns (BalanceDelta memory, BalanceDelta memory) {
         revert("MPM: Not implemented");
     }
 
     // Marked as pure as they only revert
-    function mint(address, PoolKey calldata, uint256, uint256, bytes calldata) external pure override {
+    function mint(address, PoolKey calldata, uint256, uint256, bytes calldata) external pure {
         revert("MPM: Not implemented");
     }
 
     // Marked as pure as they only revert
-    function burn(address, PoolKey calldata, uint256, uint256, bytes calldata) external pure override {
+    function burn(address, PoolKey calldata, uint256, uint256, bytes calldata) external pure {
         revert("MPM: Not implemented");
     }
 
-    function validateHookAddress(bytes32) external view override returns (bool) {
+    function validateHookAddress(bytes32) external view returns (bool) {
         return hookAddress != address(0);
     }
 
@@ -307,24 +308,74 @@ contract MockPoolManager is IPoolManager {
         // IAetherPool targetPool = IAetherPool(poolAddress); // Get pool instance // Commented out as unused
         // targetPool.initialize(key.token0, key.token1, key.fee); // Removed initialize call
 
-        // Optionally, call hook if present and has permission
-        if (key.hooks != address(0) && Hooks.hasPermission(key.hooks, Hooks.AFTER_INITIALIZE_FLAG)) {
-            // Remove the 'tick' argument as BaseHook.afterInitialize expects only 4 arguments
-            try BaseHook(key.hooks).afterInitialize(msg.sender, key, sqrtPriceX96, hookData) returns (bytes4 selector) {
-                require(selector == BaseHook.afterInitialize.selector, "MPM: Invalid afterInitialize hook selector");
-            } catch Error(string memory reason) {
-                // Handle or log hook error if necessary for testing
-                revert(reason);
-            }
+        // Call afterInitialize hook if present
+        if (address(key.hooks) != address(0)) {
+            BaseHook(address(key.hooks)).afterInitialize(msg.sender, key, sqrtPriceX96, hookData);
         }
         // No revert needed here as we are implementing the function
     }
 
     // --- Pool Query --- //
 
-    function getPool(PoolKey memory key) external view override returns (address poolAddress) {
+    function getPool(PoolKey calldata key) external view override returns (address poolAddress) {
         bytes32 poolId = keccak256(abi.encode(key));
         poolAddress = pools[poolId];
-        require(poolAddress != address(0), "MPM: Pool not found");
+        // Don't require - return address(0) if not found as per interface
+    }
+
+    // Missing IPoolManager functions implementation
+    function createPool(PoolKey calldata key) external override returns (address pool) {
+        bytes32 poolId = keccak256(abi.encode(key));
+        pool = pools[poolId];
+        require(pool != address(0), "MPM: Pool not set for this key");
+        return pool;
+    }
+
+    function poolExists(PoolKey calldata key) external view override returns (bool exists) {
+        bytes32 poolId = keccak256(abi.encode(key));
+        return pools[poolId] != address(0);
+    }
+
+    function getAllPools() external pure override returns (address[] memory) {
+        revert("MPM: Not implemented");
+    }
+
+    function getPoolCount() external pure override returns (uint256) {
+        revert("MPM: Not implemented");
+    }
+
+    function setPoolPauseStatus(PoolKey calldata, bool) external pure override {
+        revert("MPM: Not implemented");
+    }
+
+    function updatePoolHooks(PoolKey calldata, address) external pure override {
+        revert("MPM: Not implemented");
+    }
+
+    function updatePoolParameters(PoolKey calldata, uint24, int24) external pure override {
+        revert("MPM: Not implemented");
+    }
+
+    function isPoolPaused(PoolKey calldata) external pure override returns (bool) {
+        revert("MPM: Not implemented");
+    }
+
+    function getPoolInfo(PoolKey calldata key) external view override returns (address pool, bool paused, uint256 createdAt) {
+        bytes32 poolId = keccak256(abi.encode(key));
+        pool = pools[poolId];
+        paused = false; // Mock implementation
+        createdAt = 0; // Mock implementation
+    }
+
+    function validatePoolKey(PoolKey calldata) external pure override returns (bool) {
+        return true; // Mock implementation - always valid
+    }
+
+    function migratePool(PoolKey calldata, address) external pure override {
+        revert("MPM: Not implemented");
+    }
+
+    function getPoolsByTokenPair(address, address) external pure override returns (address[] memory) {
+        revert("MPM: Not implemented");
     }
 }
