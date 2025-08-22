@@ -1,7 +1,8 @@
+import React from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { createMockToken, createMockTokenList } from '../../test/setup'
+import { createMockToken, createMockTokenList } from '../../../test/setup'
 
 // Mock network errors
 const mockNetworkError = new Error('Network request failed')
@@ -344,38 +345,11 @@ const ErrorProneSwapInterface = ({
   )
 }
 
-// Mock React hooks
-const React = {
-  useState: vi.fn(),
-  useEffect: vi.fn(),
-}
-
 describe('Error Handling Flow Tests', () => {
   let user: any
-  let stateValues: any
-  let stateSetters: any
 
   beforeEach(() => {
     user = userEvent.setup()
-    
-    // Reset state management
-    stateValues = {}
-    stateSetters = {}
-    
-    // Mock React hooks
-    React.useState = vi.fn().mockImplementation((initial) => {
-      const key = Math.random().toString()
-      stateValues[key] = initial
-      stateSetters[key] = vi.fn((newValue) => {
-        stateValues[key] = typeof newValue === 'function' ? newValue(stateValues[key]) : newValue
-      })
-      return [stateValues[key], stateSetters[key]]
-    })
-    
-    React.useEffect = vi.fn().mockImplementation((effect, deps) => {
-      effect()
-    })
-    
     vi.clearAllMocks()
   })
 

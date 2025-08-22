@@ -273,7 +273,7 @@ func (suite *InputValidationTestSuite) TestHeaderInjectionPrevention() {
 			w := httptest.NewRecorder()
 
 			suite.router.ServeHTTP(w, req)
-			
+
 			// Check that injected headers are not present
 			assert.Empty(suite.T(), w.Header().Get("X-Injected"))
 			assert.Empty(suite.T(), w.Header().Get("Set-Cookie"))
@@ -377,7 +377,7 @@ func (suite *InputValidationTestSuite) mockPoolHandler(c *gin.Context) {
 func (suite *InputValidationTestSuite) mockSearchHandler(c *gin.Context) {
 	query := c.Query("q")
 	file := c.Query("file")
-	
+
 	// Check for SQL injection
 	if containsSQLInjection(query) || containsPathTraversal(file) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid query"})
@@ -490,4 +490,3 @@ func containsPathTraversal(input string) bool {
 func TestInputValidationSuite(t *testing.T) {
 	suite.Run(t, new(InputValidationTestSuite))
 }
-"}}}

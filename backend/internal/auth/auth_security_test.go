@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"math/big"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +19,7 @@ import (
 
 // MockAuthenticator represents a mock authentication service
 type MockAuthenticator struct {
-	usedNonces map[string]bool
+	usedNonces  map[string]bool
 	nonceWindow time.Duration
 	nonceStore  map[string]time.Time
 }
@@ -94,8 +93,14 @@ func TestSignatureVerification(t *testing.T) {
 		r, s, err := ecdsa.Sign(rand.Reader, privateKey, hash[:])
 		require.NoError(t, err)
 
-		// Create signature data
-		signature := fmt.Sprintf("0x%s%s", hex.EncodeToString(r.Bytes()), hex.EncodeToString(s.Bytes()))
+		// Create signature data - ensure proper length padding
+		rBytes := r.Bytes()
+		sBytes := s.Bytes()
+		// Pad to 32 bytes each (64 hex chars each)
+		rHex := fmt.Sprintf("%064s", hex.EncodeToString(rBytes))
+		sHex := fmt.Sprintf("%064s", hex.EncodeToString(sBytes))
+		// Add recovery byte (v) - typically 27 or 28, using 1 byte = 2 hex chars
+		signature := fmt.Sprintf("0x%s%s%02x", rHex, sHex, 27)
 		data := SignatureData{
 			Message:   message,
 			Signature: signature,
@@ -208,10 +213,6 @@ func TestEthereumSignatureVerification(t *testing.T) {
 	})
 
 	t.Run("Invalid Ethereum signature", func(t *testing.T) {
-		// Generate key pair
-		privateKey, err := crypto.GenerateKey()
-		require.NoError(t, err)
-
 		message := "Hello AetherDEX"
 		hash := crypto.Keccak256Hash([]byte(fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(message), message)))
 
@@ -222,7 +223,7 @@ func TestEthereumSignatureVerification(t *testing.T) {
 		}
 
 		// Attempt to recover public key from invalid signature
-		_, err = crypto.SigToPub(hash.Bytes(), invalidSignature)
+		_, err := crypto.SigToPub(hash.Bytes(), invalidSignature)
 		assert.Error(t, err)
 	})
 }

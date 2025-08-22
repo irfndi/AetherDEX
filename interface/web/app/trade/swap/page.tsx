@@ -41,7 +41,10 @@ export default function SwapPage() {
       } else {
         setToAmount("");
       }
-    };
+    } else {
+      setToAmount("");
+    }
+  };
 
   const calculateFromAmount = (value: string) => {
     setToAmount(value);
@@ -159,5 +162,4 @@ export default function SwapPage() {
       </main>
     </div>
   );
-}
 }

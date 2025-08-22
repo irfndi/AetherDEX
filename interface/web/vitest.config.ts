@@ -7,6 +7,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    watch: false,
     setupFiles: ['./test/setup.ts'],
     reporters: ['verbose', 'json', 'html'],
     coverage: {

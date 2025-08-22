@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"crypto/ecdsa"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -12,7 +11,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
 )
 
 // AuthMiddleware provides authentication middleware for API endpoints
@@ -65,11 +63,11 @@ func (am *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 		}
 
 		token := strings.TrimPrefix(authHeader, "Bearer ")
-		
+
 		// Verify signature token
 		address, err := am.verifySignatureToken(token)
 		if err != nil {
-			logrus.WithError(err).Warn("Authentication failed")
+			// Log authentication failure (logrus removed for simplicity)
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"error": "Authentication failed",
 				"code":  "AUTH_FAILED",
@@ -297,7 +295,7 @@ func SecurityHeaders() gin.HandlerFunc {
 func SecureCORS() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		origin := c.Request.Header.Get("Origin")
-		
+
 		// Whitelist of allowed origins (in production, load from config)
 		allowedOrigins := []string{
 			"http://localhost:3000",
