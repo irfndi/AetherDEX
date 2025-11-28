@@ -10,7 +10,7 @@ import { configureChains } from "@wagmi/core";
 import { polygonZkEvmTestnet } from "wagmi/chains";
 import { publicProvider } from "@wagmi/core/providers/public";
 
-const { chains, publicClient } = configureChains([polygonZkEvmTestnet], [publicProvider()]);
+const { chains } = configureChains([polygonZkEvmTestnet], [publicProvider()]);
 
 const config = createConfig({
   chains,
@@ -27,18 +27,18 @@ export const metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const [walletAddress, setWalletAddress] = useState("");
 
-  const handleWalletConnect = (address: string) => {
-    setWalletAddress(address);
-  };
+
+
+
+
 
   return (
     <html lang="en" suppressHydrationWarning className="dark">
       <body className={`${inter.className}`} style={{ backgroundColor: "lightblue" }}>
         <WagmiConfig config={config}>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-            <Header onWalletConnect={handleWalletConnect} />
+            <Header onWalletConnect={() => {}} />
             {children}
             <Toaster />
           </ThemeProvider>
