@@ -29,11 +29,7 @@ contract MockAetherPool is IAetherPool {
         return (token0, token1);
     }
 
-    function fee() external view returns (uint24) {
-        return _fee;
-    }
-
-    function getFee() external view override returns (uint24) {
+    function fee() external view override returns (uint24) {
         return _fee;
     }
 
@@ -98,5 +94,28 @@ contract MockAetherPool is IAetherPool {
 
         emit Mint(msg.sender, msg.sender, amount0Desired, amount1Desired, liquidity);
         return liquidity;
+    }
+
+    function addLiquidityNonInitial(
+        address recipient,
+        uint256 amount0Desired,
+        uint256 amount1Desired,
+        bytes calldata /* data */
+    ) external override returns (uint256 amount0Actual, uint256 amount1Actual, uint256 liquidityMinted) {
+        require(token0 != address(0) && token1 != address(0), "NOT_INITIALIZED");
+        require(totalLiquidity > 0, "USE_ADD_INITIAL_LIQUIDITY");
+        require(amount0Desired > 0 && amount1Desired > 0, "ZERO_LIQUIDITY");
+        require(recipient != address(0), "INVALID_RECIPIENT");
+
+        // Simplified: use desired amounts as actual amounts and sum for liquidity
+        amount0Actual = amount0Desired;
+        amount1Actual = amount1Desired;
+        liquidityMinted = amount0Desired + amount1Desired;
+
+        totalLiquidity += liquidityMinted;
+        liquidityOf[recipient] += liquidityMinted;
+
+        emit Mint(msg.sender, recipient, amount0Actual, amount1Actual, liquidityMinted);
+        return (amount0Actual, amount1Actual, liquidityMinted);
     }
 }

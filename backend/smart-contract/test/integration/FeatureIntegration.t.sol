@@ -42,11 +42,7 @@ contract MockPool is IAetherPool {
         storedFee = _fee;
     }
 
-    function fee() external view returns (uint24) {
-        return storedFee;
-    }
-
-    function getFee() external view override returns (uint24) {
+    function fee() external view override returns (uint24) {
         return storedFee;
     }
 
@@ -133,6 +129,23 @@ contract MockPool is IAetherPool {
         }
         return liquidityOut;
     }
+
+    function addLiquidityNonInitial(
+        address /* recipient */,
+        uint256 amount0Desired,
+        uint256 amount1Desired,
+        bytes calldata /* data */
+    ) external pure override returns (uint256 amount0Actual, uint256 amount1Actual, uint256 liquidityMinted) {
+        // Mock: Use desired amounts as actual amounts
+        amount0Actual = amount0Desired;
+        amount1Actual = amount1Desired;
+        liquidityMinted = (amount0Desired + amount1Desired) / 2;
+        if (liquidityMinted == 0 && (amount0Desired > 0 || amount1Desired > 0)) {
+            liquidityMinted = 1;
+        }
+        return (amount0Actual, amount1Actual, liquidityMinted);
+    }
+
     // Placeholder for initialize if needed by IPoolManager interactions
     function initialize(address /*_token0*/, address /*_token1*/, uint24 /*_fee*/) external override {
         // This function is required by IAetherPool.
