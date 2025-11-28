@@ -27,18 +27,18 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           submodules: "recursive"
           fetch-depth: 0
 
       - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
+        uses: foundry-rs/foundry-toolchain@50d5a8956f2e319df19e6b57539d7e2acb9f8c1e # v1.5.0
         with:
           version: nightly
 
       - name: Cache Foundry dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: foundry-cache
         with:
           path: |
@@ -60,7 +60,7 @@ jobs:
         run: forge install
 
       - name: Install Python and Vyper
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6
         with:
           python-version: "3.10"
           cache: "pip"
@@ -100,7 +100,7 @@ jobs:
         run: forge coverage --report lcov --ir-minimum
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7 # v5.5.1
         continue-on-error: true
         with:
           # Only use the token if it's available in secrets
@@ -127,24 +127,24 @@ jobs:
         working-directory: backend/smart-contract
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           submodules: "recursive"
           fetch-depth: 0
 
       - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
+        uses: foundry-rs/foundry-toolchain@50d5a8956f2e319df19e6b57539d7e2acb9f8c1e # v1.5.0
         with:
           version: nightly
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6
         with:
           python-version: "3.10"
           cache: "pip"
 
       - name: Cache Foundry dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: foundry-cache-static
         with:
           path: |
@@ -162,7 +162,7 @@ jobs:
             ${{ runner.os }}-foundry-
 
       - name: Cache Python dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: python-cache
         with:
           path: |
@@ -241,7 +241,7 @@ jobs:
           echo "::endgroup::"
 
       - name: Upload Slither results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         if: always()
         with:
           name: slither-results

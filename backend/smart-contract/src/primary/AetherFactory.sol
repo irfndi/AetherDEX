@@ -153,7 +153,7 @@ contract AetherFactory is
         // Ensure tokens are ordered
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
 
-        bytes32 poolKey = keccak256(abi.encodePacked(token0, token1, IAetherPool(poolAddress).getFee()));
+        bytes32 poolKey = keccak256(abi.encodePacked(token0, token1, IAetherPool(poolAddress).fee()));
          if (getPool[poolKey] != address(0)) revert Errors.PoolAlreadyExists();
 
         getPool[poolKey] = poolAddress;
@@ -161,7 +161,7 @@ contract AetherFactory is
         getPoolLegacy[token1][token0] = poolAddress; // Allow lookup in reverse order too
         allPools.push(poolAddress);
 
-        uint24 registeredFee = IAetherPool(poolAddress).getFee(); 
+        uint24 registeredFee = IAetherPool(poolAddress).fee(); 
         emit PoolCreated(token0, token1, registeredFee, poolAddress, allPools.length);
     }
 
