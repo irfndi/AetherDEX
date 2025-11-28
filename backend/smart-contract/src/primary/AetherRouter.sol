@@ -32,6 +32,7 @@ contract AetherRouter is BaseRouter {
         uint256 deadline
     ) external nonReentrant checkDeadline(deadline) returns (uint256 amountA, uint256 amountB, uint256 liquidity) {
         require(pool != address(0), "InvalidPoolAddress");
+        require(pool != address(0), "InvalidPoolAddress"); // Already present
 
         // Get pool tokens
         (address token0, address token1) = IAetherPool(pool).tokens();
