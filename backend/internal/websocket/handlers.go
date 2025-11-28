@@ -3,6 +3,7 @@ package websocket
 import (
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -210,11 +211,16 @@ func AuthenticatedWebSocketMiddleware() gin.HandlerFunc {
 
 // RateLimitMiddleware provides rate limiting for WebSocket connections
 func RateLimitMiddleware(maxConnections int) gin.HandlerFunc {
+	var mu sync.RWMutex
 	connectionCount := make(map[string]int)
 	return func(c *gin.Context) {
 		clientIP := c.ClientIP()
 
-		if connectionCount[clientIP] >= maxConnections {
+		mu.RLock()
+		count := connectionCount[clientIP]
+		mu.RUnlock()
+
+		if count >= maxConnections {
 			c.JSON(http.StatusTooManyRequests, gin.H{
 				"error": "Too many connections from this IP",
 			})
@@ -222,12 +228,17 @@ func RateLimitMiddleware(maxConnections int) gin.HandlerFunc {
 			return
 		}
 
+		mu.Lock()
 		connectionCount[clientIP]++
+		mu.Unlock()
+
 		defer func() {
+			mu.Lock()
 			connectionCount[clientIP]--
 			if connectionCount[clientIP] <= 0 {
 				delete(connectionCount, clientIP)
 			}
+			mu.Unlock()
 		}()
 
 		c.Next()

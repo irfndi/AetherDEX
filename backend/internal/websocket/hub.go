@@ -175,18 +175,30 @@ func (h *Hub) unsubscribeClient(subscription *Subscription) {
 // broadcastMessage broadcasts a message to all connected clients
 func (h *Hub) broadcastMessage(message []byte) {
 	h.mu.RLock()
-	defer h.mu.RUnlock()
-
+	clientsToRemove := make([]*Client, 0)
 	for client := range h.Clients {
 		select {
 		case client.Send <- message:
 			h.Stats.MessagesSent++
 		default:
 			close(client.Send)
-			delete(h.Clients, client)
+			clientsToRemove = append(clientsToRemove, client)
 		}
 	}
+	h.mu.RUnlock()
+
+	// Remove clients after iteration to avoid map modification during iteration
+	if len(clientsToRemove) > 0 {
+		h.mu.Lock()
+		for _, client := range clientsToRemove {
+			delete(h.Clients, client)
+		}
+		h.mu.Unlock()
+	}
+
+	h.mu.Lock()
 	h.Stats.LastUpdate = time.Now()
+	h.mu.Unlock()
 }
 
 // BroadcastToTopic broadcasts a message to all clients subscribed to a specific topic

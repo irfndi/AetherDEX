@@ -46,7 +46,7 @@ func (c *Client) ReadPump() {
 		c.cancel()
 	}()
 
-	c.Conn.SetReadLimit(512)
+	c.Conn.SetReadLimit(65536)
 	c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	c.Conn.SetPongHandler(func(string) error {
 		c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
