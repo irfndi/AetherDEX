@@ -27,18 +27,18 @@ export const metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const [walletAddress, setWalletAddress] = useState("");
 
-  const handleWalletConnect = (address: string) => {
-    setWalletAddress(address);
-  };
+
+
+
+
 
   return (
     <html lang="en" suppressHydrationWarning className="dark">
       <body className={`${inter.className}`} style={{ backgroundColor: "lightblue" }}>
         <WagmiConfig config={config}>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-            <Header onWalletConnect={handleWalletConnect} />
+            <Header onWalletConnect={() => {}} />
             {children}
             <Toaster />
           </ThemeProvider>
