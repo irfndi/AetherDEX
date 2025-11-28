@@ -5,8 +5,6 @@ import (
 	"log"
 	"sync"
 	"time"
-
-	"github.com/gorilla/websocket"
 )
 
 // Subscription represents a client subscription to a topic
@@ -203,13 +201,20 @@ func (h *Hub) broadcastMessage(message []byte) {
 
 // BroadcastToTopic broadcasts a message to all clients subscribed to a specific topic
 func (h *Hub) BroadcastToTopic(topic string, message interface{}) {
+	// Make a copy of the clients while holding the read lock to avoid data race
 	h.mu.RLock()
-	clients, exists := h.Subscriptions[topic]
-	h.mu.RUnlock()
-
-	if !exists || len(clients) == 0 {
+	originalClients, exists := h.Subscriptions[topic]
+	if !exists || len(originalClients) == 0 {
+		h.mu.RUnlock()
 		return
 	}
+
+	// Copy the clients map to iterate over safely
+	clients := make([]*Client, 0, len(originalClients))
+	for client := range originalClients {
+		clients = append(clients, client)
+	}
+	h.mu.RUnlock()
 
 	data, err := json.Marshal(message)
 	if err != nil {
@@ -217,18 +222,36 @@ func (h *Hub) BroadcastToTopic(topic string, message interface{}) {
 		return
 	}
 
-	h.mu.Lock()
-	for client := range clients {
+	// Track clients to remove
+	clientsToRemove := make([]*Client, 0)
+
+	// Send messages to clients
+	for _, client := range clients {
 		select {
 		case client.Send <- data:
+			h.mu.Lock()
 			h.Stats.MessagesSent++
+			h.mu.Unlock()
 		default:
-			// Client's send channel is full, remove it
+			// Client's send channel is full, mark for removal
 			close(client.Send)
-			delete(h.Clients, client)
-			delete(clients, client)
+			clientsToRemove = append(clientsToRemove, client)
 		}
 	}
+
+	// Remove disconnected clients after iteration
+	if len(clientsToRemove) > 0 {
+		h.mu.Lock()
+		for _, client := range clientsToRemove {
+			delete(h.Clients, client)
+			if topicClients, ok := h.Subscriptions[topic]; ok {
+				delete(topicClients, client)
+			}
+		}
+		h.mu.Unlock()
+	}
+
+	h.mu.Lock()
 	h.Stats.LastUpdate = time.Now()
 	h.mu.Unlock()
 }
@@ -290,17 +313,24 @@ func (h *Hub) Stop() {
 		// Signal the hub to stop first
 		close(h.stop)
 
-		// Close all client connections gracefully
+		// Close all client connections gracefully using channel-based approach
+		// to avoid concurrent WebSocket write conflicts with WritePump goroutines
 		h.mu.Lock()
+		clientsToClose := make([]*Client, 0, len(h.Clients))
 		for client := range h.Clients {
-			if client != nil && client.Conn != nil {
-				// Send close message first (ignore errors if connection already closed)
-				_ = client.Conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Server shutdown"))
-				// Cancel client context and close connection
-				client.Close()
+			if client != nil {
+				clientsToClose = append(clientsToClose, client)
 			}
 			delete(h.Clients, client)
 		}
 		h.mu.Unlock()
+
+		// Close clients outside the lock to avoid blocking
+		// The WritePump goroutine handles sending the close message
+		for _, client := range clientsToClose {
+			// Only cancel context - WritePump will detect Send channel closure
+			// and handle the WebSocket close message properly
+			client.Close()
+		}
 	})
 }
