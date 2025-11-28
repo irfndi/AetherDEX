@@ -282,6 +282,10 @@ func (c *Client) SetAuth(userAddress string) {
 
 // Close closes the client connection
 func (c *Client) Close() {
-	c.cancel()
-	close(c.Send)
+	if c.cancel != nil {
+		c.cancel()
+	}
+	if c.Send != nil {
+		close(c.Send)
+	}
 }
