@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -224,19 +225,23 @@ func (h *Hub) BroadcastToTopic(topic string, message interface{}) {
 
 	// Track clients to remove
 	clientsToRemove := make([]*Client, 0)
+	messagesSent := int64(0)
 
 	// Send messages to clients
 	for _, client := range clients {
 		select {
 		case client.Send <- data:
-			h.mu.Lock()
-			h.Stats.MessagesSent++
-			h.mu.Unlock()
+			messagesSent++
 		default:
 			// Client's send channel is full, mark for removal
 			close(client.Send)
 			clientsToRemove = append(clientsToRemove, client)
 		}
+	}
+
+	// Update stats using atomic operation for MessagesSent
+	if messagesSent > 0 {
+		atomic.AddInt64(&h.Stats.MessagesSent, messagesSent)
 	}
 
 	// Remove disconnected clients after iteration
@@ -251,9 +256,12 @@ func (h *Hub) BroadcastToTopic(topic string, message interface{}) {
 		h.mu.Unlock()
 	}
 
-	h.mu.Lock()
-	h.Stats.LastUpdate = time.Now()
-	h.mu.Unlock()
+	// Update LastUpdate only if we sent messages or removed clients
+	if messagesSent > 0 || len(clientsToRemove) > 0 {
+		h.mu.Lock()
+		h.Stats.LastUpdate = time.Now()
+		h.mu.Unlock()
+	}
 }
 
 // BroadcastPriceUpdate broadcasts a price update to subscribed clients
