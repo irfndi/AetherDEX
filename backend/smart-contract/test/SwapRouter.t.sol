@@ -84,11 +84,7 @@ contract MockPool is IAetherPool {
         storedFee = _fee;
     }
 
-    function fee() external view returns (uint24) {
-        return storedFee;
-    }
-
-    function getFee() external view override returns (uint24) {
+    function fee() external view override returns (uint24) {
         return storedFee;
     }
 
@@ -187,6 +183,22 @@ contract MockPool is IAetherPool {
         // Actual token transfers from depositor to pool would be managed by a PoolManager or similar
         // This would also likely set initial reserves and price
         return liquidityOut;
+    }
+
+    function addLiquidityNonInitial(
+        address /* recipient */,
+        uint256 amount0Desired,
+        uint256 amount1Desired,
+        bytes calldata /* data */
+    ) external pure override returns (uint256 amount0Actual, uint256 amount1Actual, uint256 liquidityMinted) {
+        // Mock: Use desired amounts as actual amounts
+        amount0Actual = amount0Desired;
+        amount1Actual = amount1Desired;
+        liquidityMinted = (amount0Desired + amount1Desired) / 2;
+        if (liquidityMinted == 0 && (amount0Desired > 0 || amount1Desired > 0)) {
+            liquidityMinted = 1;
+        }
+        return (amount0Actual, amount1Actual, liquidityMinted);
     }
 
     // Implement other IAetherPool functions if they become necessary for tests, possibly with reverts or default values.
