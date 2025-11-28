@@ -18,7 +18,7 @@ const config = createConfig({
 const queryClient = new QueryClient();
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  const [walletAddress, setWalletAddress] = useState("");
+  const [_walletAddress, setWalletAddress] = useState("");
 
   const handleWalletConnect = (address: string) => {
     setWalletAddress(address);

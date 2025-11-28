@@ -1,5 +1,6 @@
+import React from 'react'
 import { describe, it, expect, bench } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render } from '@testing-library/react'
 import { performance } from 'perf_hooks'
 import { TokenSelector } from '../components/TokenSelector'
 import { createMockToken } from '../test/setup'
@@ -205,13 +206,13 @@ describe('Benchmark Tests', () => {
     const amountIn = 1.0
     const rate = 2500
     const fee = 0.003
-    const result = amountIn * rate * (1 - fee)
+    void (amountIn * rate * (1 - fee))
   }, { iterations: 10000 })
 
   bench('Price impact calculation', () => {
     const amountIn = Math.random() * 1000
     const liquidity = 1000000
-    const priceImpact = (amountIn / liquidity) * 100
+    void ((amountIn / liquidity) * 100)
   }, { iterations: 10000 })
 })
 
@@ -300,7 +301,7 @@ describe('Performance Regression Tests', () => {
     const start = performance.now()
     
     for (let i = 0; i < 1000; i++) {
-      const result = 1.0 * 2500 * 0.997
+      void (1.0 * 2500 * 0.997)
     }
     
     const end = performance.now()
