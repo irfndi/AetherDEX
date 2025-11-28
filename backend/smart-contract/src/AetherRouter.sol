@@ -32,6 +32,12 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
     uint256 public constant DEFAULT_DEADLINE = 20 minutes;
     uint256 public constant BASIS_POINTS = 10000;
     
+    // Uniswap V4 price limits for swap direction
+    // MIN_SQRT_RATIO + 1: Minimum sqrt price limit for zeroForOne swaps (token0 -> token1)
+    uint160 public constant MIN_SQRT_RATIO = 4295128739;
+    // MAX_SQRT_RATIO - 1: Maximum sqrt price limit for oneForZero swaps (token1 -> token0)
+    uint160 public constant MAX_SQRT_RATIO = 1461446703485210103287273052203988822378723970341;
+    
     // Fee configuration
     uint256 public routerFee = 5; // 0.05% router fee
     address public feeRecipient;
@@ -348,8 +354,7 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
     function updatePoolLiquidity(
         bytes32 poolId,
         uint256 liquidity
-    ) external {
-        // In production, this should have proper access control or be automated
+    ) external onlyOwner {
         PoolInfo storage pool = pools[poolId];
         if (!pool.active) revert InvalidPath();
         
@@ -770,7 +775,7 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
          IPoolManager.SwapParams memory swapParams = IPoolManager.SwapParams({
              zeroForOne: zeroForOne,
              amountSpecified: int256(amountIn),
-             sqrtPriceLimitX96: zeroForOne ? 4295128739 : 1461446703485210103287273052203988822378723970341
+             sqrtPriceLimitX96: zeroForOne ? MIN_SQRT_RATIO : MAX_SQRT_RATIO
          });
          
          // Execute swap through pool manager
@@ -996,10 +1001,6 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
          PoolKey memory poolKey,
          IPoolManager.SwapParams memory swapParams
      ) internal returns (BalanceDelta memory delta) {
-         // Use assembly to convert memory to calldata for the function call
-         bytes memory poolKeyData = abi.encode(poolKey);
-         bytes memory swapParamsData = abi.encode(swapParams);
-         
          // Call the pool manager with proper calldata types
          (bool success, bytes memory result) = address(poolManager).call(
              abi.encodeWithSelector(
