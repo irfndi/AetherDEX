@@ -18,7 +18,8 @@ const config = createConfig({
 const queryClient = new QueryClient();
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  const [_walletAddress, setWalletAddress] = useState("");
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [walletAddress, setWalletAddress] = useState("");
 
   const handleWalletConnect = (address: string) => {
     setWalletAddress(address);
