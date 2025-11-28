@@ -3,6 +3,18 @@ src = 'src'
 out = 'out'
 libs = ['lib', 'node_modules']
 test = 'test'
+solc_version = '0.8.29'
+optimizer = true
+optimizer_runs = 1000
+via_ir = true
+ffi = true # General ffi for default profile
+# Security settings
+strict = true
+revert_strings = 'strip'
+
+    [profile.default.vyper]
+    version = "0.3.10"
+    # Let Foundry find Vyper in PATH instead of using a hardcoded path that won't work in CI
 
 [profile.remappings]
 'forge-std' = 'lib/forge-std/src/'
@@ -10,18 +22,10 @@ test = 'test'
 'v4-core/' = 'lib/v4-core/src/' # Use v4-core key
 'v4-core/interfaces/' = 'lib/v4-core/src/interfaces/' # Use v4-core key
 
-[profile.compiler]
-solc_version = '0.8.24'
-optimizer = true
-optimizer_runs = 1000
-via_ir = true
-ffi = true
-# Security settings
-strict = true
-revert_strings = 'strip'
+# [profile.compiler] section removed as its contents are merged into profile.default
 
 [profile.test]
-ffi = true
+# ffi = true # Assuming default ffi=true is sufficient, or can be re-added if test needs specific
 fuzz_runs = 500
 
 [rpc_endpoints]
