@@ -36,7 +36,7 @@ export default function Home() {
     if (fromToken && toToken && value) {
       const fromValue = Number.parseFloat(value);
       let exchangeRate: number | undefined;
-      if (toToken && fromToken.price !== undefined && toToken.price !== undefined) {
+      if (fromToken.price !== undefined && toToken.price !== undefined) {
         exchangeRate = fromToken.price / toToken.price;
         setToAmount((fromValue * exchangeRate).toFixed(6));
       } else {
@@ -48,7 +48,6 @@ export default function Home() {
   const calculateFromAmount = (value: string) => {
     setToAmount(value);
     if (fromToken && toToken && value) {
-      const toValue = Number.parseFloat(value);
       let exchangeRate: number | undefined;
       if (toToken.price !== undefined && fromToken.price !== undefined) {
         exchangeRate = toToken.price / fromToken.price;
