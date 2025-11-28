@@ -35,7 +35,7 @@ export default function SwapPage() {
     if (fromToken && toToken && value) {
       const fromValue = Number.parseFloat(value);
       let exchangeRate: number | undefined;
-      if (toToken && fromToken.price !== undefined && toToken.price !== undefined) {
+      if (fromToken.price !== undefined && toToken.price !== undefined) {
         exchangeRate = fromToken.price / toToken.price;
         setToAmount((fromValue * exchangeRate).toFixed(6));
       } else {
