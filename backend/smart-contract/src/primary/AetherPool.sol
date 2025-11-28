@@ -381,7 +381,7 @@ contract AetherPool is IAetherPool, ERC20, ReentrancyGuard, CircuitBreaker {
         address recipient,
         uint256 amount0Desired,
         uint256 amount1Desired,
-        bytes calldata data
+        bytes calldata /* data */
     ) external override nonReentrant onlyInitialized whenNotPaused returns (uint256 amount0Actual, uint256 amount1Actual, uint256 liquidityMinted) {
         if (recipient == address(0)) {
             revert Errors.ZeroAddress();
@@ -391,6 +391,12 @@ contract AetherPool is IAetherPool, ERC20, ReentrancyGuard, CircuitBreaker {
         }
         
         (uint112 _reserve0, uint112 _reserve1,) = getReserves();
+        
+        // Check reserves are non-zero to prevent division by zero
+        if (_reserve0 == 0 || _reserve1 == 0) {
+            revert Errors.InsufficientLiquidity();
+        }
+        
         uint256 balance0Before = IERC20(token0).balanceOf(address(this));
         uint256 balance1Before = IERC20(token1).balanceOf(address(this));
         
@@ -398,10 +404,14 @@ contract AetherPool is IAetherPool, ERC20, ReentrancyGuard, CircuitBreaker {
         amount0Actual = balance0Before - _reserve0;
         amount1Actual = balance1Before - _reserve1;
         
-        // Validate amounts match expectations (allow for some variance)
+        // Validate that tokens have been transferred
+        if (amount0Actual == 0 || amount1Actual == 0) {
+            revert Errors.InvalidAmountIn();
+        }
+        
+        // Validate amounts match expectations
         if (amount0Actual < amount0Desired || amount1Actual < amount1Desired) {
-            // Tokens were not transferred as expected, revert
-            revert Errors.InsufficientLiquidityMinted();
+            revert Errors.InvalidAmountIn();
         }
         
         uint256 _totalSupply = totalSupply();
@@ -418,9 +428,6 @@ contract AetherPool is IAetherPool, ERC20, ReentrancyGuard, CircuitBreaker {
         
         _mint(recipient, liquidityMinted);
         _update(balance0Before, balance1Before, _reserve0, _reserve1);
-        
-        // Suppress unused parameter warning - data can be used for hooks in future
-        data;
         
         emit Mint(msg.sender, recipient, amount0Actual, amount1Actual, liquidityMinted);
     }
