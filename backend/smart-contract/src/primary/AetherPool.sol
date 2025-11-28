@@ -367,11 +367,62 @@ contract AetherPool is IAetherPool, ERC20, ReentrancyGuard, CircuitBreaker {
     }
     
     /**
-     * @notice Get current pool fee
-     * @return Current fee in basis points
+     * @notice Adds liquidity to an existing pool (non-initial).
+     * @dev Must be called after initial liquidity has been provided. The router (caller) is expected to have transferred tokens to this pool contract before calling this.
+     * @param recipient The address to receive the LP tokens.
+     * @param amount0Desired The desired amount of token0 that has been sent to the pool.
+     * @param amount1Desired The desired amount of token1 that has been sent to the pool.
+     * @param data Optional data to pass to a hook (if any).
+     * @return amount0Actual The actual amount of token0 used from the desired amounts.
+     * @return amount1Actual The actual amount of token1 used from the desired amounts.
+     * @return liquidityMinted The amount of LP tokens minted.
      */
-    function getFee() external view override returns (uint24) {
-        return fee;
+    function addLiquidityNonInitial(
+        address recipient,
+        uint256 amount0Desired,
+        uint256 amount1Desired,
+        bytes calldata data
+    ) external override nonReentrant onlyInitialized whenNotPaused returns (uint256 amount0Actual, uint256 amount1Actual, uint256 liquidityMinted) {
+        if (recipient == address(0)) {
+            revert Errors.ZeroAddress();
+        }
+        if (totalSupply() == 0) {
+            revert Errors.NotInitialized(); // Pool must have initial liquidity
+        }
+        
+        (uint112 _reserve0, uint112 _reserve1,) = getReserves();
+        uint256 balance0Before = IERC20(token0).balanceOf(address(this));
+        uint256 balance1Before = IERC20(token1).balanceOf(address(this));
+        
+        // Calculate actual amounts from tokens already transferred
+        amount0Actual = balance0Before - _reserve0;
+        amount1Actual = balance1Before - _reserve1;
+        
+        // Validate amounts match expectations (allow for some variance)
+        if (amount0Actual < amount0Desired || amount1Actual < amount1Desired) {
+            // Tokens were not transferred as expected, revert
+            revert Errors.InsufficientLiquidityMinted();
+        }
+        
+        uint256 _totalSupply = totalSupply();
+        
+        // Calculate liquidity using the same formula as mint
+        liquidityMinted = Math.min(
+            (amount0Actual * _totalSupply) / _reserve0,
+            (amount1Actual * _totalSupply) / _reserve1
+        );
+        
+        if (liquidityMinted == 0) {
+            revert Errors.InsufficientLiquidityMinted();
+        }
+        
+        _mint(recipient, liquidityMinted);
+        _update(balance0Before, balance1Before, _reserve0, _reserve1);
+        
+        // Suppress unused parameter warning - data can be used for hooks in future
+        data;
+        
+        emit Mint(msg.sender, recipient, amount0Actual, amount1Actual, liquidityMinted);
     }
     
     /**
