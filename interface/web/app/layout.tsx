@@ -10,7 +10,7 @@ import { configureChains } from "@wagmi/core";
 import { polygonZkEvmTestnet } from "wagmi/chains";
 import { publicProvider } from "@wagmi/core/providers/public";
 
-const { chains, publicClient } = configureChains([polygonZkEvmTestnet], [publicProvider()]);
+const { chains } = configureChains([polygonZkEvmTestnet], [publicProvider()]);
 
 const config = createConfig({
   chains,
