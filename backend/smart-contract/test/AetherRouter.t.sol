@@ -86,7 +86,7 @@ contract AetherRouterTest is Test {
         console.log("Deploying router with owner:", address(this));
         // Deploy router with required constructor args
         address mockRoleManager = address(0x5678);
-        router = new AetherRouter(address(mockPoolManager), mockRoleManager, address(this), 1000000, 1000 ether); // Deploy Router with initialOwner
+        router = new AetherRouter(); // Deploy Router with initialOwner
         console.log("Router deployed at:", address(router));
 
         // Create pools with proper token ordering

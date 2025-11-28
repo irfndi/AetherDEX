@@ -242,7 +242,7 @@ contract SwapRouterTest is
         // --- Deploy Core Contracts ---
         feeRegistry = new FeeRegistry(address(this), address(this), 500); // Deploy FeeRegistry with treasury and 5% protocol fee
         factory = new AetherFactory(address(this), address(feeRegistry), 3000); // Pass owner, registry, and initial pool fee of 0.3%
-        router = new AetherRouter(address(factory), address(this), address(this), 1000000, 1000 ether); // Deploy Router with factory and roleManager
+        router = new AetherRouter(); // Deploy Router with factory and roleManager
 
         // Define PoolKey parameters (assuming 3000 fee, 60 tickSpacing, no hooks)
         uint24 fee = 3000;
