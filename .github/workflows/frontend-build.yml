@@ -36,7 +36,7 @@ jobs:
           cache-dependency-path: "interface/web/package.json"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@735343b667e8e4c0d6c0cc044c7c6e125ce27264 # v2.0.2
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 

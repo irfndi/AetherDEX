@@ -1,8 +1,8 @@
 import React from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { createMockToken, createMockTokenList } from '../../../test/setup'
+import { createMockTokenList } from '../../../test/setup'
 
 // Mock network errors
 const mockNetworkError = new Error('Network request failed')
@@ -19,26 +19,6 @@ mockSlippageError.name = 'SlippageError'
 
 const mockGasError = new Error('Gas estimation failed')
 mockGasError.name = 'GasError'
-
-// Mock wallet context with error states
-const mockWalletContext = {
-  isConnected: false,
-  address: null as string | null,
-  balance: '0',
-  connect: vi.fn(),
-  disconnect: vi.fn(),
-  error: null as string | null,
-  isLoading: false,
-}
-
-// Mock API service with error simulation
-const mockApiService = {
-  getTokenPrice: vi.fn(),
-  getSwapQuote: vi.fn(),
-  executeSwap: vi.fn(),
-  getTokenBalance: vi.fn(),
-  estimateGas: vi.fn(),
-}
 
 // Error-prone SwapInterface Component
 const ErrorProneSwapInterface = ({ 
