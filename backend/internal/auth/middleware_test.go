@@ -571,18 +571,24 @@ func (suite *AuthMiddlewareTestSuite) TestEthereumSignatureVerification() {
 func (suite *AuthMiddlewareTestSuite) TestCleanupExpiredNonces() {
 	// Add expired nonce
 	expiredTime := time.Now().Add(-10 * time.Minute)
+	suite.middleware.nonceMu.Lock()
 	suite.middleware.nonceStore["expired-nonce"] = expiredTime
+	suite.middleware.nonceMu.Unlock()
 
 	// Add valid nonce
 	validTime := time.Now().Add(-1 * time.Minute)
+	suite.middleware.nonceMu.Lock()
 	suite.middleware.nonceStore["valid-nonce"] = validTime
+	suite.middleware.nonceMu.Unlock()
 
 	// Run cleanup
 	suite.middleware.cleanupExpiredNonces()
 
 	// Check results
+	suite.middleware.nonceMu.RLock()
 	_, expiredExists := suite.middleware.nonceStore["expired-nonce"]
 	_, validExists := suite.middleware.nonceStore["valid-nonce"]
+	suite.middleware.nonceMu.RUnlock()
 
 	assert.False(suite.T(), expiredExists, "Expired nonce should be removed")
 	assert.True(suite.T(), validExists, "Valid nonce should remain")
@@ -591,13 +597,14 @@ func (suite *AuthMiddlewareTestSuite) TestCleanupExpiredNonces() {
 // TestConcurrentNonceAccess tests concurrent access to nonce store
 func (suite *AuthMiddlewareTestSuite) TestConcurrentNonceAccess() {
 	// This test ensures thread safety of nonce operations
-	// In a real implementation, you'd want proper synchronization
 	done := make(chan bool, 10)
 
 	for i := 0; i < 10; i++ {
 		go func(id int) {
 			nonce := fmt.Sprintf("concurrent-nonce-%d", id)
+			suite.middleware.nonceMu.Lock()
 			suite.middleware.nonceStore[nonce] = time.Now()
+			suite.middleware.nonceMu.Unlock()
 			done <- true
 		}(i)
 	}
@@ -608,7 +615,10 @@ func (suite *AuthMiddlewareTestSuite) TestConcurrentNonceAccess() {
 	}
 
 	// Verify all nonces were stored
-	assert.Len(suite.T(), suite.middleware.nonceStore, 10)
+	suite.middleware.nonceMu.RLock()
+	nonceCount := len(suite.middleware.nonceStore)
+	suite.middleware.nonceMu.RUnlock()
+	assert.Equal(suite.T(), 10, nonceCount)
 }
 
 // TestAuthMiddlewareTestSuite runs the test suite

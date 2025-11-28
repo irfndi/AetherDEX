@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -16,6 +17,7 @@ import (
 // AuthMiddleware provides authentication middleware for API endpoints
 type AuthMiddleware struct {
 	nonceStore    map[string]time.Time
+	nonceMu       sync.RWMutex
 	nonceWindow   time.Duration
 	requiredRoles map[string][]string
 }
@@ -171,7 +173,10 @@ func (am *AuthMiddleware) verifySignatureToken(token string) (string, error) {
 	}
 
 	// Check nonce replay
-	if lastUsed, exists := am.nonceStore[nonce]; exists {
+	am.nonceMu.RLock()
+	lastUsed, exists := am.nonceStore[nonce]
+	am.nonceMu.RUnlock()
+	if exists {
 		if time.Since(lastUsed) < am.nonceWindow {
 			return "", fmt.Errorf("nonce already used")
 		}
@@ -184,7 +189,9 @@ func (am *AuthMiddleware) verifySignatureToken(token string) (string, error) {
 	}
 
 	// Store nonce
+	am.nonceMu.Lock()
 	am.nonceStore[nonce] = time.Now()
+	am.nonceMu.Unlock()
 
 	// Cleanup old nonces periodically
 	go am.cleanupExpiredNonces()
@@ -239,6 +246,8 @@ func (am *AuthMiddleware) getUserRoles(address string) []string {
 
 // cleanupExpiredNonces removes expired nonces from storage
 func (am *AuthMiddleware) cleanupExpiredNonces() {
+	am.nonceMu.Lock()
+	defer am.nonceMu.Unlock()
 	now := time.Now()
 	for nonce, timestamp := range am.nonceStore {
 		if now.Sub(timestamp) > am.nonceWindow {
