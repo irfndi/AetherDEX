@@ -35,7 +35,8 @@ contract AetherVault is ERC4626 {
     event YieldRateUpdated(uint256 oldRate, uint256 newRate); // Added event
 
     modifier onlyStrategy() {
-        require(msg.sender == strategy, "AetherVault: caller is not the strategy");
+        // The 'strategy' state variable now stores the true, unflagged address of the strategy.
+        require(msg.sender == strategy, "AV: F S"); // "AetherVault: Forbidden Sender"
         _;
     }
 

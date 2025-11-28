@@ -180,7 +180,7 @@ contract AetherPool is IAetherPool, ERC20, ReentrancyGuard, CircuitBreaker {
         }
         
         // Lock minimum liquidity forever
-        _mint(address(0), MINIMUM_LIQUIDITY);
+        _mint(address(0xdEaD), MINIMUM_LIQUIDITY);
         _mint(msg.sender, liquidity - MINIMUM_LIQUIDITY);
         
         // Update reserves
@@ -216,7 +216,7 @@ contract AetherPool is IAetherPool, ERC20, ReentrancyGuard, CircuitBreaker {
         if (_totalSupply == 0) {
             // First liquidity provision
             liquidity = Math.sqrt(amount0 * amount1) - MINIMUM_LIQUIDITY;
-            _mint(address(0), MINIMUM_LIQUIDITY);
+            _mint(address(0xdEaD), MINIMUM_LIQUIDITY);
         } else {
             // Subsequent liquidity provisions
             liquidity = Math.min(
@@ -381,7 +381,7 @@ contract AetherPool is IAetherPool, ERC20, ReentrancyGuard, CircuitBreaker {
         address recipient,
         uint256 amount0Desired,
         uint256 amount1Desired,
-        bytes calldata /* data */
+        bytes calldata data
     ) external override nonReentrant onlyInitialized whenNotPaused returns (uint256 amount0Actual, uint256 amount1Actual, uint256 liquidityMinted) {
         if (recipient == address(0)) {
             revert Errors.ZeroAddress();

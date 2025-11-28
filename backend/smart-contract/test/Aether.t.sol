@@ -215,7 +215,7 @@ contract AetherRouterTest is Test, IEvents {
         // Deploy a mock pool manager and role manager for testing
         address mockPoolManager = address(0x1234);
         address mockRoleManager = address(0x5678);
-        router = new AetherRouter(mockPoolManager, mockRoleManager, owner, 1000000, 1000 ether);
+        router = new AetherRouter();
 
         // --- Get Sorted Tokens ---
         if (address(tokenA) < address(tokenB)) {

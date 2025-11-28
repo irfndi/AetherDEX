@@ -189,7 +189,7 @@ contract AetherFactory is
      * @dev This function returns the compiled Vyper bytecode for AetherPool
      * @return bytecode The bytecode for pool deployment
      */
-    function getPoolBytecode() internal pure returns (bytes memory bytecode) {
+    function getPoolBytecode() internal view returns (bytes memory bytecode) {
         // TODO: Replace with actual compiled Vyper bytecode
         // This is a placeholder - in practice, you would include the compiled
         // Vyper bytecode for AetherPool.vy here
