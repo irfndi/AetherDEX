@@ -48,7 +48,6 @@ export default function Home() {
   const calculateFromAmount = (value: string) => {
     setToAmount(value);
     if (fromToken && toToken && value) {
-      const toValue = Number.parseFloat(value);
       let exchangeRate: number | undefined;
       if (toToken.price !== undefined && fromToken.price !== undefined) {
         exchangeRate = toToken.price / fromToken.price;
