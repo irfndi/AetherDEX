@@ -8,6 +8,7 @@ contract MockAetherPool is IAetherPool {
     address public token0;
     address public token1;
     uint24 public _fee;
+    bool private _initialized;
 
     // Track minted liquidity for basic burn/mint logic
     uint256 public totalLiquidity;
@@ -18,11 +19,13 @@ contract MockAetherPool is IAetherPool {
     }
 
     function initialize(address _token0, address _token1, uint24 __fee) public override {
+        require(!_initialized, "ALREADY_INITIALIZED");
         require(_token0 != address(0) && _token1 != address(0), "ZERO_ADDRESS");
         require(_token0 != _token1, "IDENTICAL_ADDRESSES");
         token0 = _token0 < _token1 ? _token0 : _token1;
         token1 = _token0 < _token1 ? _token1 : _token0;
         _fee = __fee;
+        _initialized = true;
     }
 
     function tokens() external view override returns (address, address) {
