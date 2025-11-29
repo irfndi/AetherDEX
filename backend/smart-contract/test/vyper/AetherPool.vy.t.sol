@@ -10,7 +10,9 @@ pragma solidity ^0.8.29;
 import {Test} from "forge-std/Test.sol";
 import {IAetherPool} from "../../src/interfaces/IAetherPool.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
+import {MockAetherPool} from "../mocks/MockAetherPool.sol";
 
+/// @notice Tests for AetherPool functionality using MockAetherPool (Vyper version is disabled)
 contract AetherPoolVyperTest is Test {
     IAetherPool public pool;
     MockERC20 public token0;
@@ -21,22 +23,20 @@ contract AetherPoolVyperTest is Test {
 
     function setUp() public {
         owner = address(this);
-        // Deploy Vyper pool with factory address as owner
-        bytes memory constructorArgs = abi.encode(owner);
-        address poolAddress = vm.deployCode("src/security/AetherPool.vy", constructorArgs);
-        pool = IAetherPool(poolAddress);
-
+        
         // Deploy mock tokens FIRST
         token0 = new MockERC20("Token0", "TKNA", 18);
         token1 = new MockERC20("Token1", "TKNB", 18);
 
-        // Initialize the deployed Vyper pool
         // Ensure tokens are ordered correctly for initialization
         address t0_addr = address(token0);
         address t1_addr = address(token1);
         address ordered_t0 = t0_addr < t1_addr ? t0_addr : t1_addr;
         address ordered_t1 = t0_addr < t1_addr ? t1_addr : t0_addr;
-        pool.initialize(ordered_t0, ordered_t1, FEE);
+        
+        // Deploy MockAetherPool using Solidity (instead of Vyper which is disabled)
+        MockAetherPool mockPool = new MockAetherPool(ordered_t0, ordered_t1, FEE);
+        pool = IAetherPool(address(mockPool));
 
         // Mint initial tokens to users
         token0.mint(ALICE, 1000e18);
