@@ -27,14 +27,18 @@ func (suite *InputValidationTestSuite) SetupSuite() {
 }
 
 // payloadSizeLimitMiddleware rejects requests with body larger than maxSize
+// Uses both ContentLength header check and MaxBytesReader for actual enforcement
 func payloadSizeLimitMiddleware(maxSize int64) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Check Content-Length header first for efficiency
 		if c.Request.ContentLength > maxSize {
 			c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{
 				"error": "Request body too large",
 			})
 			return
 		}
+		// Also enforce actual body size limit to prevent spoofed Content-Length
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxSize)
 		c.Next()
 	}
 }
