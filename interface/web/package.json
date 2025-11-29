@@ -51,8 +51,8 @@
     "jsdom": "^25.0.1"
   },
   "optionalDependencies": {
-    "@base-org/account": "*",
-    "@gemini-wallet/core": "*",
-    "porto": "*"
+    "@base-org/account": "^2.5.0",
+    "@gemini-wallet/core": "^0.3.2",
+    "porto": "^0.2.37"
   }
 }
