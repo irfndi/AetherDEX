@@ -22,6 +22,7 @@ type Client struct {
 	mu            sync.RWMutex
 	ctx           context.Context
 	cancel        context.CancelFunc
+	closeOnce     sync.Once // Ensure Send channel is only closed once
 }
 
 // NewClient creates a new WebSocket client
@@ -280,12 +281,18 @@ func (c *Client) SetAuth(userAddress string) {
 	c.UserAddress = userAddress
 }
 
-// Close closes the client connection
+// Close closes the client connection safely
+// Uses sync.Once to ensure the Send channel is only closed once, preventing panic
+// if Close() is called concurrently from multiple goroutines or multiple times
 func (c *Client) Close() {
+	// Cancel context first to signal goroutines to stop
 	if c.cancel != nil {
 		c.cancel()
 	}
-	if c.Send != nil {
-		close(c.Send)
-	}
+	// Safely close Send channel only once to prevent panic
+	c.closeOnce.Do(func() {
+		if c.Send != nil {
+			close(c.Send)
+		}
+	})
 }
