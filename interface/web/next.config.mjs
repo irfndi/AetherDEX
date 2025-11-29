@@ -11,8 +11,8 @@ const nextConfig = {
       'porto',
       'porto/internal'
     ]
-    
-    // Ignore specific modules if they're missing  
+
+    // Ignore specific modules if they're missing
     config.resolve = {
       ...config.resolve,
       fallback: {
@@ -22,11 +22,11 @@ const nextConfig = {
         tls: false,
       }
     }
-    
+
     return config
   },
   // Transpile specific packages
   transpilePackages: ['@web3modal/wagmi'],
 }
 
-export default nextConfig
+export default nextConfig;
