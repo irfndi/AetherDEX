@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -175,10 +174,11 @@ func (h *Hub) unsubscribeClient(subscription *Subscription) {
 func (h *Hub) broadcastMessage(message []byte) {
 	h.mu.RLock()
 	clientsToRemove := make([]*Client, 0)
+	messagesSent := int64(0)
 	for client := range h.Clients {
 		select {
 		case client.Send <- message:
-			h.Stats.MessagesSent++
+			messagesSent++
 		default:
 			close(client.Send)
 			clientsToRemove = append(clientsToRemove, client)
@@ -195,7 +195,9 @@ func (h *Hub) broadcastMessage(message []byte) {
 		h.mu.Unlock()
 	}
 
+	// Update all stats under mutex for consistency
 	h.mu.Lock()
+	h.Stats.MessagesSent += messagesSent
 	h.Stats.LastUpdate = time.Now()
 	h.mu.Unlock()
 }
@@ -239,11 +241,6 @@ func (h *Hub) BroadcastToTopic(topic string, message interface{}) {
 		}
 	}
 
-	// Update stats using atomic operation for MessagesSent
-	if messagesSent > 0 {
-		atomic.AddInt64(&h.Stats.MessagesSent, messagesSent)
-	}
-
 	// Remove disconnected clients after iteration
 	if len(clientsToRemove) > 0 {
 		h.mu.Lock()
@@ -256,9 +253,10 @@ func (h *Hub) BroadcastToTopic(topic string, message interface{}) {
 		h.mu.Unlock()
 	}
 
-	// Update LastUpdate only if we sent messages or removed clients
+	// Update all stats under mutex for consistency (avoid mixing atomic and mutex)
 	if messagesSent > 0 || len(clientsToRemove) > 0 {
 		h.mu.Lock()
+		h.Stats.MessagesSent += messagesSent
 		h.Stats.LastUpdate = time.Now()
 		h.mu.Unlock()
 	}

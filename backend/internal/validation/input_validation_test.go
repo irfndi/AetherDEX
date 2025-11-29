@@ -26,7 +26,23 @@ func (suite *InputValidationTestSuite) SetupSuite() {
 	suite.setupRoutes()
 }
 
+// payloadSizeLimitMiddleware rejects requests with body larger than maxSize
+func payloadSizeLimitMiddleware(maxSize int64) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.Request.ContentLength > maxSize {
+			c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{
+				"error": "Request body too large",
+			})
+			return
+		}
+		c.Next()
+	}
+}
+
 func (suite *InputValidationTestSuite) setupRoutes() {
+	// Add payload size limit middleware (1MB limit)
+	suite.router.Use(payloadSizeLimitMiddleware(1 * 1024 * 1024))
+
 	// Mock API endpoints for testing
 	api := suite.router.Group("/api/v1")
 	{

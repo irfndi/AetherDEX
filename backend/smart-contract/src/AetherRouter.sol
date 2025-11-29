@@ -778,9 +778,8 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
              sqrtPriceLimitX96: zeroForOne ? MIN_SQRT_RATIO : MAX_SQRT_RATIO
          });
          
-         // Execute swap through pool manager
-         // Note: We need to use a workaround for the memory to calldata conversion
-         BalanceDelta memory delta = _performSwap(poolKey, swapParams);
+         // Execute swap through pool manager using low-level call workaround
+         BalanceDelta memory delta = _performSwapWithLowLevelCall(poolKey, swapParams);
          
          // Calculate output amount
          uint256 amountOut = zeroForOne ? 
@@ -992,12 +991,18 @@ contract AetherRouter is ReentrancyGuard, Ownable, Pausable {
      }
 
      /**
-      * @notice Helper function to perform swap with proper type conversion
+      * @notice Helper function to perform swap with low-level call workaround
+      * @dev This function uses a low-level call to poolManager.swap() instead of a direct call
+      *      because Solidity's memory-to-calldata type conversion for complex structs (PoolKey, SwapParams)
+      *      can cause "stack too deep" errors when the compiler tries to copy all struct members.
+      *      The low-level call approach allows us to encode the parameters into calldata manually,
+      *      avoiding the compiler's stack management limitations. This is a common pattern when
+      *      working with Uniswap v4's hook system and complex struct parameters.
       * @param poolKey Pool key for the swap
-      * @param swapParams Swap parameters
+      * @param swapParams Swap parameters  
       * @return delta Balance delta from the swap
       */
-     function _performSwap(
+     function _performSwapWithLowLevelCall(
          PoolKey memory poolKey,
          IPoolManager.SwapParams memory swapParams
      ) internal returns (BalanceDelta memory delta) {
