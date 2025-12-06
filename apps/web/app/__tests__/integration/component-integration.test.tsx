@@ -351,10 +351,6 @@ const MockApp = () => {
 };
 
 // Mock React hooks
-const React = {
-  useState: vi.fn(),
-  useEffect: vi.fn(),
-};
 
 describe("Component Integration Tests", () => {
   let user: any;
@@ -368,8 +364,8 @@ describe("Component Integration Tests", () => {
     stateValues = {};
     stateSetters = {};
 
-    // Mock React hooks
-    React.useState = vi.fn().mockImplementation((initial) => {
+    // Mock React hooks using spies
+    vi.spyOn(React, "useState").mockImplementation((initial) => {
       const key = Math.random().toString();
       stateValues[key] = initial;
       stateSetters[key] = vi.fn((newValue) => {
@@ -378,7 +374,7 @@ describe("Component Integration Tests", () => {
       return [stateValues[key], stateSetters[key]];
     });
 
-    React.useEffect = vi.fn().mockImplementation((effect, deps) => {
+    vi.spyOn(React, "useEffect").mockImplementation((effect, deps) => {
       effect();
     });
 
