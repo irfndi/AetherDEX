@@ -1,0 +1,67 @@
+name: autofix.ci
+
+on:
+  pull_request:
+  push:
+    branches: ["main", "master"]
+
+permissions:
+  contents: read
+
+jobs:
+  autofix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Setup pnpm for frontend dependencies
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      # Install dependencies for Biome
+      - name: Install frontend dependencies
+        run: cd apps/web && pnpm install
+
+      # Run Biome formatting and linting with auto-fix
+      - name: Format and lint with Biome
+        run: |
+          cd apps/web
+          npx @biomejs/biome check --write --unsafe --config-path ../../.config/biome.json app components hooks lib
+        continue-on-error: true
+
+      # Setup Go for backend formatting
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache-dependency-path: |
+            backend/go.sum
+
+      # Run Go formatting
+      - name: Format Go code
+        run: |
+          cd backend
+          go fmt ./...
+
+      # Setup Foundry for smart contract formatting
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      # Run Foundry formatting
+      - name: Format Solidity contracts
+        run: |
+          cd backend/smart-contract
+          forge fmt
+
+      # Run autofix.ci action to commit changes
+      # Using commit SHA ff86a557 (corresponds to v1 tag) for security
+      - uses: autofix-ci/action@ff86a557419858bb967097bfc916833f5647fa8c
