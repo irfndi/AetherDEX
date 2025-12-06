@@ -69,7 +69,7 @@ contract AetherVaultFactory is
         onlyOwner
         nonReentrant // Added nonReentrant modifier
         returns (address vaultAddress, address trueStrategyAddress)
-     // Renamed return variables
+    // Renamed return variables
     {
         // --- Checks ---
         require(asset != address(0), "Invalid asset address");
