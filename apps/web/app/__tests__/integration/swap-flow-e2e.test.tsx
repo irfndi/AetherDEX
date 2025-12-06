@@ -334,7 +334,7 @@ const MockSwapInterface = () => {
 };
 
 // Add React import for the component
-const React = { useState: vi.fn(), useEffect: vi.fn() };
+const MockReact = { useState: vi.fn(), useEffect: vi.fn() };
 
 describe("End-to-End Swap Flow Integration Tests", () => {
   let user: any;
@@ -352,7 +352,7 @@ describe("End-to-End Swap Flow Integration Tests", () => {
     let stateValues: any = {};
     let stateSetters: any = {};
 
-    React.useState = vi.fn().mockImplementation((initial) => {
+    MockReact.useState = vi.fn().mockImplementation((initial) => {
       const key = Math.random().toString();
       stateValues[key] = initial;
       stateSetters[key] = vi.fn((newValue) => {
@@ -361,7 +361,7 @@ describe("End-to-End Swap Flow Integration Tests", () => {
       return [stateValues[key], stateSetters[key]];
     });
 
-    React.useEffect = vi.fn().mockImplementation((effect, deps) => {
+    MockReact.useEffect = vi.fn().mockImplementation((effect, deps) => {
       effect();
     });
   });
