@@ -17,7 +17,7 @@ The AetherDEX SDKs aim to provide developers with easy-to-use tools for:
 *   **JavaScript/TypeScript SDK:** (Primary SDK)
     *   Status: **In Development**
     *   Repository: [Link to GitHub Repo - TBD]
-    *   Package Manager: `npm install @aetherdex/sdk` / `bun add @aetherdex/sdk` (Placeholder)
+    *   Package Manager: `bun add @aetherdex/sdk` (Placeholder)
 *   **Python SDK:**
     *   Status: **Planned**
     *   Repository: [Link to GitHub Repo - TBD]
@@ -33,7 +33,7 @@ The following examples illustrate the intended usage patterns for the JS/TS SDK.
 ### Installation
 
 ```bash
-bun install @aetherdex/sdk ethers
+bun add @aetherdex/sdk ethers
 ```
 
 ### Initialization

@@ -12,9 +12,12 @@ import {IAetherPool} from "../../src/interfaces/IAetherPool.sol";
 import {TWAPOracleHook} from "../../src/hooks/TWAPOracleHook.sol";
 import {DynamicFeeHook} from "../../src/hooks/DynamicFeeHook.sol";
 import {FeeRegistry} from "../../src/primary/FeeRegistry.sol";
-import {IPoolManager, BalanceDelta} from "../../src/interfaces/IPoolManager.sol";
+import {IPoolManager} from "../../src/interfaces/IPoolManager.sol";
+import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
 import {Hooks} from "../../src/libraries/Hooks.sol";
-import {PoolKey} from "../../src/types/PoolKey.sol";
+import {PoolKey} from "../../lib/v4-core/src/types/PoolKey.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockPoolManager} from "../mocks/MockPoolManager.sol";
 import {HookFactory} from "../utils/HookFactory.sol";
@@ -46,7 +49,7 @@ contract HooksIntegrationTest is Test {
         token1 = new MockERC20("Token1", "TKN1", 18);
 
         // Deploy fee registry and factory for hooks
-        feeRegistry = new FeeRegistry(address(this)); // Pass initialOwner
+        feeRegistry = new FeeRegistry(address(this), address(this), 500); // Pass initialOwner, protocolTreasury, protocolFeePercentage
         HookFactory factory = new HookFactory();
 
         // Deploy hooks through factory to ensure proper flag encoding
@@ -64,11 +67,11 @@ contract HooksIntegrationTest is Test {
 
         // Define the main pool key (using twapHook)
         poolKey = PoolKey({
-            token0: address(token0),
-            token1: address(token1),
+            currency0: Currency.wrap(address(token0)),
+            currency1: Currency.wrap(address(token1)),
             fee: 3000,
             tickSpacing: 60,
-            hooks: address(twapHook)
+            hooks: IHooks(address(twapHook))
         });
 
         // Calculate poolId for main pool
@@ -80,11 +83,11 @@ contract HooksIntegrationTest is Test {
 
         // Define the dynamic fee pool key (using feeHook)
         dynamicFeePoolKey = PoolKey({
-            token0: address(token0),
-            token1: address(token1),
+            currency0: Currency.wrap(address(token0)),
+            currency1: Currency.wrap(address(token1)),
             fee: 3000, // Assuming same fee/tick for simplicity
             tickSpacing: 60,
-            hooks: address(feeHook) // Fee hook for this pool
+            hooks: IHooks(address(feeHook)) // Fee hook for this pool
         });
 
         // Calculate poolId for dynamic fee pool

@@ -12,8 +12,10 @@ import {CrossChainLiquidityHook} from "../../src/hooks/CrossChainLiquidityHook.s
 import {MockPoolManager} from "../mocks/MockPoolManager.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {IPoolManager} from "../../src/interfaces/IPoolManager.sol";
-import {PoolKey} from "../../src/types/PoolKey.sol";
+import {PoolKey} from "../../lib/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IAetherPool} from "../../src/interfaces/IAetherPool.sol";
 
 contract MockLayerZeroEndpoint {
@@ -79,7 +81,11 @@ contract MockLayerZeroEndpoint {
         bytes calldata, /* _payload */
         bool _payInZRO,
         bytes calldata /* _adapterParam */
-    ) external pure returns (uint256 nativeFee, uint256 zroFee) {
+    )
+        external
+        pure
+        returns (uint256 nativeFee, uint256 zroFee)
+    {
         return (_payInZRO ? 0 : 0.01 ether, _payInZRO ? 1 ether : 0);
     }
 }
@@ -108,11 +114,11 @@ contract MockLayerZeroEndpointTest is Test {
 
         // Register placeholder pool with manager
         PoolKey memory key = PoolKey({
-            token0: address(token0) < address(token1) ? address(token0) : address(token1),
-            token1: address(token0) < address(token1) ? address(token1) : address(token0),
+            currency0: Currency.wrap(address(token0) < address(token1) ? address(token0) : address(token1)),
+            currency1: Currency.wrap(address(token0) < address(token1) ? address(token1) : address(token0)),
             fee: 3000,
             tickSpacing: 60, // Assume default
-            hooks: address(0) // No hook for this specific setup
+            hooks: IHooks(address(0)) // No hook for this specific setup
         });
         bytes32 poolId = keccak256(abi.encode(key));
         poolManager.setPool(poolId, placeholderPoolAddress);
@@ -121,18 +127,8 @@ contract MockLayerZeroEndpointTest is Test {
         lzEndpoint = new MockLayerZeroEndpoint();
 
         // Deploy hooks (assuming they need manager and lzEndpoint)
-        srcHook = new CrossChainLiquidityHook(
-            address(poolManager),
-            address(lzEndpoint),
-            address(1),
-            address(2)
-        );
-        dstHook = new CrossChainLiquidityHook(
-            address(poolManager),
-            address(lzEndpoint),
-            address(1),
-            address(2)
-        );
+        srcHook = new CrossChainLiquidityHook(address(poolManager), address(lzEndpoint), address(1), address(2));
+        dstHook = new CrossChainLiquidityHook(address(poolManager), address(lzEndpoint), address(1), address(2));
 
         // Configure LayerZero endpoints
         lzEndpoint.setTrustedRemote(address(srcHook), true);
@@ -149,8 +145,13 @@ contract MockLayerZeroEndpointTest is Test {
 
     function test_CrossChainMessageDelivery() public {
         // Create test data
-        PoolKey memory key =
-            PoolKey({token0: address(token0), token1: address(token1), fee: 3000, tickSpacing: 60, hooks: address(0)});
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(address(token0)),
+            currency1: Currency.wrap(address(token1)),
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: IHooks(address(0))
+        });
 
         IPoolManager.ModifyPositionParams memory params =
             IPoolManager.ModifyPositionParams({tickLower: -100, tickUpper: 100, liquidityDelta: 1000});
@@ -165,7 +166,9 @@ contract MockLayerZeroEndpointTest is Test {
         // Expect events from the hook only
         vm.expectEmit(false, false, false, true, address(srcHook));
         // Based on trace, actual event emitted: event.token0 gets lower address, event.token1 gets higher address.
-        emit CrossChainLiquidityHook.CrossChainLiquidityEvent(DST_CHAIN_ID, lowerSortedAddress, higherSortedAddress, 1000);
+        emit CrossChainLiquidityHook.CrossChainLiquidityEvent(
+            DST_CHAIN_ID, lowerSortedAddress, higherSortedAddress, 1000
+        );
 
         // Execute liquidity change on source chain as manager
         vm.prank(address(poolManager));
@@ -176,8 +179,13 @@ contract MockLayerZeroEndpointTest is Test {
         // Set invalid remote endpoint to simulate failure
         lzEndpoint.setRemoteEndpoint(DST_CHAIN_ID, address(0));
 
-        PoolKey memory key =
-            PoolKey({token0: address(token0), token1: address(token1), fee: 3000, tickSpacing: 60, hooks: address(0)});
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(address(token0)),
+            currency1: Currency.wrap(address(token1)),
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: IHooks(address(0))
+        });
 
         IPoolManager.ModifyPositionParams memory params =
             IPoolManager.ModifyPositionParams({tickLower: -100, tickUpper: 100, liquidityDelta: 1000});

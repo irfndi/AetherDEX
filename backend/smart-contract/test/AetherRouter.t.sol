@@ -17,7 +17,9 @@ import {MockPoolManager} from "./mocks/MockPoolManager.sol";
 import {MockCCIPRouter} from "./mocks/MockCCIPRouter.sol";
 import {MockHyperlane} from "./mocks/MockHyperlane.sol";
 import {console} from "forge-std/console.sol";
-import {PoolKey} from "../src/types/PoolKey.sol";
+import {PoolKey} from "../lib/v4-core/src/types/PoolKey.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
 
 contract AetherRouterTest is Test {
     AetherRouter public router;
@@ -42,7 +44,13 @@ contract AetherRouterTest is Test {
         returns (PoolKey memory key, bytes32 poolId)
     {
         require(token0 < token1, "UNSORTED_TOKENS");
-        key = PoolKey({token0: token0, token1: token1, fee: fee, tickSpacing: tickSpacing, hooks: hooks});
+        key = PoolKey({
+            currency0: Currency.wrap(token0),
+            currency1: Currency.wrap(token1),
+            fee: fee,
+            tickSpacing: tickSpacing,
+            hooks: IHooks(hooks)
+        });
         poolId = keccak256(abi.encode(key));
     }
 
@@ -83,7 +91,8 @@ contract AetherRouterTest is Test {
         console.log("Mock contracts deployed.");
         console.log("Deploying router with owner:", address(this));
         // Deploy router with required constructor args
-        router = new AetherRouter(); // Default constructor takes no arguments
+        address mockRoleManager = address(0x5678);
+        router = new AetherRouter(); // Deploy Router with initialOwner
         console.log("Router deployed at:", address(router));
 
         // Create pools with proper token ordering

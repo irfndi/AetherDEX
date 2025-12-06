@@ -40,7 +40,7 @@ The fastest way to get started with AetherDEX APIs:
 
 ```javascript
 // Install the SDK
-npm install @aetherdex/sdk
+bun add @aetherdex/sdk
 
 // Initialize the client
 import { AetherDEXClient } from '@aetherdex/sdk';

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
+  "rules": {
+    "react": "warn",
+    "react-hooks": "error",
+    "jsx-a11y": "warn",
+    "typescript": "error",
+    "import": "warn",
+    "unicorn": "warn"
+  },
+  "env": {
+    "browser": true,
+    "es2022": true,
+    "node": true
+  },
+  "globals": {
+    "React": "readonly"
+  },
+  "ignore": [
+    "node_modules",
+    ".next",
+    "out",
+    "dist",
+    "build"
+  ]
+}

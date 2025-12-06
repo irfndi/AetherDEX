@@ -15,7 +15,9 @@ import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockLayerZeroEndpoint} from "./mocks/MockLayerZeroEndpoint.sol";
 import {MockPoolManager} from "./mocks/MockPoolManager.sol";
 import {IAetherPool} from "../src/interfaces/IAetherPool.sol";
-import {PoolKey} from "../src/types/PoolKey.sol";
+import {PoolKey} from "../lib/v4-core/src/types/PoolKey.sol";
+import {Currency} from "../lib/v4-core/src/types/Currency.sol";
+import {IHooks} from "../lib/v4-core/src/interfaces/IHooks.sol";
 import {AetherVault} from "../src/vaults/AetherVault.sol";
 import {AetherStrategy} from "../src/vaults/AetherStrategy.sol";
 import {AetherVaultFactory} from "../src/vaults/AetherVaultFactory.sol";
@@ -82,11 +84,11 @@ contract CrossChainBenchmarkTest is Test {
 
         // Register the placeholder pool with the manager
         PoolKey memory key = PoolKey({
-            token0: address(token0) < address(token1) ? address(token0) : address(token1), // Ensure sorted order for key
-            token1: address(token0) < address(token1) ? address(token1) : address(token0),
+            currency0: Currency.wrap(address(token0) < address(token1) ? address(token0) : address(token1)), // Ensure sorted order for key
+            currency1: Currency.wrap(address(token0) < address(token1) ? address(token1) : address(token0)),
             fee: 3000,
             tickSpacing: 60, // Assuming 60 for fee 3000
-            hooks: address(0) // No hook
+            hooks: IHooks(address(0)) // No hook
         });
         bytes32 poolId = keccak256(abi.encode(key));
         poolManager.setPool(poolId, placeholderPoolAddress);

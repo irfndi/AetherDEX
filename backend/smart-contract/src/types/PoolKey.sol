@@ -7,12 +7,15 @@ Email: join.mantap@gmail.com
 
 pragma solidity ^0.8.29;
 
+import {Currency} from "v4-core/types/Currency.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
+
 /// @title Pool Key struct
 /// @notice Contains all the necessary information to identify a pool
 struct PoolKey {
-    address token0;
-    address token1;
+    Currency currency0;
+    Currency currency1;
     uint24 fee;
     int24 tickSpacing;
-    address hooks;
+    IHooks hooks;
 }

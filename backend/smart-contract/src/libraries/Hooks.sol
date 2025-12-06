@@ -7,9 +7,9 @@ Email: join.mantap@gmail.com
 
 pragma solidity ^0.8.29;
 
-import {PoolKey} from "../types/PoolKey.sol";
+import {PoolKey} from "../../lib/v4-core/src/types/PoolKey.sol";
 import {IPoolManager} from "../interfaces/IPoolManager.sol";
-import {BalanceDelta} from "../interfaces/IPoolManager.sol";
+import {BalanceDelta} from "../types/BalanceDelta.sol";
 
 /**
  * @title Hooks
@@ -93,7 +93,11 @@ library Hooks {
         PoolKey memory, /*key*/
         IPoolManager.SwapParams memory, /*params*/
         bytes memory /*hookData*/
-    ) internal pure returns (bytes4) {
+    )
+        internal
+        pure
+        returns (bytes4)
+    {
         return BEFORE_SWAP_SELECTOR;
     }
 
@@ -103,7 +107,11 @@ library Hooks {
         IPoolManager.SwapParams memory, /*params*/
         BalanceDelta memory, /*delta*/
         bytes memory /*hookData*/
-    ) internal pure returns (bytes4) {
+    )
+        internal
+        pure
+        returns (bytes4)
+    {
         return AFTER_SWAP_SELECTOR;
     }
 
@@ -112,7 +120,11 @@ library Hooks {
         PoolKey memory, /*key*/
         IPoolManager.ModifyPositionParams memory, /*params*/
         bytes memory /*data*/
-    ) internal pure returns (bytes4) {
+    )
+        internal
+        pure
+        returns (bytes4)
+    {
         return BEFORE_MODIFY_POSITION_SELECTOR;
     }
 

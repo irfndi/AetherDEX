@@ -52,7 +52,10 @@ contract MockHyperlane {
         address, /* sender */
         address, /* recipient */
         bytes calldata /* message */
-    ) external payable {
+    )
+        external
+        payable
+    {
         _verified[origin][destination] = true;
     }
 
@@ -62,10 +65,18 @@ contract MockHyperlane {
     }
 
     // Implement estimateGasPayment function from IHyperlane interface
-    function estimateGasPayment(uint16, /* destination */ uint256 /* gasAmount */ ) external pure returns (uint256) {
+    function estimateGasPayment(
+        uint16,
+        /* destination */
+        uint256 /* gasAmount */
+    )
+        external
+        pure
+        returns (uint256)
+    {
         return 0.01 ether;
     }
-    
+
     // Implement depositToken function from IHyperlane interface
     function depositToken(address token, uint256 amount) external returns (bool) {
         depositedTokens[token] += amount;

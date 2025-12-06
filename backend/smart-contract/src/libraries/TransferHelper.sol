@@ -45,9 +45,10 @@ library TransferHelper {
      */
     function safeBalance(address token, address poolAddress) internal view returns (uint256) {
         // ADD poolAddress PARAMETER
-        (bool success, bytes memory data) = token.staticcall(
-            abi.encodeWithSelector(0x70a08231, poolAddress) // USE poolAddress PARAMETER
-        );
+        (bool success, bytes memory data) =
+            token.staticcall(
+                abi.encodeWithSelector(0x70a08231, poolAddress) // USE poolAddress PARAMETER
+            );
         require(success, "BALANCE_READ_FAILED");
         return abi.decode(data, (uint256));
     }

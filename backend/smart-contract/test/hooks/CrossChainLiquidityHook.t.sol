@@ -15,12 +15,15 @@ import {CrossChainLiquidityHook} from "../../src/hooks/CrossChainLiquidityHook.s
 import {ILayerZeroEndpoint} from "../../src/interfaces/ILayerZeroEndpoint.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {IPoolManager} from "../../src/interfaces/IPoolManager.sol";
-import {PoolKey} from "../../src/types/PoolKey.sol";
+import {PoolKey} from "../../lib/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {Hooks} from "../../src/libraries/Hooks.sol";
 import {MockPoolManager} from "../mocks/MockPoolManager.sol";
 import {HookFactory} from "../utils/HookFactory.sol";
-import {IAetherPool} from "../../src/interfaces/IAetherPool.sol"; // Correct interface import
+import {IAetherPool} from "../../src/interfaces/IAetherPool.sol";
+import {MockAetherPool} from "../mocks/MockAetherPool.sol";
 
 // Mock LayerZero Endpoint for testing
 contract MockLayerZeroEndpoint is ILayerZeroEndpoint {
@@ -58,7 +61,11 @@ contract MockLayerZeroEndpoint is ILayerZeroEndpoint {
         bytes calldata, /*_payload*/
         bool, /*useZro*/
         bytes calldata /*_adapterParam*/
-    ) external pure returns (uint256 nativeFee, uint256 zroFee) {
+    )
+        external
+        pure
+        returns (uint256 nativeFee, uint256 zroFee)
+    {
         return (0.01 ether, 0);
     }
 
@@ -93,13 +100,8 @@ contract CrossChainLiquidityHookTest is Test {
         mockEndpoint = new MockLayerZeroEndpoint();
         hookFactory = new HookFactory();
 
-        // Deploy Pool (using Vyper version via vm.deployCode)
-        bytes memory poolBytecode = vm.getCode("src/security/AetherPool.vy");
-        bytes memory constructorArgs = abi.encode(address(token0), address(token1), 3000); // Example fee
-        address deployedPoolAddress;
-        assembly { deployedPoolAddress := create(0, add(poolBytecode, 0x20), mload(poolBytecode)) }
-        require(deployedPoolAddress != address(0), "Pool deployment failed");
-        mockPool = IAetherPool(deployedPoolAddress); // Assign to interface variable
+        // Deploy Pool using MockAetherPool (solidity mock instead of Vyper)
+        mockPool = IAetherPool(address(new MockAetherPool(address(token0), address(token1), 3000)));
 
         // Deploy the actual Pool Manager mock AFTER other mocks
         mockPoolManager = new MockPoolManager(address(0)); // Pass address(0) as initial hook address
@@ -113,11 +115,11 @@ contract CrossChainLiquidityHookTest is Test {
 
         // Define PoolKey
         key = PoolKey({
-            token0: address(token0) < address(token1) ? address(token0) : address(token1),
-            token1: address(token0) < address(token1) ? address(token1) : address(token0),
+            currency0: Currency.wrap(address(token0) < address(token1) ? address(token0) : address(token1)),
+            currency1: Currency.wrap(address(token0) < address(token1) ? address(token1) : address(token0)),
             fee: 3000,
             tickSpacing: 60,
-            hooks: address(hook) // The hook itself is the hook address
+            hooks: IHooks(address(hook)) // The hook itself is the hook address
         });
 
         // --- ADDED: Register the pool with the MockPoolManager --- //

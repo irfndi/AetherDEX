@@ -13,9 +13,9 @@ pragma solidity ^0.8.29;
  * Allows tests to impersonate this contract to call strategy-only functions.
  */
 contract MockStrategy {
-// This contract can be empty for testing purposes,
-// as its primary role is to provide an address for the 'onlyStrategy' modifier.
+    // This contract can be empty for testing purposes,
+    // as its primary role is to provide an address for the 'onlyStrategy' modifier.
+    // Optional: Add a dummy function if interaction is needed later
+    // function executeStrategyAction() external {}
 
-// Optional: Add a dummy function if interaction is needed later
-// function executeStrategyAction() external {}
-}
+    }

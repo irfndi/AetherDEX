@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # JavaScript/TypeScript dependencies for web interface (using Bun)
+  # JavaScript/TypeScript dependencies for web interface (using Bun - npm ecosystem for compatibility)
   - package-ecosystem: "npm"
     directory: "/interface/web"
     schedule:

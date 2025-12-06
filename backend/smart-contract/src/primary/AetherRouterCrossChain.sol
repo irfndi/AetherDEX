@@ -9,14 +9,16 @@ pragma solidity ^0.8.29;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol"; 
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {ICCIPRouter} from "../interfaces/ICCIPRouter.sol";
 import {IHyperlane} from "../interfaces/IHyperlane.sol";
-import {IAetherPool} from "../interfaces/IAetherPool.sol"; 
-import {IPoolManager} from "../interfaces/IPoolManager.sol"; 
-import {AetherFactory} from "./AetherFactory.sol"; 
-import {PoolKey} from "../types/PoolKey.sol";
+import {IAetherPool} from "../interfaces/IAetherPool.sol";
+import {IPoolManager} from "../interfaces/IPoolManager.sol";
+import {AetherFactory} from "./AetherFactory.sol";
+import {PoolKey} from "../../lib/v4-core/src/types/PoolKey.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {BalanceDelta} from "../types/BalanceDelta.sol";
 import {Hooks} from "../libraries/Hooks.sol";
 import {Errors} from "../libraries/Errors.sol";
@@ -24,7 +26,7 @@ import {FixedPoint} from "../libraries/FixedPoint.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {BaseRouter} from "./BaseRouter.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Errors} from "../libraries/Errors.sol"; 
+import {Errors} from "../libraries/Errors.sol";
 
 // Error definitions
 error InvalidAmount(uint256 amount);
@@ -171,7 +173,7 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
     IHyperlane public immutable hyperlane;
     IERC20 public immutable linkToken;
     IPoolManager public immutable poolManager;
-    AetherFactory public immutable factory; 
+    AetherFactory public immutable factory;
 
     // Fee tracking
     uint256 public totalFees;
@@ -200,10 +202,10 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
     mapping(bytes32 => FailedOperation) public failedOperations;
 
     // Security enhancements
-    uint256 public maxSlippage = 300; 
+    uint256 public maxSlippage = 300;
     uint256 public constant MIN_FEE = 0.1 ether;
     uint256 public constant MAX_FEE = 1 ether;
-    uint256 public constant MAX_CHAIN_ID = 100_000; 
+    uint256 public constant MAX_CHAIN_ID = 100_000;
 
     modifier validSlippage(uint256 slippage) {
         require(slippage <= maxSlippage, "Slippage too high");
@@ -226,13 +228,13 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
      * @param _maxSlippage Maximum allowed slippage
      */
     constructor(
-        address initialOwner, 
+        address initialOwner,
         address _ccipRouter,
         address _hyperlane,
         address _linkToken,
         address _poolManager,
-        address _factory, 
-        uint256 _maxSlippage 
+        address _factory,
+        uint256 _maxSlippage
     ) Ownable(initialOwner) Pausable() {
         if (initialOwner == address(0)) revert Errors.ZeroAddress();
         if (_ccipRouter == address(0)) revert Errors.ZeroAddress();
@@ -246,8 +248,8 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
         hyperlane = IHyperlane(_hyperlane);
         linkToken = IERC20(_linkToken);
         poolManager = IPoolManager(_poolManager);
-        factory = AetherFactory(_factory); 
-        maxSlippage = _maxSlippage; 
+        factory = AetherFactory(_factory);
+        maxSlippage = _maxSlippage;
     }
 
     /**
@@ -274,11 +276,11 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
      * @param amount Amount to distribute
      */
     function distributeFees(uint256 amount) external onlyOwner nonReentrant {
-        require(amount <= totalFees, "Insufficient fees"); 
-        totalFees -= amount; 
+        require(amount <= totalFees, "Insufficient fees");
+        totalFees -= amount;
 
         (bool success,) = payable(owner()).call{value: amount}("");
-        require(success, "FEE_DISTRIBUTE_FAILED"); 
+        require(success, "FEE_DISTRIBUTE_FAILED");
 
         emit FeeDistributed(amount);
     }
@@ -289,8 +291,8 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
      * @param amount Amount to refund
      */
     function refundExcessFee(uint256 amount) external nonReentrant {
-        require(amount > 0, "Invalid refund amount"); 
-        require(amount <= address(this).balance, "Insufficient contract balance"); 
+        require(amount > 0, "Invalid refund amount");
+        require(amount <= address(this).balance, "Insufficient contract balance");
 
         emit ExcessFeeRefunded(msg.sender, amount);
 
@@ -304,13 +306,13 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
      */
     function recoverFailedOperation(bytes32 operationId) external nonReentrant {
         FailedOperation storage operation = failedOperations[operationId];
-        if (operation.user != msg.sender) revert UnauthorizedAccess(msg.sender); 
-        if (operation.state == OperationState.Recovered) revert InvalidState(); 
+        if (operation.user != msg.sender) revert UnauthorizedAccess(msg.sender);
+        if (operation.state == OperationState.Recovered) revert InvalidState();
 
         IERC20(operation.tokenIn).safeTransfer(operation.user, operation.amount);
 
-        operation.state = OperationState.Recovered; 
-        emit StateRecovered(operation.user, operationId); 
+        operation.state = OperationState.Recovered;
+        emit StateRecovered(operation.user, operationId);
     }
 
     /**
@@ -343,7 +345,7 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
         require(amountIn > 0 && amountIn <= type(uint128).max, "Invalid amountIn");
         require(chainId > 0, "Invalid chainId");
 
-        amountOut = amountIn * 98 / 100; 
+        amountOut = amountIn * 98 / 100;
         routeData = abi.encode(Route({pools: new address[](1), amounts: new uint256[](1), data: new bytes[](1)}));
     }
 
@@ -372,16 +374,11 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
 
         PoolKey memory key = _prepareSwap(tokenIn, tokenOut, fee);
 
-        (BalanceDelta memory balanceDelta, bool zeroForOne) = _executePoolSwap(key, tokenIn, amountIn); 
+        (BalanceDelta memory balanceDelta, bool zeroForOne) = _executePoolSwap(key, tokenIn, amountIn);
 
-        amountOut = _processSwapOutput(
-            key,
-            amountOutMin,
-            balanceDelta,
-            zeroForOne 
-        );
+        amountOut = _processSwapOutput(key, amountOutMin, balanceDelta, zeroForOne);
 
-        emit RouteExecuted(msg.sender, tokenIn, tokenOut, amountIn, amountOut, 0, bytes32(0)); 
+        emit RouteExecuted(msg.sender, tokenIn, tokenOut, amountIn, amountOut, 0, bytes32(0));
     }
 
     /**
@@ -395,10 +392,12 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
         uint24 fee,
         uint256 deadline
     ) internal view {
-        if (tokenIn == address(0) || tokenIn.code.length == 0) revert InvalidTokenAddress(tokenIn);
+        if (tokenIn == address(0) || tokenIn.code.length == 0) {
+            revert InvalidTokenAddress(tokenIn);
+        }
         if (tokenOut == address(0) || tokenOut.code.length == 0) revert InvalidTokenAddress(tokenOut);
         if (tokenIn == tokenOut) revert InvalidTokenAddress(tokenOut);
-        if (tokenIn >= tokenOut) revert InvalidTokenAddress(tokenIn); 
+        if (tokenIn >= tokenOut) revert InvalidTokenAddress(tokenIn);
         if (amountIn == 0 || amountIn > type(uint128).max) revert InvalidAmount(amountIn);
         if (deadline != 0 && deadline < block.timestamp) revert ExpiredDeadline();
         if (amountOutMin == 0) revert InvalidAmount(amountOutMin);
@@ -415,11 +414,11 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
         address _token1 = tokenIn < tokenOut ? tokenOut : tokenIn;
 
         key = PoolKey({
-            token0: _token0,
-            token1: _token1,
+            currency0: Currency.wrap(_token0),
+            currency1: Currency.wrap(_token1),
             fee: fee,
-            tickSpacing: 0, 
-            hooks: address(0) 
+            tickSpacing: 0,
+            hooks: IHooks(address(0))
         });
     }
 
@@ -435,14 +434,14 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
         internal
         returns (BalanceDelta memory balanceDelta, bool zeroForOne)
     {
-        zeroForOne = tokenIn == key.token0;
+        zeroForOne = tokenIn == Currency.unwrap(key.currency0);
 
         address poolAddress = poolManager.getPool(key);
         if (poolAddress == address(0)) revert Errors.InvalidPath(); // Using InvalidPath for pool not found
 
         _transferToPool(tokenIn, poolAddress, amountIn);
 
-        uint256 amountOut = _swap(poolAddress, amountIn, tokenIn, address(this), 0); 
+        uint256 amountOut = _swap(poolAddress, amountIn, tokenIn, address(this), 0);
         int256 amount0Delta;
         int256 amount1Delta;
         if (zeroForOne) {
@@ -467,23 +466,25 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
         PoolKey memory key,
         uint256 amountOutMin,
         BalanceDelta memory balanceDelta,
-        bool zeroForOne 
+        bool zeroForOne
     ) internal returns (uint256 amountOut) {
         if (zeroForOne) {
-            if (balanceDelta.amount0 >= 0) revert SwapFailed("z4o: Router delta shows no token0 sent");
+            if (balanceDelta.amount0 >= 0) {
+                revert SwapFailed("z4o: Router delta shows no token0 sent");
+            }
             if (balanceDelta.amount1 <= 0) revert SwapFailed("z4o: Router delta shows no token1 received");
-            amountOut = uint256(balanceDelta.amount1); 
+            amountOut = uint256(balanceDelta.amount1);
         } else {
             if (balanceDelta.amount1 >= 0) revert SwapFailed("o4z: Router delta shows no token1 sent");
             if (balanceDelta.amount0 <= 0) revert SwapFailed("o4z: Router delta shows no token0 received");
-            amountOut = uint256(balanceDelta.amount0); 
+            amountOut = uint256(balanceDelta.amount0);
         }
 
         if (amountOut < amountOutMin) {
             revert InsufficientOutputAmount(amountOut, amountOutMin);
         }
 
-        address tokenOutAddress = zeroForOne ? key.token1 : key.token0;
+        address tokenOutAddress = zeroForOne ? Currency.unwrap(key.currency1) : Currency.unwrap(key.currency0);
         if (IERC20(tokenOutAddress).balanceOf(address(this)) < amountOut) {
             revert Errors.InsufficientLiquidity(); // Using InsufficientLiquidity for insufficient output token balance
         }
@@ -518,7 +519,7 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
         uint256 hyperlaneFee = hyperlane.quoteDispatch(dstChain, "");
 
         useCCIP = ccipFee <= hyperlaneFee;
-        amountOut = amountIn * 95 / 100; 
+        amountOut = amountIn * 95 / 100;
         routeData = abi.encode(Route({pools: new address[](2), amounts: new uint256[](2), data: new bytes[](2)}));
     }
 
@@ -613,7 +614,7 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
 
         IERC20(params.tokenIn).safeTransferFrom(msg.sender, address(this), params.amountIn);
 
-        uint256 bridgeAmount = params.amountOutMin; 
+        uint256 bridgeAmount = params.amountOutMin;
         bytes memory payload = abi.encode(params.tokenOut, bridgeAmount, params.recipient);
 
         (bool useCCIP, uint256 actualFee) = _determineBridgeProtocol(params.dstChain, params.recipient, payload);
@@ -632,7 +633,7 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
             params.tokenIn,
             params.tokenOut,
             params.amountIn,
-            bridgeAmount, 
+            bridgeAmount,
             params.srcChain,
             params.dstChain,
             routeHash
@@ -683,9 +684,9 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
             try ccipRouter.sendMessage{value: actualFee}(dstChain, recipient, payload) returns (bytes32 messageId) {
                 require(messageId != bytes32(0), "CCIP sendMessage failed: Invalid message ID");
             } catch Error(string memory reason) {
-                revert OperationFailed(reason); 
+                revert OperationFailed(reason);
             } catch (bytes memory lowLevelData) {
-                revert OperationFailed(string(lowLevelData)); 
+                revert OperationFailed(string(lowLevelData));
             }
         } else {
             try hyperlane.dispatch{value: actualFee}(dstChain, abi.encodePacked(recipient), payload) returns (
@@ -732,8 +733,8 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
 
             totalBridgeFee += ccipFee < hyperlaneFee ? ccipFee : hyperlaneFee;
 
-            amounts[i + 1] = amounts[i] * 98 / 100; 
-            routeData[i] = abi.encode(i); 
+            amounts[i + 1] = amounts[i] * 98 / 100;
+            routeData[i] = abi.encode(i);
         }
     }
 
@@ -758,6 +759,28 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
         uint16[] calldata path,
         bytes[] calldata routeData
     ) external payable nonReentrant whenNotPaused validFee(msg.value) returns (uint256 amountOut) {
+        _validateMultiPathParams(tokenIn, tokenOut, amountIn, recipient, path, routeData);
+
+        IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
+        uint256 currentAmount = amountIn;
+
+        for (uint256 i = 0; i < path.length - 1; i++) {
+            currentAmount = currentAmount * 98 / 100;
+            currentAmount = _executeBridgeHop(tokenIn, tokenOut, currentAmount, recipient, path[i + 1], i % 2 == 0);
+        }
+
+        require(currentAmount >= amountOutMin, "Insufficient output amount");
+        return currentAmount;
+    }
+
+    function _validateMultiPathParams(
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn,
+        address recipient,
+        uint16[] calldata path,
+        bytes[] calldata routeData
+    ) private view {
         if (tokenIn.code.length == 0) revert InvalidTokenAddress(tokenIn);
         if (tokenOut.code.length == 0) revert InvalidTokenAddress(tokenOut);
         if (amountIn == 0 || amountIn > type(uint128).max) revert InvalidAmount(amountIn);
@@ -765,38 +788,33 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
         if (path.length <= 1) revert InvalidPathLength(path.length);
         if (path.length != routeData.length + 1) revert InvalidRouteData(path.length, routeData.length);
         if (msg.value == 0) revert InsufficientFee(0.1 ether, msg.value);
+    }
 
-        IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
-        uint256 currentAmount = amountIn;
+    function _executeBridgeHop(
+        address tokenIn,
+        address tokenOut,
+        uint256 amount,
+        address recipient,
+        uint16 dstChain,
+        bool useCCIP
+    ) private returns (uint256) {
+        bytes memory payload = abi.encode(tokenOut, amount, recipient);
 
-        for (uint256 i = 0; i < path.length - 1; i++) {
-            currentAmount = currentAmount * 98 / 100;
-            bytes memory payload = abi.encode(tokenOut, currentAmount, recipient);
-            bool useCCIP = i % 2 == 0;
-            
-            // Approve tokens for the appropriate bridge before sending the message
-            if (useCCIP) {
-                _safeApprove(tokenIn, address(ccipRouter), currentAmount);
-                // Send tokens to the CCIP router
-                bool depositSuccess = ccipRouter.depositToken(tokenIn, currentAmount);
-                require(depositSuccess, "CCIP token deposit failed");
-                
-                bytes32 messageId = ccipRouter.sendMessage{value: 0.1 ether}(path[i + 1], recipient, payload);
-                require(messageId != bytes32(0), "CCIP sendMessage failed in multi-path");
-            } else {
-                _safeApprove(tokenIn, address(hyperlane), currentAmount);
-                // Send tokens to the Hyperlane router
-                bool depositSuccess = hyperlane.depositToken(tokenIn, currentAmount);
-                require(depositSuccess, "Hyperlane token deposit failed");
-                
-                bytes32 messageId =
-                    hyperlane.dispatch{value: 0.1 ether}(path[i + 1], abi.encodePacked(recipient), payload);
-                require(messageId != bytes32(0), "Hyperlane dispatch failed in multi-path");
-            }
+        if (useCCIP) {
+            _safeApprove(tokenIn, address(ccipRouter), amount);
+            require(ccipRouter.depositToken(tokenIn, amount), "CCIP token deposit failed");
+
+            bytes32 messageId = ccipRouter.sendMessage{value: 0.1 ether}(dstChain, recipient, payload);
+            require(messageId != bytes32(0), "CCIP sendMessage failed in multi-path");
+        } else {
+            _safeApprove(tokenIn, address(hyperlane), amount);
+            require(hyperlane.depositToken(tokenIn, amount), "Hyperlane token deposit failed");
+
+            bytes32 messageId = hyperlane.dispatch{value: 0.1 ether}(dstChain, abi.encodePacked(recipient), payload);
+            require(messageId != bytes32(0), "Hyperlane dispatch failed in multi-path");
         }
 
-        require(currentAmount >= amountOutMin, "Insufficient output amount");
-        return currentAmount;
+        return amount;
     }
 
     /**
@@ -815,8 +833,8 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
      * @param newMaxSlippage New maximum slippage value
      */
     function setMaxSlippage(uint256 newMaxSlippage) external onlyOwner {
-        require(newMaxSlippage <= 1000, "Max slippage too high"); 
-        maxSlippage = newMaxSlippage; 
+        require(newMaxSlippage <= 1000, "Max slippage too high");
+        maxSlippage = newMaxSlippage;
     }
 
     receive() external payable {}
@@ -830,10 +848,11 @@ contract AetherRouterCrossChain is BaseRouter, Ownable, Pausable {
 
     function _safeApprove(address token, address spender, uint256 value) internal {
         // Reset approval to 0 first for tokens that require it (like USDT)
-        try IERC20(token).approve(spender, 0) {} catch {
+        try IERC20(token).approve(spender, 0) {}
+        catch {
             revert Errors.ApprovalFailed();
         }
-        
+
         // Then set the approval to the desired value
         bool success = IERC20(token).approve(spender, value);
         if (!success) revert Errors.ApprovalFailed();

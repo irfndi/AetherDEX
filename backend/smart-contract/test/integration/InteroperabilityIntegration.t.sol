@@ -119,7 +119,7 @@ contract InteroperabilityIntegrationTest is Test, IEvents {
         );
     }
 
-    function test_Hyperlane_MessageDelivery() public {        
+    function test_Hyperlane_MessageDelivery() public {
         uint256 amount = 100 ether;
         tokenA.approve(address(router), amount);
 
@@ -127,23 +127,15 @@ contract InteroperabilityIntegrationTest is Test, IEvents {
         uint256 hyperlaneFee = hyperlane.quoteDispatch(ARBITRUM_CHAIN_ID, "");
 
         // Mock Hyperlane depositToken to return true
-        vm.mockCall(
-            address(hyperlane),
-            abi.encodeWithSelector(hyperlane.depositToken.selector),
-            abi.encode(true)
-        );
-        
+        vm.mockCall(address(hyperlane), abi.encodeWithSelector(hyperlane.depositToken.selector), abi.encode(true));
+
         // Mock Hyperlane dispatch to return a valid message ID
         bytes32 mockMessageId = bytes32(uint256(1)); // Non-zero message ID
-        vm.mockCall(
-            address(hyperlane),
-            abi.encodeWithSelector(hyperlane.dispatch.selector),
-            abi.encode(mockMessageId)
-        );
-        
+        vm.mockCall(address(hyperlane), abi.encodeWithSelector(hyperlane.dispatch.selector), abi.encode(mockMessageId));
+
         // Record the initial balance of tokenA
         uint256 initialBalance = tokenA.balanceOf(address(this));
-        
+
         // Execute cross-chain transfer using Hyperlane
         router.executeCrossChainRoute{value: hyperlaneFee}(
             address(tokenA),
@@ -155,11 +147,11 @@ contract InteroperabilityIntegrationTest is Test, IEvents {
             ARBITRUM_CHAIN_ID,
             ""
         );
-        
+
         // Verify that tokenA was transferred from the sender
         uint256 finalBalance = tokenA.balanceOf(address(this));
         assertEq(finalBalance, initialBalance - amount, "TokenA should be transferred from sender");
-        
+
         // Verify that the Hyperlane depositToken function was called
         // This is implicitly verified by our mock setup, as the test would fail if it wasn't called
     }
