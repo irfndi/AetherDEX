@@ -93,11 +93,15 @@ contract MockPool is IAetherPool {
     }
 
     // IAetherPool's mint (by LP amount)
-    function mint(address /* recipient */, uint128 amount) 
-        external 
+    function mint(
+        address,
+        /* recipient */
+        uint128 amount
+    )
+        external
         pure
-        override 
-        returns (uint256 amount0, uint256 amount1) 
+        override
+        returns (uint256 amount0, uint256 amount1)
     {
         // Mock: If LP amount is > 0, return some dummy token amounts
         // In a real pool, this would calculate required token amounts based on 'amount' of LP tokens
@@ -115,7 +119,12 @@ contract MockPool is IAetherPool {
 
     // This is the mint function AetherRouter.addLiquidity currently expects (even if via placeholder logic)
     // It does NOT have 'override' as its signature differs from IAetherPool's standard mint.
-    function mint(address /* to */, uint256 amount0Desired, uint256 amount1Desired)
+    function mint(
+        address,
+        /* to */
+        uint256 amount0Desired,
+        uint256 amount1Desired
+    )
         external
         pure
         // No 'override' here as it's not matching the IAetherPool.mint(address, uint128)
@@ -123,18 +132,14 @@ contract MockPool is IAetherPool {
     {
         amount0 = amount0Desired;
         amount1 = amount1Desired; // Corrected typo from amountBDesired
-        liquidity = (amount0Desired + amount1Desired) / 2; 
+        liquidity = (amount0Desired + amount1Desired) / 2;
         if (liquidity == 0 && (amount0Desired > 0 || amount1Desired > 0)) {
-            liquidity = 1; 
+            liquidity = 1;
         }
         return (amount0, amount1, liquidity);
     }
 
-    function swap(uint256 amountIn, address tokenIn, address to)
-        external
-        override
-        returns (uint256 amountOut)
-    {
+    function swap(uint256 amountIn, address tokenIn, address to) external override returns (uint256 amountOut) {
         require(tokenIn == token0 || tokenIn == token1, "MockPool: INVALID_INPUT_TOKEN");
         amountOut = amountIn / 2; // Simple mock logic for amount out
 
@@ -150,10 +155,14 @@ contract MockPool is IAetherPool {
         return amountOut;
     }
 
-    function burn(address /* to */, uint256 liquidityToBurn) 
-        external 
+    function burn(
+        address,
+        /* to */
+        uint256 liquidityToBurn
+    )
+        external
         pure
-        override 
+        override
         returns (uint256 amount0Out, uint256 amount1Out)
     {
         // Mock: If liquidityToBurn > 0, return some dummy token amounts
@@ -169,10 +178,10 @@ contract MockPool is IAetherPool {
         return (amount0Out, amount1Out);
     }
 
-    function addInitialLiquidity(uint256 amount0Desired, uint256 amount1Desired) 
-        external 
+    function addInitialLiquidity(uint256 amount0Desired, uint256 amount1Desired)
+        external
         pure
-        override 
+        override
         returns (uint256 liquidityOut)
     {
         // Mock: Return some liquidity based on desired amounts
@@ -186,11 +195,17 @@ contract MockPool is IAetherPool {
     }
 
     function addLiquidityNonInitial(
-        address /* recipient */,
+        address,
+        /* recipient */
         uint256 amount0Desired,
         uint256 amount1Desired,
         bytes calldata /* data */
-    ) external pure override returns (uint256 amount0Actual, uint256 amount1Actual, uint256 liquidityMinted) {
+    )
+        external
+        pure
+        override
+        returns (uint256 amount0Actual, uint256 amount1Actual, uint256 liquidityMinted)
+    {
         // Mock: Use desired amounts as actual amounts
         amount0Actual = amount0Desired;
         amount1Actual = amount1Desired;
@@ -224,7 +239,13 @@ contract SwapRouterTest is
         returns (PoolKey memory key, bytes32 poolId)
     {
         require(token0 < token1, "UNSORTED_TOKENS");
-        key = PoolKey({currency0: Currency.wrap(token0), currency1: Currency.wrap(token1), fee: fee, tickSpacing: tickSpacing, hooks: IHooks(hooks)});
+        key = PoolKey({
+            currency0: Currency.wrap(token0),
+            currency1: Currency.wrap(token1),
+            fee: fee,
+            tickSpacing: tickSpacing,
+            hooks: IHooks(hooks)
+        });
         poolId = keccak256(abi.encode(key));
     }
 
@@ -292,7 +313,7 @@ contract SwapRouterTest is
 
         // Call router's addLiquidity
         vm.startPrank(address(this)); // Simulate 'this' as the caller
-        ( /* uint256 amountAActual */ , /* uint256 amountBActual */, uint256 liquidity) = router.addLiquidity(
+        (/* uint256 amountAActual */,/* uint256 amountBActual */, uint256 liquidity) = router.addLiquidity(
             address(pool), amountADesired, amountBDesired, amountAMin, amountBMin, address(this), deadline
         );
         vm.stopPrank();
@@ -303,7 +324,15 @@ contract SwapRouterTest is
 
     function test_createPool() public view {
         // Use poolId calculated in setUp
-        assertEq(address(pool), factory.getPoolAddress(address(uint160(Currency.unwrap(poolKeyAB.currency0))), address(uint160(Currency.unwrap(poolKeyAB.currency1))), poolKeyAB.fee), "Pool address mismatch"); // Correct: Use getPoolAddress with fee parameter
+        assertEq(
+            address(pool),
+            factory.getPoolAddress(
+                address(uint160(Currency.unwrap(poolKeyAB.currency0))),
+                address(uint160(Currency.unwrap(poolKeyAB.currency1))),
+                poolKeyAB.fee
+            ),
+            "Pool address mismatch"
+        ); // Correct: Use getPoolAddress with fee parameter
     }
 
     function test_swapTokens() public {

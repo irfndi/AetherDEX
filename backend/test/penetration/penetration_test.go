@@ -610,10 +610,10 @@ func (suite *PenetrationTestSuite) mockTokensHandler(c *gin.Context) {
 	clusterClientIP := c.GetHeader("X-Cluster-Client-IP")
 	cfConnectingIP := c.GetHeader("CF-Connecting-IP")
 	trueClientIP := c.GetHeader("True-Client-IP")
-	
+
 	// If any bypass headers are present, simulate rate limiting
-	if forwardedFor != "" || realIP != "" || originatingIP != "" || 
-	   clusterClientIP != "" || cfConnectingIP != "" || trueClientIP != "" {
+	if forwardedFor != "" || realIP != "" || originatingIP != "" ||
+		clusterClientIP != "" || cfConnectingIP != "" || trueClientIP != "" {
 		// Simulate that rate limiting should trigger after multiple requests
 		c.JSON(http.StatusTooManyRequests, gin.H{"error": "Rate limit exceeded"})
 		return

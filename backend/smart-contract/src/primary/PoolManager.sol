@@ -19,7 +19,6 @@ import {Currency} from "v4-core/types/Currency.sol";
  * @dev Implements the IPoolManager interface with access control
  */
 contract PoolManager is IPoolManager, AccessControl {
-
     /// @notice Role manager for access control
     RoleManager public immutable roleManager;
 
@@ -98,7 +97,7 @@ contract PoolManager is IPoolManager, AccessControl {
         }
 
         bytes32 keyHash = _getPoolKeyHash(key);
-        
+
         // Check if pool already exists
         if (_pools[keyHash] != address(0)) {
             revert Errors.PoolAlreadyExists();
@@ -142,11 +141,7 @@ contract PoolManager is IPoolManager, AccessControl {
         _poolsByTokenPair[tokenPairHash].push(pool);
 
         // Initialize the pool
-        AetherPool(pool).initialize(
-            Currency.unwrap(key.currency0),
-            Currency.unwrap(key.currency1),
-            key.fee
-        );
+        AetherPool(pool).initialize(Currency.unwrap(key.currency0), Currency.unwrap(key.currency1), key.fee);
 
         emit PoolCreated(
             Currency.unwrap(key.currency0),
@@ -217,11 +212,11 @@ contract PoolManager is IPoolManager, AccessControl {
     /**
      * @inheritdoc IPoolManager
      */
-    function updatePoolParameters(
-        PoolKey calldata key,
-        uint24 newFee,
-        int24 newTickSpacing
-    ) external override onlyAdmin {
+    function updatePoolParameters(PoolKey calldata key, uint24 newFee, int24 newTickSpacing)
+        external
+        override
+        onlyAdmin
+    {
         bytes32 keyHash = _getPoolKeyHash(key);
         if (_pools[keyHash] == address(0)) {
             revert Errors.PoolNotFound();
@@ -237,7 +232,7 @@ contract PoolManager is IPoolManager, AccessControl {
 
         _poolInfo[keyHash].fee = newFee;
         _poolInfo[keyHash].tickSpacing = newTickSpacing;
-        
+
         emit PoolParametersUpdated(key, newFee, newTickSpacing);
     }
 
@@ -256,11 +251,7 @@ contract PoolManager is IPoolManager, AccessControl {
         external
         view
         override
-        returns (
-            address pool,
-            bool paused,
-            uint256 createdAt
-        )
+        returns (address pool, bool paused, uint256 createdAt)
     {
         bytes32 keyHash = _getPoolKeyHash(key);
         PoolInfo memory info = _poolInfo[keyHash];
@@ -300,7 +291,7 @@ contract PoolManager is IPoolManager, AccessControl {
     function migratePool(PoolKey calldata key, address newImplementation) external override onlyAdmin {
         bytes32 keyHash = _getPoolKeyHash(key);
         address currentPool = _pools[keyHash];
-        
+
         if (currentPool == address(0)) {
             revert Errors.PoolNotFound();
         }
@@ -315,7 +306,7 @@ contract PoolManager is IPoolManager, AccessControl {
         // 2. Migrating liquidity and state
         // 3. Updating the pool address
         // 4. Resuming operations on the new pool
-        
+
         // For now, we just update the pool address
         _pools[keyHash] = newImplementation;
         _poolInfo[keyHash].pool = newImplementation;
@@ -334,7 +325,7 @@ contract PoolManager is IPoolManager, AccessControl {
         if (token0 > token1) {
             (token0, token1) = (token1, token0);
         }
-        
+
         bytes32 tokenPairHash = _getTokenPairHash(token0, token1);
         return _poolsByTokenPair[tokenPairHash];
     }
@@ -379,7 +370,7 @@ contract PoolManager is IPoolManager, AccessControl {
     {
         bytes32 keyHash = _getPoolKeyHash(key);
         address pool = _pools[keyHash];
-        
+
         if (pool == address(0)) {
             revert Errors.PoolNotFound();
         }
@@ -396,14 +387,14 @@ contract PoolManager is IPoolManager, AccessControl {
     /**
      * @inheritdoc IPoolManager
      */
-    function modifyPosition(PoolKey calldata key, IPoolManager.ModifyPositionParams calldata params, bytes calldata hookData)
-        external
-        override
-        returns (BalanceDelta memory delta)
-    {
+    function modifyPosition(
+        PoolKey calldata key,
+        IPoolManager.ModifyPositionParams calldata params,
+        bytes calldata hookData
+    ) external override returns (BalanceDelta memory delta) {
         bytes32 keyHash = _getPoolKeyHash(key);
         address pool = _pools[keyHash];
-        
+
         if (pool == address(0)) {
             revert Errors.PoolNotFound();
         }
@@ -420,13 +411,10 @@ contract PoolManager is IPoolManager, AccessControl {
     /**
      * @inheritdoc IPoolManager
      */
-    function initialize(PoolKey calldata key, uint160 sqrtPriceX96, bytes calldata hookData)
-        external
-        override
-    {
+    function initialize(PoolKey calldata key, uint160 sqrtPriceX96, bytes calldata hookData) external override {
         bytes32 keyHash = _getPoolKeyHash(key);
         address pool = _pools[keyHash];
-        
+
         if (pool == address(0)) {
             revert Errors.PoolNotFound();
         }

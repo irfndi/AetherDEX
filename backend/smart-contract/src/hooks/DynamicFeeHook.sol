@@ -28,7 +28,7 @@ contract DynamicFeeHook is
 {
     /// @notice Reference to the fee registry contract
     FeeRegistry public immutable feeRegistry;
-    
+
     // Volatility tracking
     struct VolatilityData {
         uint256 priceSum;
@@ -37,7 +37,7 @@ contract DynamicFeeHook is
         uint256 lastUpdateTime;
         uint256 lastPrice;
     }
-    
+
     // Liquidity depth tracking
     struct LiquidityData {
         uint256 totalLiquidity;
@@ -46,7 +46,7 @@ contract DynamicFeeHook is
         uint256 averageTradeSize;
         uint256 tradeCount;
     }
-    
+
     // Market condition tracking
     struct MarketCondition {
         uint256 volatilityScore; // 0-10000 (basis points)
@@ -54,35 +54,39 @@ contract DynamicFeeHook is
         uint256 activityScore; // 0-10000 (basis points)
         uint256 lastCalculated;
     }
-    
+
     // Pool-specific data
     mapping(bytes32 => VolatilityData) public poolVolatility;
     mapping(bytes32 => LiquidityData) public poolLiquidity;
     mapping(bytes32 => MarketCondition) public poolMarketCondition;
-    
+
     // Time windows for calculations
     uint256 public constant VOLATILITY_WINDOW = 1 hours;
     uint256 public constant LIQUIDITY_WINDOW = 30 minutes;
     uint256 public constant MARKET_CONDITION_WINDOW = 15 minutes;
-    
+
     // Volatility thresholds
     uint256 public constant LOW_VOLATILITY_THRESHOLD = 100; // 1%
     uint256 public constant HIGH_VOLATILITY_THRESHOLD = 500; // 5%
-    
+
     // Liquidity thresholds
     uint256 public constant LOW_LIQUIDITY_THRESHOLD = 1000e18;
     uint256 public constant HIGH_LIQUIDITY_THRESHOLD = 100000e18;
-    
+
     /// @notice Emitted when a pool's fee is updated
     /// @param token0 The first token in the pair
     /// @param token1 The second token in the pair
     /// @param newFee The updated fee value
     /// @param volatilityScore The volatility score used in calculation
     /// @param liquidityScore The liquidity score used in calculation
-    event FeeUpdated(address indexed token0, address indexed token1, uint24 newFee, uint256 volatilityScore, uint256 liquidityScore);
-    
+    event FeeUpdated(
+        address indexed token0, address indexed token1, uint24 newFee, uint256 volatilityScore, uint256 liquidityScore
+    );
+
     /// @notice Emitted when market conditions are updated
-    event MarketConditionUpdated(bytes32 indexed poolId, uint256 volatilityScore, uint256 liquidityScore, uint256 activityScore);
+    event MarketConditionUpdated(
+        bytes32 indexed poolId, uint256 volatilityScore, uint256 liquidityScore, uint256 activityScore
+    );
 
     // Enhanced constants for fee calculation
     /// @notice Minimum fee value (0.01%)
@@ -97,7 +101,7 @@ contract DynamicFeeHook is
     uint256 private constant VOLUME_THRESHOLD = 1000e18;
     /// @notice Maximum volume multiplier to prevent excessive fees
     uint256 private constant MAX_VOLUME_MULTIPLIER = 5;
-    
+
     // Fee adjustment factors
     uint256 public constant VOLATILITY_MULTIPLIER = 2000; // 20% max adjustment
     uint256 public constant LIQUIDITY_MULTIPLIER = 1500; // 15% max adjustment
@@ -181,31 +185,37 @@ contract DynamicFeeHook is
         bytes calldata
     ) external override nonReentrant returns (bytes4) {
         bytes32 poolId = keccak256(abi.encode(key));
-        
+
         // Calculate swap volume and price impact
         int256 swapVolume = params.zeroForOne ? delta.amount0 : delta.amount1;
         if (swapVolume != 0) {
             uint256 absSwapVolume = uint256(swapVolume > 0 ? swapVolume : -swapVolume);
-            
+
             // Update volatility data
             _updateVolatilityData(poolId, key, delta, absSwapVolume);
-            
+
             // Update liquidity data
             _updateLiquidityData(poolId, absSwapVolume);
-            
+
             // Calculate and update market conditions
             _updateMarketConditions(poolId);
-            
+
             // Calculate new fee based on market conditions
             uint24 newFee = _calculateDynamicFee(poolId, absSwapVolume);
-            
+
             // Update fee in registry
             feeRegistry.updateFee(key, absSwapVolume);
-            
+
             // Get market condition scores for event
             MarketCondition memory condition = poolMarketCondition[poolId];
-            
-            emit FeeUpdated(Currency.unwrap(key.currency0), Currency.unwrap(key.currency1), newFee, condition.volatilityScore, condition.liquidityScore);
+
+            emit FeeUpdated(
+                Currency.unwrap(key.currency0),
+                Currency.unwrap(key.currency1),
+                newFee,
+                condition.volatilityScore,
+                condition.liquidityScore
+            );
         }
 
         return this.afterSwap.selector;
@@ -265,17 +275,14 @@ contract DynamicFeeHook is
      * @param delta The balance changes from the swap
      * @param volume The swap volume
      */
-    function _updateVolatilityData(
-        bytes32 poolId,
-        PoolKey calldata key,
-        BalanceDelta memory delta,
-        uint256 volume
-    ) private {
+    function _updateVolatilityData(bytes32 poolId, PoolKey calldata key, BalanceDelta memory delta, uint256 volume)
+        private
+    {
         VolatilityData storage volatility = poolVolatility[poolId];
-        
+
         // Calculate price impact as a percentage
         uint256 priceImpact = (volume * 10000) / (volume + 1000000); // Simplified calculation
-        
+
         // Update rolling average of price impacts
         if (volatility.lastUpdateTime == 0) {
             volatility.priceSum = priceImpact;
@@ -288,7 +295,7 @@ contract DynamicFeeHook is
             } else {
                 volatility.priceSum += priceImpact;
                 volatility.sampleCount++;
-                
+
                 // Keep only recent data (sliding window)
                 if (volatility.sampleCount > 100) {
                     volatility.priceSum = (volatility.priceSum * 90) / 100;
@@ -296,7 +303,7 @@ contract DynamicFeeHook is
                 }
             }
         }
-        
+
         volatility.lastUpdateTime = block.timestamp;
         volatility.lastPrice = priceImpact;
     }
@@ -308,16 +315,17 @@ contract DynamicFeeHook is
      */
     function _updateLiquidityData(bytes32 poolId, uint256 volume) private {
         LiquidityData storage liquidity = poolLiquidity[poolId];
-        
+
         // Update total volume in the current window
         if (block.timestamp > liquidity.lastUpdateTime + LIQUIDITY_WINDOW) {
             liquidity.averageTradeSize = volume;
             liquidity.tradeCount = 1;
         } else {
-            liquidity.averageTradeSize = (liquidity.averageTradeSize * liquidity.tradeCount + volume) / (liquidity.tradeCount + 1);
+            liquidity.averageTradeSize =
+                (liquidity.averageTradeSize * liquidity.tradeCount + volume) / (liquidity.tradeCount + 1);
             liquidity.tradeCount++;
         }
-        
+
         liquidity.lastUpdateTime = block.timestamp;
     }
 
@@ -329,28 +337,28 @@ contract DynamicFeeHook is
         VolatilityData storage volatility = poolVolatility[poolId];
         LiquidityData storage liquidity = poolLiquidity[poolId];
         MarketCondition storage condition = poolMarketCondition[poolId];
-        
+
         // Calculate volatility score (0-10000)
         uint256 avgVolatility = volatility.sampleCount > 0 ? volatility.priceSum / volatility.sampleCount : 0;
         if (avgVolatility > HIGH_VOLATILITY_THRESHOLD) {
             condition.volatilityScore = 10000;
         } else if (avgVolatility > LOW_VOLATILITY_THRESHOLD) {
-            condition.volatilityScore = 5000 + ((avgVolatility - LOW_VOLATILITY_THRESHOLD) * 5000) / 
-                (HIGH_VOLATILITY_THRESHOLD - LOW_VOLATILITY_THRESHOLD);
+            condition.volatilityScore = 5000 + ((avgVolatility - LOW_VOLATILITY_THRESHOLD) * 5000)
+                / (HIGH_VOLATILITY_THRESHOLD - LOW_VOLATILITY_THRESHOLD);
         } else {
             condition.volatilityScore = (avgVolatility * 5000) / LOW_VOLATILITY_THRESHOLD;
         }
-        
+
         // Calculate liquidity score (0-10000, higher is better liquidity)
         if (liquidity.averageTradeSize > HIGH_LIQUIDITY_THRESHOLD) {
             condition.liquidityScore = 10000;
         } else if (liquidity.averageTradeSize > LOW_LIQUIDITY_THRESHOLD) {
-            condition.liquidityScore = 5000 + ((liquidity.averageTradeSize - LOW_LIQUIDITY_THRESHOLD) * 5000) / 
-                (HIGH_LIQUIDITY_THRESHOLD - LOW_LIQUIDITY_THRESHOLD);
+            condition.liquidityScore = 5000 + ((liquidity.averageTradeSize - LOW_LIQUIDITY_THRESHOLD) * 5000)
+                / (HIGH_LIQUIDITY_THRESHOLD - LOW_LIQUIDITY_THRESHOLD);
         } else {
             condition.liquidityScore = (liquidity.averageTradeSize * 5000) / LOW_LIQUIDITY_THRESHOLD;
         }
-        
+
         // Calculate activity score based on trade frequency
         uint256 timeSinceLastUpdate = block.timestamp - liquidity.lastUpdateTime;
         if (timeSinceLastUpdate < MARKET_CONDITION_WINDOW) {
@@ -359,10 +367,12 @@ contract DynamicFeeHook is
             condition.activityScore = (MARKET_CONDITION_WINDOW * 10000) / timeSinceLastUpdate;
             if (condition.activityScore > 10000) condition.activityScore = 10000;
         }
-        
+
         condition.lastCalculated = block.timestamp;
-        
-        emit MarketConditionUpdated(poolId, condition.volatilityScore, condition.liquidityScore, condition.activityScore);
+
+        emit MarketConditionUpdated(
+            poolId, condition.volatilityScore, condition.liquidityScore, condition.activityScore
+        );
     }
 
     /**
@@ -373,29 +383,29 @@ contract DynamicFeeHook is
      */
     function _calculateDynamicFee(bytes32 poolId, uint256 volume) private view returns (uint24) {
         MarketCondition memory condition = poolMarketCondition[poolId];
-        
+
         // Start with base fee
         uint256 dynamicFee = BASE_FEE;
-        
+
         // Adjust based on volatility (higher volatility = higher fee)
         uint256 volatilityAdjustment = (condition.volatilityScore * VOLATILITY_MULTIPLIER) / 10000;
         dynamicFee = (dynamicFee * (10000 + volatilityAdjustment)) / 10000;
-        
+
         // Adjust based on liquidity (higher liquidity = lower fee)
         uint256 liquidityAdjustment = (condition.liquidityScore * LIQUIDITY_MULTIPLIER) / 10000;
         dynamicFee = (dynamicFee * (10000 - liquidityAdjustment)) / 10000;
-        
+
         // Adjust based on activity (higher activity = slightly higher fee)
         uint256 activityAdjustment = (condition.activityScore * ACTIVITY_MULTIPLIER) / 10000;
         dynamicFee = (dynamicFee * (10000 + activityAdjustment)) / 10000;
-        
+
         // Ensure fee is within bounds
         if (dynamicFee < MIN_FEE) {
             dynamicFee = MIN_FEE;
         } else if (dynamicFee > MAX_FEE) {
             dynamicFee = MAX_FEE;
         }
-        
+
         return uint24(dynamicFee);
     }
 

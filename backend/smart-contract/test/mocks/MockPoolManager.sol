@@ -127,9 +127,7 @@ contract MockPoolManager is IPoolManager {
         require(address(key.hooks) == hookAddress, "MPM: Invalid hook address");
     }
 
-    function _handleBeforeSwapHook(PoolKey calldata key, SwapParams calldata params, bytes calldata hookData)
-        internal
-    {
+    function _handleBeforeSwapHook(PoolKey calldata key, SwapParams calldata params, bytes calldata hookData) internal {
         if (hookAddress != address(0)) {
             try BaseHook(hookAddress).beforeSwap(msg.sender, key, params, hookData) returns (bytes4 selector) {
                 require(selector == BaseHook.beforeSwap.selector, "MPM: Invalid hook selector");
@@ -200,7 +198,11 @@ contract MockPoolManager is IPoolManager {
         PoolKey calldata key,
         ModifyPositionParams calldata params,
         bytes calldata /* hookData */
-    ) external override returns (BalanceDelta memory delta) {
+    )
+        external
+        override
+        returns (BalanceDelta memory delta)
+    {
         // Determine pool address and skip for placeholders without code
         bytes32 poolId = keccak256(abi.encode(key));
         address poolAddress = pools[poolId];
@@ -213,7 +215,7 @@ contract MockPoolManager is IPoolManager {
         IAetherPool targetPool = IAetherPool(poolAddress); // Get pool instance
 
         if (params.liquidityDelta > 0) {
-            // --- Mint Liquidity --- 
+            // --- Mint Liquidity ---
             // Cast int256 to uint256 first, then to uint128, as we know it's positive here.
             uint128 liquidityToAdd = uint128(uint256(params.liquidityDelta));
             require(liquidityToAdd > 0, "MPM: Liquidity delta must be positive");
@@ -230,10 +232,14 @@ contract MockPoolManager is IPoolManager {
             // 2. Transfer required tokens FROM msg.sender TO pool
             //    (Requires approval in test setup)
             if (requiredAmount0 > 0) {
-                TransferHelper.safeTransferFrom(Currency.unwrap(key.currency0), msg.sender, address(targetPool), requiredAmount0);
+                TransferHelper.safeTransferFrom(
+                    Currency.unwrap(key.currency0), msg.sender, address(targetPool), requiredAmount0
+                );
             }
             if (requiredAmount1 > 0) {
-                TransferHelper.safeTransferFrom(Currency.unwrap(key.currency1), msg.sender, address(targetPool), requiredAmount1);
+                TransferHelper.safeTransferFrom(
+                    Currency.unwrap(key.currency1), msg.sender, address(targetPool), requiredAmount1
+                );
             }
 
             // 3. Calculate delta (positive = pool received)
@@ -360,7 +366,12 @@ contract MockPoolManager is IPoolManager {
         revert("MPM: Not implemented");
     }
 
-    function getPoolInfo(PoolKey calldata key) external view override returns (address pool, bool paused, uint256 createdAt) {
+    function getPoolInfo(PoolKey calldata key)
+        external
+        view
+        override
+        returns (address pool, bool paused, uint256 createdAt)
+    {
         bytes32 poolId = keccak256(abi.encode(key));
         pool = pools[poolId];
         paused = false; // Mock implementation

@@ -17,7 +17,11 @@ import "../../lib/v4-core/src/types/PoolKey.sol";
 interface IFeeRegistry {
     // --- Events ---
     event FeeConfigurationAdded( // Assuming tickSpacing might still be relevant for pool creation
-    address indexed token0, address indexed token1, uint24 fee, int24 tickSpacing);
+        address indexed token0,
+        address indexed token1,
+        uint24 fee,
+        int24 tickSpacing
+    );
     event DynamicFeeUpdated(address indexed token0, address indexed token1, uint24 oldFee, uint24 newFee);
     event StaticFeeSet(address indexed token0, address indexed token1, uint24 fee);
     event DynamicFeeUpdaterSet(address indexed updater, bool allowed);
@@ -41,8 +45,7 @@ interface IFeeRegistry {
      * @param tickSpacing The tick spacing for this fee tier (if applicable).
      * @param isStatic_ Whether the fee is static or dynamic.
      */
-    function addFeeConfiguration(address tokenA, address tokenB, uint24 fee, int24 tickSpacing, bool isStatic_)
-        external;
+    function addFeeConfiguration(address tokenA, address tokenB, uint24 fee, int24 tickSpacing, bool isStatic_) external;
 
     /**
      * @notice Sets or updates the static fee for a specific token pair.
@@ -68,10 +71,7 @@ interface IFeeRegistry {
      * @param tokenB Address of the second token.
      * @return config The FeeConfiguration struct for the pair.
      */
-    function getFeeConfiguration(address tokenA, address tokenB)
-        external
-        view
-        returns (FeeConfiguration memory config);
+    function getFeeConfiguration(address tokenA, address tokenB) external view returns (FeeConfiguration memory config);
 
     /**
      * @notice Gets the current applicable fee for a token pair.

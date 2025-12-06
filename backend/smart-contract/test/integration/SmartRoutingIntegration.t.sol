@@ -91,8 +91,12 @@ contract SmartRoutingIntegrationTest is Test {
             // Add initial liquidity to the pools
             _addInitialLiquidity(
                 SUPPORTED_CHAINS[i],
-                chainSpecificTokenA[SUPPORTED_CHAINS[i]] == address(0) ? weth : chainSpecificTokenA[SUPPORTED_CHAINS[i]],
-                chainSpecificTokenB[SUPPORTED_CHAINS[i]] == address(0) ? usdc : chainSpecificTokenB[SUPPORTED_CHAINS[i]],
+                chainSpecificTokenA[SUPPORTED_CHAINS[i]] == address(0)
+                    ? weth
+                    : chainSpecificTokenA[SUPPORTED_CHAINS[i]],
+                chainSpecificTokenB[SUPPORTED_CHAINS[i]] == address(0)
+                    ? usdc
+                    : chainSpecificTokenB[SUPPORTED_CHAINS[i]],
                 pools[SUPPORTED_CHAINS[i]][(weth < usdc ? weth : usdc)][(weth < usdc ? usdc : weth)]
             );
         }
@@ -159,7 +163,7 @@ contract SmartRoutingIntegrationTest is Test {
         }
         pools[chainId][orderedTokenA][orderedTokenB] = poolAddress;
         pools[chainId][orderedTokenB][orderedTokenA] = poolAddress; // For reverse lookup
-            // router.addTrustedPoolForChain(chainId, poolAddress, orderedTokenA, orderedTokenB); // Commented out: function doesn't exist on router
+        // router.addTrustedPoolForChain(chainId, poolAddress, orderedTokenA, orderedTokenB); // Commented out: function doesn't exist on router
     }
 
     function _deployRoutersAndBridges() internal {
@@ -261,67 +265,88 @@ contract SmartRoutingIntegrationTest is Test {
     function test_CrossChain_OneHop_ETH_ARB() public {
         TestParams memory params = _setupCrossChainTestOneHop();
         _setupAliceTokens(params);
-        
+
         vm.startPrank(alice);
         IERC20(params.tokenIn).approve(address(router), params.amountIn);
-        
+
         (uint256 aliceInitialBalance, uint256 routerInitialBalance) = _recordInitialBalances(params.tokenIn);
         _setupMockCalls();
-        
+
         bool callSuccess = _executeCrossChainRoute(aliceInitialBalance, routerInitialBalance);
         assertTrue(callSuccess, "Cross-chain route execution should succeed");
-        
+
         vm.stopPrank();
     }
-    
+
     function _setupAliceTokens(TestParams memory params) private {
         deal(address(params.tokenIn), alice, params.amountIn);
         vm.deal(alice, 1 ether);
     }
-    
-    function _recordInitialBalances(address tokenIn) private view returns (uint256 aliceBalance, uint256 routerBalance) {
+
+    function _recordInitialBalances(address tokenIn)
+        private
+        view
+        returns (uint256 aliceBalance, uint256 routerBalance)
+    {
         aliceBalance = IERC20(tokenIn).balanceOf(alice);
         routerBalance = IERC20(tokenIn).balanceOf(address(router));
     }
-    
+
     function _setupMockCalls() private {
         // Mock CCIP router calls
         bytes32 mockCcipMessageId = bytes32(uint256(1));
-        vm.mockCall(address(ccipRouter), abi.encodeWithSelector(ccipRouter.estimateFees.selector), abi.encode(0.05 ether));
+        vm.mockCall(
+            address(ccipRouter), abi.encodeWithSelector(ccipRouter.estimateFees.selector), abi.encode(0.05 ether)
+        );
         vm.mockCall(address(ccipRouter), abi.encodeWithSelector(ccipRouter.depositToken.selector), abi.encode(true));
-        vm.mockCall(address(ccipRouter), abi.encodeWithSelector(ccipRouter.sendMessage.selector), abi.encode(mockCcipMessageId));
-        
+        vm.mockCall(
+            address(ccipRouter), abi.encodeWithSelector(ccipRouter.sendMessage.selector), abi.encode(mockCcipMessageId)
+        );
+
         // Mock Hyperlane calls
         bytes32 mockHyperlaneMessageId = bytes32(uint256(2));
-        vm.mockCall(address(hyperlane), abi.encodeWithSelector(hyperlane.quoteDispatch.selector), abi.encode(0.04 ether));
+        vm.mockCall(
+            address(hyperlane), abi.encodeWithSelector(hyperlane.quoteDispatch.selector), abi.encode(0.04 ether)
+        );
         vm.mockCall(address(hyperlane), abi.encodeWithSelector(hyperlane.depositToken.selector), abi.encode(true));
-        vm.mockCall(address(hyperlane), abi.encodeWithSelector(hyperlane.dispatch.selector), abi.encode(mockHyperlaneMessageId));
+        vm.mockCall(
+            address(hyperlane), abi.encodeWithSelector(hyperlane.dispatch.selector), abi.encode(mockHyperlaneMessageId)
+        );
     }
-    
-    function _executeCrossChainRoute(uint256 aliceInitialBalance, uint256 routerInitialBalance) private returns (bool callSuccess) {
+
+    function _executeCrossChainRoute(uint256 aliceInitialBalance, uint256 routerInitialBalance)
+        private
+        returns (bool callSuccess)
+    {
         address tokenInDirect = address(weth);
         address tokenOutDirect = address(usdc);
         uint256 amountInDirect = 1 ether;
         uint256 amountOutMinDirect = amountInDirect * 95 / 100;
-        
+
         deal(tokenInDirect, alice, amountInDirect);
         IERC20(tokenInDirect).approve(address(router), amountInDirect);
         vm.deal(address(router), 5 ether);
-        
+
         try router.executeCrossChainRoute{value: 0.05 ether}(
-            tokenInDirect, tokenOutDirect, amountInDirect, amountOutMinDirect, alice, 
-            networks.ETHEREUM_CHAIN_ID(), networks.ARBITRUM_CHAIN_ID(), ""
+            tokenInDirect,
+            tokenOutDirect,
+            amountInDirect,
+            amountOutMinDirect,
+            alice,
+            networks.ETHEREUM_CHAIN_ID(),
+            networks.ARBITRUM_CHAIN_ID(),
+            ""
         ) {
             callSuccess = true;
             console2.log("Cross-chain route execution succeeded!");
-            
+
             uint256 aliceFinalBalance = IERC20(tokenInDirect).balanceOf(alice);
             uint256 routerFinalBalance = IERC20(tokenInDirect).balanceOf(address(router));
-            
+
             console2.log("Alice initial balance:", aliceInitialBalance);
             console2.log("Alice final balance:", aliceFinalBalance);
             console2.log("Router final balance:", routerFinalBalance);
-            
+
             assertTrue(aliceFinalBalance < aliceInitialBalance, "Alice's balance should decrease");
             assertTrue(routerFinalBalance > routerInitialBalance, "Router's balance should increase");
         } catch Error(string memory reason) {
@@ -391,7 +416,9 @@ contract SmartRoutingIntegrationTest is Test {
 
         try router.executeMultiPathRoute{value: 0.15 ether}(
             tokenInDirect, tokenOutDirect, amountInDirect, amountOutMinDirect, recipientDirect, testPath, routeData
-        ) returns (uint256 amountOut) {
+        ) returns (
+            uint256 amountOut
+        ) {
             callSuccess = true;
             console2.log("Multi-hop cross-chain route succeeded, amountOut:", amountOut);
 

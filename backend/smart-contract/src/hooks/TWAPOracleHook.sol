@@ -34,11 +34,11 @@ contract TWAPOracleHook is BaseHook {
     mapping(bytes32 => ManipulationProtection) public protectionParams;
     mapping(bytes32 => uint32) public lastUpdateTime;
     mapping(bytes32 => uint256) public cumulativeVolume;
-    
+
     uint32 public immutable windowSize;
     uint32 public constant MIN_PERIOD = 60; // 1 minute minimum
     uint32 public constant MAX_OBSERVATIONS = 1000; // Limit observations array size
-    
+
     // Constants for price calculation - reduced scaling factors
     uint64 private constant BASE_PRICE = 1000; // Reduced from 1e6
     uint256 private constant SCALE = 1000; // Reduced from 1e6
@@ -63,7 +63,9 @@ contract TWAPOracleHook is BaseHook {
     // Events
     event PriceUpdated(bytes32 indexed poolId, uint64 price, uint128 volume, uint32 timestamp);
     event ManipulationDetected(bytes32 indexed poolId, uint64 suspiciousPrice, uint64 expectedPrice);
-    event ProtectionParamsUpdated(bytes32 indexed poolId, uint256 maxDeviation, uint256 minObservations, uint256 volumeThreshold);
+    event ProtectionParamsUpdated(
+        bytes32 indexed poolId, uint256 maxDeviation, uint256 minObservations, uint256 volumeThreshold
+    );
     event OutlierRejected(bytes32 indexed poolId, uint64 rejectedPrice, string reason);
 
     constructor(address _poolManager, uint32 _windowSize) BaseHook(_poolManager) {
@@ -114,7 +116,7 @@ contract TWAPOracleHook is BaseHook {
         returns (bytes4)
     {
         bytes32 poolId = _poolId(Currency.unwrap(key.currency0), Currency.unwrap(key.currency1));
-        
+
         // Initialize protection parameters with defaults
         protectionParams[poolId] = ManipulationProtection({
             maxPriceDeviation: DEFAULT_MAX_DEVIATION,
@@ -122,17 +124,14 @@ contract TWAPOracleHook is BaseHook {
             volumeThreshold: DEFAULT_VOLUME_THRESHOLD,
             cooldownPeriod: DEFAULT_COOLDOWN
         });
-        
+
         // Initialize first observation
-        observations[poolId].push(Observation({
-            timestamp: uint32(block.timestamp),
-            price: BASE_PRICE,
-            volume: 0,
-            cumulativePrice: BASE_PRICE
-        }));
-        
+        observations[poolId].push(
+            Observation({timestamp: uint32(block.timestamp), price: BASE_PRICE, volume: 0, cumulativePrice: BASE_PRICE})
+        );
+
         lastUpdateTime[poolId] = uint32(block.timestamp);
-        
+
         return TWAPOracleHook.beforeInitialize.selector;
     }
 
@@ -152,11 +151,24 @@ contract TWAPOracleHook is BaseHook {
         BalanceDelta memory delta,
         bytes calldata
     ) external override returns (bytes4) {
-        _recordObservation(_poolId(Currency.unwrap(key.currency0), Currency.unwrap(key.currency1)), delta.amount0, delta.amount1, params.zeroForOne);
+        _recordObservation(
+            _poolId(Currency.unwrap(key.currency0), Currency.unwrap(key.currency1)),
+            delta.amount0,
+            delta.amount1,
+            params.zeroForOne
+        );
         return TWAPOracleHook.afterSwap.selector;
     }
 
-    function calculatePrice(bool, /*zeroForOne*/ BalanceDelta memory delta) external pure returns (uint64) {
+    function calculatePrice(
+        bool,
+        /*zeroForOne*/
+        BalanceDelta memory delta
+    )
+        external
+        pure
+        returns (uint64)
+    {
         // Get absolute values (without scaling down initially)
         uint256 absAmount0 = uint256(delta.amount0 >= 0 ? delta.amount0 : -delta.amount0);
         uint256 absAmount1 = uint256(delta.amount1 >= 0 ? delta.amount1 : -delta.amount1);
@@ -178,23 +190,23 @@ contract TWAPOracleHook is BaseHook {
         uint32 timestamp = uint32(block.timestamp);
         Observation[] storage obs = observations[poolId];
         ManipulationProtection memory protection = protectionParams[poolId];
-        
+
         // Check cooldown period
         if (timestamp < lastUpdateTime[poolId] + protection.cooldownPeriod) {
             return; // Skip update during cooldown
         }
-        
+
         // Calculate volume
         uint256 absAmount0 = uint256(amount0 >= 0 ? amount0 : -amount0);
         uint256 absAmount1 = uint256(amount1 >= 0 ? amount1 : -amount1);
         uint128 volume = uint128(absAmount0 + absAmount1);
-        
+
         // Check minimum volume threshold
         if (volume < protection.volumeThreshold) {
             emit OutlierRejected(poolId, 0, "Insufficient volume");
             return;
         }
-        
+
         // Slither: Timestamp - Using block.timestamp is essential for recording price observations
         // at specific points in time, which is fundamental to TWAP oracle functionality.
         if (obs.length == 0 || obs[obs.length - 1].timestamp < timestamp) {
@@ -205,7 +217,7 @@ contract TWAPOracleHook is BaseHook {
                 if (!_validatePrice(poolId, price, volume)) {
                     return; // Price rejected due to manipulation concerns
                 }
-                
+
                 // Check array size limit
                 if (obs.length >= MAX_OBSERVATIONS) {
                     _cleanObservations(poolId);
@@ -217,26 +229,19 @@ contract TWAPOracleHook is BaseHook {
                         obs.pop();
                     }
                 }
-                
+
                 // Calculate cumulative price
-                uint64 cumulativePrice = obs.length > 0 ? 
-                    obs[obs.length - 1].cumulativePrice + price : price;
-                
+                uint64 cumulativePrice = obs.length > 0 ? obs[obs.length - 1].cumulativePrice + price : price;
+
                 obs.push(
-                    Observation({
-                        timestamp: timestamp,
-                        price: price,
-                        volume: volume,
-                        cumulativePrice: cumulativePrice
-                    })
+                    Observation({timestamp: timestamp, price: price, volume: volume, cumulativePrice: cumulativePrice})
                 );
-                
+
                 // Update tracking variables
                 lastUpdateTime[poolId] = timestamp;
                 cumulativeVolume[poolId] += volume;
-                
+
                 emit PriceUpdated(poolId, price, volume, timestamp);
-                
             } catch {
                 // If price calculation fails, don't update observation but still return success
                 return;
@@ -329,12 +334,11 @@ contract TWAPOracleHook is BaseHook {
     function initializeOracle(PoolKey calldata key, uint256 price) external {
         if (price == 0 || price > MAX_PRICE) revert InvalidPrice();
         bytes32 poolId = _poolId(Currency.unwrap(key.currency0), Currency.unwrap(key.currency1));
-        observations[poolId].push(Observation({
-            timestamp: uint32(block.timestamp),
-            price: uint64(price),
-            volume: 0,
-            cumulativePrice: uint64(price)
-        }));
+        observations[poolId].push(
+            Observation({
+                timestamp: uint32(block.timestamp), price: uint64(price), volume: 0, cumulativePrice: uint64(price)
+            })
+        );
     }
 
     /**
@@ -347,32 +351,31 @@ contract TWAPOracleHook is BaseHook {
     function _validatePrice(bytes32 poolId, uint64 price, uint128 volume) internal returns (bool) {
         Observation[] storage obs = observations[poolId];
         ManipulationProtection memory protection = protectionParams[poolId];
-        
+
         // Need minimum observations for validation
         if (obs.length < protection.minObservations) {
             return true; // Allow during bootstrap phase
         }
-        
+
         // Calculate recent average price (last few observations)
         uint256 recentAvg = _calculateRecentAverage(poolId, 5); // Last 5 observations
-        
+
         // Check for excessive deviation
-        uint256 deviation = price > recentAvg ? 
-            ((price - recentAvg) * 10000) / recentAvg :
-            ((recentAvg - price) * 10000) / recentAvg;
-            
+        uint256 deviation =
+            price > recentAvg ? ((price - recentAvg) * 10000) / recentAvg : ((recentAvg - price) * 10000) / recentAvg;
+
         if (deviation > protection.maxPriceDeviation) {
             emit ManipulationDetected(poolId, price, uint64(recentAvg));
             emit OutlierRejected(poolId, price, "Excessive price deviation");
             return false;
         }
-        
+
         // Volume-weighted validation
         if (!_validateVolumeWeightedPrice(poolId, price, volume)) {
             emit OutlierRejected(poolId, price, "Volume-weighted validation failed");
             return false;
         }
-        
+
         return true;
     }
 
@@ -385,16 +388,16 @@ contract TWAPOracleHook is BaseHook {
     function _calculateRecentAverage(bytes32 poolId, uint256 count) internal view returns (uint256) {
         Observation[] storage obs = observations[poolId];
         if (obs.length == 0) return BASE_PRICE;
-        
+
         uint256 start = obs.length > count ? obs.length - count : 0;
         uint256 sum = 0;
         uint256 validCount = 0;
-        
+
         for (uint256 i = start; i < obs.length; i++) {
             sum += obs[i].price;
             validCount++;
         }
-        
+
         return validCount > 0 ? sum / validCount : BASE_PRICE;
     }
 
@@ -408,29 +411,27 @@ contract TWAPOracleHook is BaseHook {
     function _validateVolumeWeightedPrice(bytes32 poolId, uint64 price, uint128 volume) internal view returns (bool) {
         Observation[] storage obs = observations[poolId];
         if (obs.length < 3) return true; // Not enough data
-        
+
         // Calculate volume-weighted average price (VWAP) for recent observations
         uint256 totalVolumeWeightedPrice = 0;
         uint256 totalVolume = 0;
         uint256 start = obs.length > 10 ? obs.length - 10 : 0;
-        
+
         for (uint256 i = start; i < obs.length; i++) {
             if (obs[i].volume > 0) {
                 totalVolumeWeightedPrice += uint256(obs[i].price) * uint256(obs[i].volume);
                 totalVolume += obs[i].volume;
             }
         }
-        
+
         if (totalVolume == 0) return true; // No volume data available
-        
+
         uint256 vwap = totalVolumeWeightedPrice / totalVolume;
-        uint256 deviation = price > vwap ? 
-            ((price - vwap) * 10000) / vwap :
-            ((vwap - price) * 10000) / vwap;
-            
+        uint256 deviation = price > vwap ? ((price - vwap) * 10000) / vwap : ((vwap - price) * 10000) / vwap;
+
         // Allow higher deviation for low volume trades
         uint256 maxDeviation = volume < 10000 ? 2000 : 1000; // 20% vs 10%
-        
+
         return deviation <= maxDeviation;
     }
 
@@ -443,24 +444,24 @@ contract TWAPOracleHook is BaseHook {
     function getTWAP(bytes32 poolId, uint32 secondsAgo) external view returns (uint256) {
         Observation[] storage obs = observations[poolId];
         if (obs.length < 2) revert InsufficientObservations();
-        
+
         uint32 targetTime = uint32(block.timestamp - secondsAgo);
         uint256 startIndex = _findNearestObservation(obs, targetTime);
-        
+
         if (startIndex >= obs.length - 1) {
             return obs[obs.length - 1].price;
         }
-        
+
         // Calculate time-weighted average
         uint256 totalWeightedPrice = 0;
         uint256 totalTime = 0;
-        
+
         for (uint256 i = startIndex; i < obs.length - 1; i++) {
             uint256 timeDelta = obs[i + 1].timestamp - obs[i].timestamp;
             totalWeightedPrice += obs[i].price * timeDelta;
             totalTime += timeDelta;
         }
-        
+
         return totalTime > 0 ? totalWeightedPrice / totalTime : obs[obs.length - 1].price;
     }
 
@@ -473,20 +474,20 @@ contract TWAPOracleHook is BaseHook {
     function getVWAP(bytes32 poolId, uint32 secondsAgo) external view returns (uint256) {
         Observation[] storage obs = observations[poolId];
         if (obs.length == 0) revert InsufficientObservations();
-        
+
         uint32 targetTime = uint32(block.timestamp - secondsAgo);
         uint256 startIndex = _findNearestObservation(obs, targetTime);
-        
+
         uint256 totalVolumeWeightedPrice = 0;
         uint256 totalVolume = 0;
-        
+
         for (uint256 i = startIndex; i < obs.length; i++) {
             if (obs[i].volume > 0) {
                 totalVolumeWeightedPrice += uint256(obs[i].price) * uint256(obs[i].volume);
                 totalVolume += obs[i].volume;
             }
         }
-        
+
         return totalVolume > 0 ? totalVolumeWeightedPrice / totalVolume : 0;
     }
 
@@ -512,7 +513,7 @@ contract TWAPOracleHook is BaseHook {
             volumeThreshold: volumeThreshold,
             cooldownPeriod: cooldownPeriod
         });
-        
+
         emit ProtectionParamsUpdated(poolId, maxDeviation, minObservations, volumeThreshold);
     }
 

@@ -20,7 +20,7 @@ help:
 # Install dependencies
 install:
 	@echo "Installing frontend dependencies..."
-	cd interface/web && pnpm install
+	cd apps/web && pnpm install
 	@echo "Installing backend dependencies..."
 	cd backend && go mod tidy
 	@echo "Installing smart contract dependencies..."
@@ -31,7 +31,7 @@ test: test-frontend test-backend
 
 test-frontend:
 	@echo "Running frontend tests..."
-	cd interface/web && pnpm test
+	cd apps/web && pnpm test
 
 test-backend:
 	@echo "Running backend tests..."
@@ -43,16 +43,16 @@ test-integration:
 
 test-coverage:
 	@echo "Running frontend tests with coverage..."
-	cd interface/web && bun test:coverage
+	cd apps/web && pnpm vitest run --coverage
 	@echo "Running backend tests with coverage..."
 	cd backend && go test -coverprofile=coverage.out -covermode=atomic ./...
 	go tool cover -html=backend/coverage.out -o backend/coverage.html
-	@echo "Coverage reports generated: interface/web/coverage/ and backend/coverage.html"
+	@echo "Coverage reports generated: apps/web/coverage/ and backend/coverage.html"
 
 # Build targets
 build:
 	@echo "Building frontend..."
-	cd interface/web && pnpm build
+	cd apps/web && pnpm build
 	@echo "Building backend..."
 	cd backend && go build -o bin/api cmd/api/main.go
 	@echo "Building smart contracts..."
@@ -63,14 +63,14 @@ dev:
 	@echo "Starting development servers..."
 	@echo "Frontend: http://localhost:3000"
 	@echo "Backend: http://localhost:8080"
-	cd interface/web && pnpm dev &
+	cd apps/web && pnpm dev &
 	cd backend && go run cmd/api/main.go &
 	wait
 
 # Linting and formatting
 lint:
 	@echo "Linting frontend..."
-	cd interface/web && pnpm lint
+	cd apps/web && pnpm lint
 	@echo "Linting backend..."
 	cd backend && go vet ./...
 	@echo "Linting smart contracts..."
@@ -78,7 +78,7 @@ lint:
 
 format:
 	@echo "Formatting frontend..."
-	cd interface/web && pnpm format
+	cd apps/web && pnpm format
 	@echo "Formatting backend..."
 	cd backend && go fmt ./...
 	@echo "Formatting smart contracts..."
@@ -87,7 +87,7 @@ format:
 # Clean targets
 clean:
 	@echo "Cleaning build artifacts..."
-	cd interface/web && rm -rf .next dist node_modules/.cache
+	cd apps/web && rm -rf .next dist node_modules/.cache
 	cd backend && rm -rf bin/ *.out
 	cd backend/smart-contract && forge clean
 
@@ -103,12 +103,12 @@ contract-deploy-local:
 # Performance testing
 test-performance:
 	@echo "Running performance tests..."
-	@cd interface/web && bun test __tests__/performance.test.tsx
+	@cd apps/web && pnpm vitest run __tests__/performance.test.tsx
 	@cd backend && PERFORMANCE_TESTS=true go test -v -run TestPerformanceTestSuite ./...
 
 test-performance-frontend:
 	@echo "Running frontend performance tests..."
-	@cd interface/web && bun test __tests__/performance.test.tsx
+	@cd apps/web && pnpm vitest run __tests__/performance.test.tsx
 
 test-performance-backend:
 	@echo "Running backend performance tests..."
@@ -121,7 +121,7 @@ bench:
 
 bench-frontend:
 	@echo "Running frontend benchmarks..."
-	@cd interface/web && bun run vitest bench __tests__/performance.test.tsx
+	@cd apps/web && pnpm vitest bench __tests__/performance.test.tsx
 
 bench-backend:
 	@echo "Running backend benchmarks..."
@@ -129,7 +129,7 @@ bench-backend:
 
 perf-test:
 	@echo "Running performance tests..."
-	cd interface/web && pnpm test:perf
+	cd apps/web && pnpm vitest run __tests__/performance.test.tsx
 
 # Database operations
 db-migrate:

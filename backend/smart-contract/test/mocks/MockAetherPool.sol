@@ -43,7 +43,7 @@ contract MockAetherPool is IAetherPool {
 
         // Simplified mock swap logic: 2% fee/slippage
         amountOut = (amountIn * 98) / 100;
-        
+
         address _tokenOut = (_tokenIn == token0) ? token1 : token0;
 
         // Simulate transfer (not strictly necessary for this mock unless balances are tracked)
@@ -85,13 +85,17 @@ contract MockAetherPool is IAetherPool {
         return (amount0, amount1);
     }
 
-    function addInitialLiquidity(uint256 amount0Desired, uint256 amount1Desired) external override returns (uint256 liquidity) {
+    function addInitialLiquidity(uint256 amount0Desired, uint256 amount1Desired)
+        external
+        override
+        returns (uint256 liquidity)
+    {
         require(token0 != address(0) && token1 != address(0), "NOT_INITIALIZED");
         require(totalLiquidity == 0, "ALREADY_INITIALIZED"); // Can only add initial liquidity once
         require(amount0Desired > 0 && amount1Desired > 0, "ZERO_INITIAL_LIQUIDITY");
 
         // Simplified: liquidity is sum of amounts (not price-based)
-        liquidity = amount0Desired + amount1Desired; 
+        liquidity = amount0Desired + amount1Desired;
         totalLiquidity = liquidity;
         liquidityOf[msg.sender] = liquidity; // Assign to caller
 
@@ -104,7 +108,11 @@ contract MockAetherPool is IAetherPool {
         uint256 amount0Desired,
         uint256 amount1Desired,
         bytes calldata /* data */
-    ) external override returns (uint256 amount0Actual, uint256 amount1Actual, uint256 liquidityMinted) {
+    )
+        external
+        override
+        returns (uint256 amount0Actual, uint256 amount1Actual, uint256 liquidityMinted)
+    {
         require(token0 != address(0) && token1 != address(0), "NOT_INITIALIZED");
         require(totalLiquidity > 0, "USE_ADD_INITIAL_LIQUIDITY");
         require(amount0Desired > 0 && amount1Desired > 0, "ZERO_LIQUIDITY");

@@ -228,7 +228,7 @@ contract AetherPoolTest is Test {
         // Cast pool address to IERC20 to call approve
         IERC20(address(pool)).approve(address(poolManager), type(uint128).max); // Approve pool manager for LP tokens
 
-        vm.expectRevert(bytes("INSUFFICIENT_LIQUIDITY_OWNED")); 
+        vm.expectRevert(bytes("INSUFFICIENT_LIQUIDITY_OWNED"));
         PoolKey memory key = poolKey;
         poolManager.modifyPosition(
             key, IPoolManager.ModifyPositionParams({tickLower: -60, tickUpper: 60, liquidityDelta: -1001}), ""
@@ -314,13 +314,11 @@ contract AetherPoolTest is Test {
         vm.startPrank(alice);
         token0.approve(address(poolManager), 1e20);
 
-        vm.expectRevert(); 
+        vm.expectRevert();
         PoolKey memory key = poolKey;
-        poolManager.swap(key, IPoolManager.SwapParams({ 
-            zeroForOne: true, 
-            amountSpecified: 1e18,
-            sqrtPriceLimitX96: 0
-        }), bytes(""));
+        poolManager.swap(
+            key, IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1e18, sqrtPriceLimitX96: 0}), bytes("")
+        );
         vm.stopPrank();
     }
 
@@ -345,7 +343,8 @@ contract AetherPoolTest is Test {
             // Assert that returned tokens match the ones used in setUp
             assertEq(t0, address(token0), "Returned token0 mismatch");
             assertEq(t1, address(token1), "Returned token1 mismatch");
-        } catch Error(string memory /* reason */) {
+        } catch Error(string memory) {
+            /* reason */
             //console2.log("Static call to tokens() reverted with reason:", reason);
             fail();
         } catch (bytes memory lowLevelData) {

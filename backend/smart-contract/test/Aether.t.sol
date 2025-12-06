@@ -253,7 +253,7 @@ contract AetherRouterTest is Test, IEvents {
         uint256 amountBMin = 0; // No slippage for initial seed
         uint256 deadline = block.timestamp + 1;
 
-        ( /*amountAActual*/ , /*amountBActual*/, uint256 liquidity) = router.addLiquidity(
+        (/*amountAActual*/,/*amountBActual*/, uint256 liquidity) = router.addLiquidity(
             address(pool), amountADesired, amountBDesired, amountAMin, amountBMin, address(this), deadline
         );
 

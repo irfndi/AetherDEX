@@ -84,8 +84,13 @@ contract DynamicFeeHookImprovedTest is Test {
      * @return key The created pool key
      */
     function _createPoolKey(uint24 fee) internal view returns (PoolKey memory) {
-        return
-            PoolKey({currency0: Currency.wrap(address(token0)), currency1: Currency.wrap(address(token1)), fee: fee, tickSpacing: 60, hooks: IHooks(address(hook))});
+        return PoolKey({
+            currency0: Currency.wrap(address(token0)),
+            currency1: Currency.wrap(address(token1)),
+            fee: fee,
+            tickSpacing: 60,
+            hooks: IHooks(address(hook))
+        });
     }
 
     // Removed incomplete comment block that was causing compilation errors

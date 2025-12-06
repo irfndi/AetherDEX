@@ -76,11 +76,11 @@ func (suite *APIIntegrationTestSuite) setupRoutes() {
 		v1.POST("/pools", suite.handleCreatePool)
 		v1.GET("/transactions/:address", suite.handleGetTransactions)
 		v1.GET("/portfolio/:address", suite.handleGetPortfolio)
-		
+
 		// Liquidity endpoints
 		v1.POST("/liquidity/add", suite.handleAddLiquidity)
 		v1.POST("/liquidity/remove", suite.handleRemoveLiquidity)
-		
+
 		// Admin endpoints (protected)
 		admin := v1.Group("/admin")
 		{
@@ -95,19 +95,19 @@ func (suite *APIIntegrationTestSuite) setupRoutes() {
 func (suite *APIIntegrationTestSuite) handleGetTokens(c *gin.Context) {
 	tokens := []gin.H{
 		{
-			"address":  "0x1234567890123456789012345678901234567890",
-			"symbol":   "ETH",
-			"name":     "Ethereum",
-			"decimals": 18,
-			"price":    "2500.00",
+			"address":   "0x1234567890123456789012345678901234567890",
+			"symbol":    "ETH",
+			"name":      "Ethereum",
+			"decimals":  18,
+			"price":     "2500.00",
 			"volume24h": "1000000.00",
 		},
 		{
-			"address":  "0x0987654321098765432109876543210987654321",
-			"symbol":   "USDC",
-			"name":     "USD Coin",
-			"decimals": 6,
-			"price":    "1.00",
+			"address":   "0x0987654321098765432109876543210987654321",
+			"symbol":    "USDC",
+			"name":      "USD Coin",
+			"decimals":  6,
+			"price":     "1.00",
 			"volume24h": "5000000.00",
 		},
 	}
@@ -122,11 +122,11 @@ func (suite *APIIntegrationTestSuite) handleGetToken(c *gin.Context) {
 	}
 
 	token := gin.H{
-		"address":  address,
-		"symbol":   "ETH",
-		"name":     "Ethereum",
-		"decimals": 18,
-		"price":    "2500.00",
+		"address":   address,
+		"symbol":    "ETH",
+		"name":      "Ethereum",
+		"decimals":  18,
+		"price":     "2500.00",
 		"volume24h": "1000000.00",
 	}
 	c.JSON(http.StatusOK, gin.H{"data": token})
@@ -172,14 +172,14 @@ func (suite *APIIntegrationTestSuite) handleSwapExecute(c *gin.Context) {
 	}
 
 	transaction := gin.H{
-		"txHash":     "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
-		"status":     "pending",
-		"tokenIn":    req.TokenIn,
-		"tokenOut":   req.TokenOut,
-		"amountIn":   req.AmountIn,
-		"amountOut":  req.AmountOut,
-		"timestamp":  time.Now().Unix(),
-		"gasUsed":    "145000",
+		"txHash":    "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+		"status":    "pending",
+		"tokenIn":   req.TokenIn,
+		"tokenOut":  req.TokenOut,
+		"amountIn":  req.AmountIn,
+		"amountOut": req.AmountOut,
+		"timestamp": time.Now().Unix(),
+		"gasUsed":   "145000",
 	}
 	c.JSON(http.StatusOK, gin.H{"data": transaction})
 }
@@ -187,10 +187,10 @@ func (suite *APIIntegrationTestSuite) handleSwapExecute(c *gin.Context) {
 func (suite *APIIntegrationTestSuite) handleGetPools(c *gin.Context) {
 	pools := []gin.H{
 		{
-			"id":       "1",
-			"token0":   "0x1234567890123456789012345678901234567890",
-			"token1":   "0x0987654321098765432109876543210987654321",
-			"fee":      "0.30",
+			"id":        "1",
+			"token0":    "0x1234567890123456789012345678901234567890",
+			"token1":    "0x0987654321098765432109876543210987654321",
+			"fee":       "0.30",
 			"liquidity": "1000000.00",
 			"volume24h": "500000.00",
 		},
@@ -201,10 +201,10 @@ func (suite *APIIntegrationTestSuite) handleGetPools(c *gin.Context) {
 func (suite *APIIntegrationTestSuite) handleGetPool(c *gin.Context) {
 	id := c.Param("id")
 	pool := gin.H{
-		"id":       id,
-		"token0":   "0x1234567890123456789012345678901234567890",
-		"token1":   "0x0987654321098765432109876543210987654321",
-		"fee":      "0.30",
+		"id":        id,
+		"token0":    "0x1234567890123456789012345678901234567890",
+		"token1":    "0x0987654321098765432109876543210987654321",
+		"fee":       "0.30",
 		"liquidity": "1000000.00",
 		"volume24h": "500000.00",
 	}
@@ -279,18 +279,18 @@ func (suite *APIIntegrationTestSuite) handleVerifySignature(c *gin.Context) {
 		Signature string `json:"signature" binding:"required"`
 		Address   string `json:"address" binding:"required"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	// Mock signature verification
 	if len(req.Signature) < 10 {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid signature"})
 		return
 	}
-	
+
 	result := gin.H{
 		"valid":   true,
 		"address": req.Address,
@@ -305,18 +305,18 @@ func (suite *APIIntegrationTestSuite) handleLogin(c *gin.Context) {
 		Signature string `json:"signature" binding:"required"`
 		Nonce     string `json:"nonce" binding:"required"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	// Mock authentication
 	if req.Address == "0x0000000000000000000000000000000000000000" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid address"})
 		return
 	}
-	
+
 	token := gin.H{
 		"accessToken":  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
 		"refreshToken": "refresh_token_123",
@@ -330,17 +330,17 @@ func (suite *APIIntegrationTestSuite) handleRefreshToken(c *gin.Context) {
 	var req struct {
 		RefreshToken string `json:"refreshToken" binding:"required"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	if req.RefreshToken == "invalid_token" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid refresh token"})
 		return
 	}
-	
+
 	token := gin.H{
 		"accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9_new...",
 		"expiresIn":   3600,
@@ -351,31 +351,31 @@ func (suite *APIIntegrationTestSuite) handleRefreshToken(c *gin.Context) {
 // Pool handlers
 func (suite *APIIntegrationTestSuite) handleCreatePool(c *gin.Context) {
 	var req struct {
-		TokenA   string `json:"tokenA" binding:"required"`
-		TokenB   string `json:"tokenB" binding:"required"`
-		AmountA  string `json:"amountA" binding:"required"`
-		AmountB  string `json:"amountB" binding:"required"`
-		FeeRate  string `json:"feeRate"`
+		TokenA  string `json:"tokenA" binding:"required"`
+		TokenB  string `json:"tokenB" binding:"required"`
+		AmountA string `json:"amountA" binding:"required"`
+		AmountB string `json:"amountB" binding:"required"`
+		FeeRate string `json:"feeRate"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	// Validate tokens are different
 	if req.TokenA == req.TokenB {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Tokens must be different"})
 		return
 	}
-	
+
 	pool := gin.H{
-		"id":       "pool_123",
-		"tokenA":   req.TokenA,
-		"tokenB":   req.TokenB,
-		"amountA":  req.AmountA,
-		"amountB":  req.AmountB,
-		"feeRate":  "0.3",
+		"id":        "pool_123",
+		"tokenA":    req.TokenA,
+		"tokenB":    req.TokenB,
+		"amountA":   req.AmountA,
+		"amountB":   req.AmountB,
+		"feeRate":   "0.3",
 		"createdAt": time.Now().Unix(),
 	}
 	c.JSON(http.StatusCreated, gin.H{"data": pool})
@@ -384,59 +384,59 @@ func (suite *APIIntegrationTestSuite) handleCreatePool(c *gin.Context) {
 // Liquidity handlers
 func (suite *APIIntegrationTestSuite) handleAddLiquidity(c *gin.Context) {
 	var req struct {
-		PoolID   string `json:"poolId" binding:"required"`
-		AmountA  string `json:"amountA" binding:"required"`
-		AmountB  string `json:"amountB" binding:"required"`
-		Address  string `json:"address" binding:"required"`
+		PoolID  string `json:"poolId" binding:"required"`
+		AmountA string `json:"amountA" binding:"required"`
+		AmountB string `json:"amountB" binding:"required"`
+		Address string `json:"address" binding:"required"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	// Mock pool not found
 	if req.PoolID == "nonexistent" {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Pool not found"})
 		return
 	}
-	
+
 	liquidity := gin.H{
 		"transactionId": "tx_add_liquidity_123",
-		"poolId":       req.PoolID,
-		"amountA":      req.AmountA,
-		"amountB":      req.AmountB,
-		"lpTokens":     "100.0",
-		"timestamp":    time.Now().Unix(),
+		"poolId":        req.PoolID,
+		"amountA":       req.AmountA,
+		"amountB":       req.AmountB,
+		"lpTokens":      "100.0",
+		"timestamp":     time.Now().Unix(),
 	}
 	c.JSON(http.StatusOK, gin.H{"data": liquidity})
 }
 
 func (suite *APIIntegrationTestSuite) handleRemoveLiquidity(c *gin.Context) {
 	var req struct {
-		PoolID    string `json:"poolId" binding:"required"`
-		LPTokens  string `json:"lpTokens" binding:"required"`
-		Address   string `json:"address" binding:"required"`
+		PoolID   string `json:"poolId" binding:"required"`
+		LPTokens string `json:"lpTokens" binding:"required"`
+		Address  string `json:"address" binding:"required"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	// Mock insufficient liquidity
 	if req.LPTokens == "999999" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Insufficient liquidity tokens"})
 		return
 	}
-	
+
 	liquidity := gin.H{
 		"transactionId": "tx_remove_liquidity_123",
-		"poolId":       req.PoolID,
-		"lpTokens":     req.LPTokens,
-		"amountA":      "50.0",
-		"amountB":      "100.0",
-		"timestamp":    time.Now().Unix(),
+		"poolId":        req.PoolID,
+		"lpTokens":      req.LPTokens,
+		"amountA":       "50.0",
+		"amountB":       "100.0",
+		"timestamp":     time.Now().Unix(),
 	}
 	c.JSON(http.StatusOK, gin.H{"data": liquidity})
 }
@@ -449,18 +449,18 @@ func (suite *APIIntegrationTestSuite) handleAdminCreatePool(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Admin access required"})
 		return
 	}
-	
+
 	var req struct {
 		TokenA  string `json:"tokenA" binding:"required"`
 		TokenB  string `json:"tokenB" binding:"required"`
 		FeeRate string `json:"feeRate" binding:"required"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	pool := gin.H{
 		"id":        "admin_pool_123",
 		"tokenA":    req.TokenA,
@@ -480,16 +480,16 @@ func (suite *APIIntegrationTestSuite) handleAdminDeletePool(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Admin access required"})
 		return
 	}
-	
+
 	poolID := c.Param("id")
 	if poolID == "nonexistent" {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Pool not found"})
 		return
 	}
-	
+
 	result := gin.H{
-		"poolId":   poolID,
-		"status":   "deleted",
+		"poolId":    poolID,
+		"status":    "deleted",
 		"deletedAt": time.Now().Unix(),
 	}
 	c.JSON(http.StatusOK, gin.H{"data": result})
@@ -502,7 +502,7 @@ func (suite *APIIntegrationTestSuite) handleAdminStats(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Admin access required"})
 		return
 	}
-	
+
 	stats := gin.H{
 		"totalPools":        10,
 		"totalTransactions": 1000,

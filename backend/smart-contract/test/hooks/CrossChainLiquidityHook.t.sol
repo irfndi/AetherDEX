@@ -61,7 +61,11 @@ contract MockLayerZeroEndpoint is ILayerZeroEndpoint {
         bytes calldata, /*_payload*/
         bool, /*useZro*/
         bytes calldata /*_adapterParam*/
-    ) external pure returns (uint256 nativeFee, uint256 zroFee) {
+    )
+        external
+        pure
+        returns (uint256 nativeFee, uint256 zroFee)
+    {
         return (0.01 ether, 0);
     }
 

@@ -16,13 +16,7 @@ contract MockEscrow {
     bool public isFunded;
     bool public isReleased;
 
-    constructor(
-        address _buyer,
-        address _seller,
-        address _arbiter,
-        address _token,
-        uint256 _amount
-    ) {
+    constructor(address _buyer, address _seller, address _arbiter, address _token, uint256 _amount) {
         require(_buyer != address(0), "Invalid buyer");
         require(_seller != address(0), "Invalid seller");
         require(_arbiter != address(0), "Invalid arbiter");
