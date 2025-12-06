@@ -34,7 +34,8 @@ jobs:
       - name: Format and lint with Biome
         run: |
           cd apps/web
-          npx @biomejs/biome check --write --unsafe --config-path ../../.config/biome.json app components hooks lib || true
+          npx @biomejs/biome check --write --unsafe --config-path ../../.config/biome.json app components hooks lib
+        continue-on-error: true
 
       # Setup Go for backend formatting
       - uses: actions/setup-go@v5
@@ -62,4 +63,5 @@ jobs:
           forge fmt
 
       # Run autofix.ci action to commit changes
+      # Using commit SHA ff86a557 (corresponds to v1 tag) for security
       - uses: autofix-ci/action@ff86a557419858bb967097bfc916833f5647fa8c
