@@ -7,8 +7,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "biome lint ./app",
-    "format": "biome format ./app",
+    "lint": "biome lint --config-path ../../.config/biome.json app components hooks lib",
+    "format": "biome format --write --config-path ../../.config/biome.json app components hooks lib",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

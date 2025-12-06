@@ -72,16 +72,15 @@ AetherDEX/
    cd AetherDEX
    ```
 
-2. Install dependencies for each component:
+2. Install dependencies with pnpm (JS/TS) plus language-specific tooling:
 
    ```bash
+   # JavaScript/TypeScript workspaces
+   pnpm install
+
    # Smart contracts
    cd backend/smart-contract
    forge install
-
-   # Frontend
-   cd ../../interface/web
-   bun install
 
    # Backend API
    cd ../../backend
@@ -103,11 +102,10 @@ For more details, see the [Smart Contract README](backend/smart-contract/README.
 
 ### Frontend
 
-Start the development server:
+Start the development server via the pnpm workspace:
 
 ```bash
-cd interface/web
-bun dev
+pnpm dev --filter web
 ```
 
 The application will be available at `http://localhost:3000`.
