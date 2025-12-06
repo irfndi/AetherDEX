@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { ChevronDown } from "lucide-react"
 import { Button } from "./ui/button"
-import { TokenList, type TokenListProps } from "./TokenList" // Import TokenListProps
+import { TokenList } from "./TokenList"
 
 export interface Token { // Moved Token interface definition here and exported it
   symbol: string
@@ -23,6 +23,11 @@ interface TokenSelectorProps {
 export function TokenSelector({ tokens, token, onSelect, className = "" }: TokenSelectorProps) { // Updated component props to accept tokens
   const [isOpen, setIsOpen] = useState(false)
 
+  const handleSelect = (selectedToken: Token) => {
+    onSelect(selectedToken)
+    setIsOpen(false)
+  }
+
   if (!token) {
     return (
       <>
@@ -34,7 +39,7 @@ export function TokenSelector({ tokens, token, onSelect, className = "" }: Token
           Select token
           <ChevronDown className="ml-2 h-4 w-4" />
         </Button>
-        <TokenList tokens={tokens} isOpen={isOpen} onClose={() => setIsOpen(false)} onSelect={onSelect} />  {/* Passed tokens prop to TokenList */}
+        {isOpen && <TokenList tokens={tokens} onSelect={handleSelect} />}
       </>
     )
   }
@@ -50,7 +55,7 @@ export function TokenSelector({ tokens, token, onSelect, className = "" }: Token
         {token.symbol}
         <ChevronDown className="h-4 w-4" />
       </Button>
-      <TokenList tokens={tokens} isOpen={isOpen} onClose={() => setIsOpen(false)} onSelect={onSelect} /> {/* Wrapped comment in braces */}
+      {isOpen && <TokenList tokens={tokens} onSelect={handleSelect} />}
     </>
   )
 }

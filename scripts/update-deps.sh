@@ -36,23 +36,20 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 print_status "Starting dependency updates for AetherDEX..."
 print_status "Project root: $PROJECT_ROOT"
 
-# Update Web Interface (Bun)
-print_status "Updating web interface dependencies with Bun..."
-if [ -d "$PROJECT_ROOT/interface/web" ]; then
-    cd "$PROJECT_ROOT/interface/web"
-    if [ -f "package.json" ]; then
-        if command -v bun >/dev/null 2>&1; then
-            bun update
-            print_success "Web interface dependencies updated"
-        else
-            print_error "Bun is not installed. Please install Bun first."
-            exit 1
-        fi
+# Update JS/TS workspace (pnpm)
+print_status "Updating JavaScript/TypeScript workspace dependencies with pnpm..."
+if [ -f "$PROJECT_ROOT/pnpm-workspace.yaml" ]; then
+    if command -v pnpm >/dev/null 2>&1; then
+        cd "$PROJECT_ROOT"
+        pnpm install
+        pnpm update -r
+        print_success "Workspace dependencies updated"
     else
-        print_warning "No package.json found in interface/web"
+        print_error "pnpm is not installed. Use 'corepack enable pnpm' or install pnpm globally."
+        exit 1
     fi
 else
-    print_warning "interface/web directory not found"
+    print_warning "pnpm-workspace.yaml not found in project root"
 fi
 
 # Update Backend (Go)
@@ -106,7 +103,7 @@ fi
 
 print_success "All dependency updates completed successfully!"
 print_status "Summary:"
-print_status "  ✓ Web interface (Bun)"
+print_status "  ✓ JavaScript/TypeScript workspace (pnpm)"
 print_status "  ✓ Backend (Go)"
 print_status "  ✓ Smart contracts (Forge)"
 print_status "  ✓ Go workspace"

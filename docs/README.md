@@ -150,9 +150,8 @@ forge test
 forge coverage
 
 # Frontend tests (Vitest)
-cd interface/web
-bun test
-bun run test:coverage
+pnpm --filter aether-dex test
+pnpm --filter aether-dex vitest run --coverage
 
 # Backend tests (Go)
 cd backend
@@ -172,7 +171,7 @@ See [Test Coverage Report](./test-coverage-report.md) for detailed coverage stat
 ### Development Setup
 
 1.  **Prerequisites:** 
-    - Node.js 24+, Bun 1.2+
+    - Node.js 20+ with `pnpm` enabled via `corepack`
     - Go 1.25+
     - PostgreSQL 15+, Redis 7+
     - Docker & Docker Compose
@@ -181,9 +180,8 @@ See [Test Coverage Report](./test-coverage-report.md) for detailed coverage stat
 
 3.  **Install Dependencies:**
     ```bash
-    # Frontend
-    cd interface/web
-    bun install
+    # JavaScript/TypeScript workspace (frontend + shared packages)
+    pnpm install
     
     # Backend
     cd backend

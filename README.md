@@ -126,11 +126,10 @@ forge create --rpc-url $RPC_URL --private-key $PRIVATE_KEY src/AetherFactory.sol
 Build and deploy the frontend:
 
 ```bash
-cd interface/web
-bun build
+pnpm --filter aether-dex build
 ```
 
-Deploy the built files from the `dist` directory to your preferred hosting service.
+Deploy the built files from the `.next` output (or an OpenNext target) to your preferred hosting service.
 
 ## Testing
 
@@ -142,8 +141,7 @@ cd backend/smart-contract
 forge test -vvv
 
 # Frontend tests
-cd interface/web
-bun test
+pnpm --filter aether-dex test
 ```
 
 ## Security

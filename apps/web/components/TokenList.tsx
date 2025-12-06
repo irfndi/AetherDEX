@@ -1,17 +1,15 @@
 "use client";
 
-import React, { useState } from "react";
+import { useState } from "react";
 import type { Token } from "./TokenSelector";
 import { ScrollArea } from "@radix-ui/react-scroll-area"; // Updated import path for ScrollArea
 
 export interface TokenListProps { 
   tokens: Token[];
   onSelect: (token: Token) => void;
-  isOpen: boolean; 
-  onClose: () => void; 
 }
 
-export const TokenList = ({ tokens, onSelect, isOpen, onClose }: TokenListProps) => { 
+export const TokenList = ({ tokens, onSelect }: TokenListProps) => { 
   const [search, setSearch] = useState("");
 
   const filteredTokens = tokens.filter((token) =>

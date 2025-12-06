@@ -16,3 +16,5 @@
 - [2025-01-07] Planner: Authored dependency upgrade blueprint covering contracts, backend, frontend, and tooling.
 - [2025-01-07] Planner: Delivered PRD (feature analysis, market study, long-term plan, implementation workstreams).
 - [2025-01-07] Planner: Captured execution roadmap (M1–M4) with objectives, deliverables, and exit criteria.
+- [2025-01-07] Executor: Completed pnpm/turbo workspace setup and verified lint/dev commands per M1-A.
+- [2025-01-07] Executor: Relocated frontend to apps/web, refreshed docs/scripts, and revalidated pnpm install + lint.

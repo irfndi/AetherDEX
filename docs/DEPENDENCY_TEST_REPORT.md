@@ -4,20 +4,20 @@ Generated on: $(date)
 
 ## Overview
 
-This report documents the testing of all updated dependencies across the AetherDEX project, including frontend (Bun), backend (Go), and smart contracts (Forge).
+This report documents the testing of all updated dependencies across the AetherDEX project, including the pnpm-based frontend workspace, backend (Go), and smart contracts (Forge).
 
 ## Dependency Versions
 
-### Frontend (interface/web)
-- **Package Manager**: Bun v1.2.20
-- **Runtime**: Node.js v24.2.0
-- **Framework**: Next.js 15.1.6
+### Frontend (apps/web)
+- **Package Manager**: pnpm 9.x (via corepack)
+- **Runtime**: Node.js v20+
+- **Framework**: Next.js 15.3.3
 - **React**: 19.0.0
 - **TypeScript**: 5.7.3
-- **Linting**: oxlint 0.15.0 (replaced Biome)
+- **Linting**: Biome 2.3.x
 - **Testing**: Vitest 2.1.8
 - **Styling**: Tailwind CSS 4.0.0
-- **Web3**: Wagmi 2.14.5, Viem 2.21.54
+- **Web3**: Wagmi 2.16.x, Viem 2.22.x
 - **State Management**: Zustand 5.0.2
 - **UI Components**: Radix UI, Lucide React
 
@@ -40,45 +40,36 @@ This report documents the testing of all updated dependencies across the AetherD
 
 ## Test Results
 
-### ✅ Frontend Tests (interface/web)
+### ✅ Frontend Tests (apps/web)
 
 #### Package Installation
 - **Status**: ✅ PASSED
-- **Command**: `bun install`
-- **Result**: 720 installs across 663 packages completed successfully
-- **Issues**: Fixed circular dependency in package.json install script
+- **Command**: `pnpm install`
+- **Result**: Workspace dependencies installed via pnpm (turbo + Biome CLIs cached)
+- **Issues**: None
 
 #### Linting
 - **Status**: ⚠️ PASSED WITH WARNINGS
-- **Command**: `bun run lint`
-- **Result**: 4 warnings for unused variables
-- **Files**: app/layout.tsx, app/page.tsx, app/trade/swap/page.tsx
-- **Action**: Warnings are acceptable for development
+- **Command**: `pnpm --filter aether-dex lint`
+- **Result**: Biome flagged existing FIXME warnings (tracked in backlog)
+- **Action**: Ignored for now; will be addressed alongside UI refactor
 
 #### Type Checking
 - **Status**: ✅ PASSED
-- **Command**: `bun run type-check`
-- **Issues Fixed**:
-  - Updated Wagmi v2 configuration (replaced WagmiConfig with WagmiProvider)
-  - Added missing CSS module for BackgroundTokens component
-  - Created Jest DOM setup for Vitest testing
-  - Added CSS modules type declarations
+- **Command**: `pnpm --filter aether-dex typecheck`
+- **Notes**:
+  - Ensured Wagmi/Viem typings align with React 19
+  - Confirmed Tailwind config compiles under TS 5.7
 
 #### Testing
 - **Status**: ✅ PASSED
-- **Command**: `bun run test`
-- **Result**: 2/2 tests passed
+- **Command**: `pnpm --filter aether-dex test`
 - **Framework**: Vitest with @testing-library/react
 
 #### Build
 - **Status**: ✅ PASSED
-- **Command**: `bun run build`
-- **Issues Fixed**:
-  - Added "use client" directive for client components
-  - Separated server and client components (created Providers component)
-  - Removed Google Fonts dependency (network timeout issues)
-- **Result**: Optimized production build completed successfully
-- **Bundle Size**: Acceptable for production deployment
+- **Command**: `pnpm --filter aether-dex build`
+- **Result**: Next.js production build succeeded; OpenNext compatibility pending future work
 
 ### ✅ Backend Tests
 

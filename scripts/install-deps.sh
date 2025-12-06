@@ -39,9 +39,9 @@ print_status "Project root: $PROJECT_ROOT"
 # Check required tools
 print_status "Checking required tools..."
 
-if ! command -v bun >/dev/null 2>&1; then
-    print_error "Bun is not installed. Please install Bun first:"
-    print_error "  curl -fsSL https://bun.sh/install | bash"
+if ! command -v pnpm >/dev/null 2>&1; then
+    print_error "pnpm is not installed. Enable it via corepack or install globally:"
+    print_error "  corepack enable pnpm"
     exit 1
 fi
 
@@ -60,18 +60,14 @@ fi
 
 print_success "All required tools are available"
 
-# Install Web Interface dependencies (Bun)
-print_status "Installing web interface dependencies with Bun..."
-if [ -d "$PROJECT_ROOT/interface/web" ]; then
-    cd "$PROJECT_ROOT/interface/web"
-    if [ -f "package.json" ]; then
-        bun install
-        print_success "Web interface dependencies installed"
-    else
-        print_warning "No package.json found in interface/web"
-    fi
+# Install JavaScript/TypeScript workspace dependencies (pnpm)
+print_status "Installing workspace dependencies with pnpm..."
+if [ -f "$PROJECT_ROOT/pnpm-workspace.yaml" ]; then
+    cd "$PROJECT_ROOT"
+    pnpm install
+    print_success "Workspace dependencies installed"
 else
-    print_warning "interface/web directory not found"
+    print_warning "pnpm-workspace.yaml not found in project root"
 fi
 
 # Install Backend dependencies (Go)
@@ -118,7 +114,7 @@ fi
 
 print_success "All dependencies installed successfully!"
 print_status "Summary:"
-print_status "  ✓ Web interface (Bun)"
+print_status "  ✓ JavaScript/TypeScript workspace (pnpm)"
 print_status "  ✓ Backend (Go)"
 print_status "  ✓ Smart contracts (Forge)"
 print_status "  ✓ Go workspace"

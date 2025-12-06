@@ -57,14 +57,12 @@ Build steps might be required for different parts of the application.
 
 2.  **Build Frontend/Backend**: (If applicable, depending on the stack)
     ```bash
-    # Example for a Next.js frontend in interface/web
-    cd interface/web
-    bun build
-    cd ../..
+    # Example for the Next.js frontend in apps/web
+    pnpm --filter aether-dex build
 
     # Example for a Node.js backend
     # cd backend/service (adjust path as needed)
-    # bun build
+    # pnpm build
     # cd ../..
     ```
 
@@ -102,8 +100,7 @@ Build steps might be required for different parts of the application.
 
 5.  **Start Frontend**:
     ```bash
-    cd interface/web
-    bun dev
+    pnpm --filter aether-dex dev
     ```
     This will typically start the development server, often accessible at `http://localhost:3000`.
 
