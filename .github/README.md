@@ -4,7 +4,24 @@ This directory contains GitHub Actions workflows and configuration files for the
 
 ## CI/CD Workflows
 
-### 1. Foundry Tests (`foundry-tests.yml`)
+### 1. autofix.ci (`autofix.yml`)
+
+This workflow automatically fixes code formatting and linting issues in pull requests.
+
+- **Triggers**: On push/PR to main and master branches
+- **Features**:
+  - Automatically formats TypeScript/JavaScript code using Biome
+  - Formats Go code using `go fmt`
+  - Formats Solidity contracts using `forge fmt`
+  - Commits fixes directly to pull requests
+- **Technologies**:
+  - Biome for JavaScript/TypeScript linting and formatting
+  - Go standard formatter for backend code
+  - Foundry formatter for smart contracts
+
+**Setup**: The autofix.ci GitHub App must be installed on the repository. Visit [autofix.ci](https://autofix.ci/setup) for installation instructions.
+
+### 2. Foundry Tests (`foundry-tests.yml`)
 
 This workflow runs Solidity smart contract tests using Foundry.
 
@@ -19,7 +36,7 @@ This workflow runs Solidity smart contract tests using Foundry.
 
 - `CODECOV_TOKEN`: Token for uploading coverage reports to Codecov
 
-### 2. Frontend Build & Lint (`frontend-build.yml`)
+### 3. Frontend Build & Lint (`frontend-build.yml`)
 
 This workflow builds and tests the frontend web application.
 
@@ -30,7 +47,7 @@ This workflow builds and tests the frontend web application.
   - Builds the frontend application
   - Archives build artifacts
 
-### 3. CodeQL Analysis (`codeql.yml`)
+### 4. CodeQL Analysis (`codeql.yml`)
 
 This workflow performs static code analysis using GitHub's CodeQL.
 
