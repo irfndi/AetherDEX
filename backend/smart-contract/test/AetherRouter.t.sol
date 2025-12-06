@@ -44,7 +44,13 @@ contract AetherRouterTest is Test {
         returns (PoolKey memory key, bytes32 poolId)
     {
         require(token0 < token1, "UNSORTED_TOKENS");
-        key = PoolKey({currency0: Currency.wrap(token0), currency1: Currency.wrap(token1), fee: fee, tickSpacing: tickSpacing, hooks: IHooks(hooks)});
+        key = PoolKey({
+            currency0: Currency.wrap(token0),
+            currency1: Currency.wrap(token1),
+            fee: fee,
+            tickSpacing: tickSpacing,
+            hooks: IHooks(hooks)
+        });
         poolId = keccak256(abi.encode(key));
     }
 

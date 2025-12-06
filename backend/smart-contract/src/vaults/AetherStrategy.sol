@@ -177,7 +177,10 @@ contract AetherStrategy is
         bytes memory srcAddress, // Changed back to memory
         uint64, // nonce
         bytes calldata payload // Renamed from _payload
-    ) external nonReentrant {
+    )
+        external
+        nonReentrant
+    {
         // Added nonReentrant modifier
         require(msg.sender == address(lzEndpoint), "Invalid endpoint"); // Check
         require(chainConfigs[srcChainId].isActive, "Chain not active"); // Check
@@ -221,14 +224,18 @@ contract AetherStrategy is
         uint16 chainId, // Renamed from _chainId
         uint256 yieldAmount, // Renamed from _yieldAmount
         bool useZro
-    ) external view returns (uint256 nativeFee, uint256 zroFee) {
+    )
+        external
+        view
+        returns (uint256 nativeFee, uint256 zroFee)
+    {
         require(chainConfigs[chainId].isActive, "Chain not configured"); // Use renamed param
         bytes memory payload = abi.encode(yieldAmount); // Use renamed param
         bytes memory remoteAndLocalAddresses = abi.encodePacked(chainConfigs[chainId].remoteStrategy, address(this));
 
         // Capture and return the estimated fees using named return variables
         (nativeFee, zroFee) = lzEndpoint.estimateFees(chainId, address(this), payload, useZro, remoteAndLocalAddresses); // Use renamed param
-            // No explicit return needed here
+        // No explicit return needed here
     }
 
     /**

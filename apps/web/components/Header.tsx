@@ -1,8 +1,8 @@
 "use client";
 
+import { MoonIcon, SunIcon } from "lucide-react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
-import { WalletConnect } from "@/components/WalletConnect";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -10,14 +10,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown";
+import { WalletConnect } from "@/components/WalletConnect";
 import { useToast } from "@/hooks/use-toast";
-import { MoonIcon, SunIcon } from "lucide-react";
 
 interface HeaderProps {
   onWalletConnect: (address: string) => void;
 }
 
-export function Header({ onWalletConnect }: HeaderProps) { 
+export function Header({ onWalletConnect }: HeaderProps) {
   const { setTheme } = useTheme();
   const { toast } = useToast();
 
@@ -35,30 +35,68 @@ export function Header({ onWalletConnect }: HeaderProps) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-56">
-              <DropdownMenuItem onClick={() => toast({ title: "Coming Soon", description: "Buy feature is not available yet." })}>
+              <DropdownMenuItem
+                onClick={() =>
+                  toast({ title: "Coming Soon", description: "Buy feature is not available yet." })
+                }
+              >
                 Buy
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => toast({ title: "Coming Soon", description: "Sell feature is not available yet." })}>
+              <DropdownMenuItem
+                onClick={() =>
+                  toast({ title: "Coming Soon", description: "Sell feature is not available yet." })
+                }
+              >
                 Sell
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => toast({ title: "Coming Soon", description: "Swap feature is not available yet." })}>
+              <DropdownMenuItem
+                onClick={() =>
+                  toast({ title: "Coming Soon", description: "Swap feature is not available yet." })
+                }
+              >
                 Swap
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => toast({ title: "Coming Soon", description: "Limit feature is not available yet." })}>
+              <DropdownMenuItem
+                onClick={() =>
+                  toast({
+                    title: "Coming Soon",
+                    description: "Limit feature is not available yet.",
+                  })
+                }
+              >
                 Limit
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => toast({ title: "Coming Soon", description: "Send feature is not available yet." })}>
+              <DropdownMenuItem
+                onClick={() =>
+                  toast({ title: "Coming Soon", description: "Send feature is not available yet." })
+                }
+              >
                 Send
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button variant="ghost" onClick={() => toast({ title: "Coming Soon", description: "Explore feature is not available yet." })}>
+          <Button
+            variant="ghost"
+            onClick={() =>
+              toast({ title: "Coming Soon", description: "Explore feature is not available yet." })
+            }
+          >
             Explore
           </Button>
-          <Button variant="ghost" onClick={() => toast({ title: "Coming Soon", description: "Pool feature is not available yet." })}>
+          <Button
+            variant="ghost"
+            onClick={() =>
+              toast({ title: "Coming Soon", description: "Pool feature is not available yet." })
+            }
+          >
             Pool
           </Button>
-          <Button variant="ghost" onClick={() => toast({ title: "Coming Soon", description: "Meme feature is not available yet." })}>
+          <Button
+            variant="ghost"
+            onClick={() =>
+              toast({ title: "Coming Soon", description: "Meme feature is not available yet." })
+            }
+          >
             Meme
           </Button>
           <DropdownMenu>
@@ -70,18 +108,12 @@ export function Header({ onWalletConnect }: HeaderProps) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setTheme("light")}>
-                Light
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setTheme("dark")}>
-                Dark
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setTheme("system")}>
-                System
-              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme("light")}>Light</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme("dark")}>Dark</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme("system")}>System</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <WalletConnect onConnected={(address: string) => onWalletConnect(address)}/>
+          <WalletConnect onConnected={(address: string) => onWalletConnect(address)} />
         </div>
       </div>
     </header>

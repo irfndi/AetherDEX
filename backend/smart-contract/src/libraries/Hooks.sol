@@ -93,7 +93,11 @@ library Hooks {
         PoolKey memory, /*key*/
         IPoolManager.SwapParams memory, /*params*/
         bytes memory /*hookData*/
-    ) internal pure returns (bytes4) {
+    )
+        internal
+        pure
+        returns (bytes4)
+    {
         return BEFORE_SWAP_SELECTOR;
     }
 
@@ -103,7 +107,11 @@ library Hooks {
         IPoolManager.SwapParams memory, /*params*/
         BalanceDelta memory, /*delta*/
         bytes memory /*hookData*/
-    ) internal pure returns (bytes4) {
+    )
+        internal
+        pure
+        returns (bytes4)
+    {
         return AFTER_SWAP_SELECTOR;
     }
 
@@ -112,7 +120,11 @@ library Hooks {
         PoolKey memory, /*key*/
         IPoolManager.ModifyPositionParams memory, /*params*/
         bytes memory /*data*/
-    ) internal pure returns (bytes4) {
+    )
+        internal
+        pure
+        returns (bytes4)
+    {
         return BEFORE_MODIFY_POSITION_SELECTOR;
     }
 

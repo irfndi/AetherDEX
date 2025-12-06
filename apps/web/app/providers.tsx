@@ -1,12 +1,12 @@
 "use client";
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
+import { createConfig, http, WagmiProvider } from "wagmi";
+import { polygonZkEvmTestnet } from "wagmi/chains";
 import { Header } from "@/components/Header";
 import { ThemeProvider } from "@/components/ui/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
-import { WagmiProvider, createConfig, http } from "wagmi";
-import { polygonZkEvmTestnet } from "wagmi/chains";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const config = createConfig({
   chains: [polygonZkEvmTestnet],
@@ -19,7 +19,7 @@ const queryClient = new QueryClient();
 
 export function Providers({ children }: { children: React.ReactNode }) {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [walletAddress, setWalletAddress] = useState("");
+  const [_walletAddress, setWalletAddress] = useState("");
 
   const handleWalletConnect = (address: string) => {
     setWalletAddress(address);

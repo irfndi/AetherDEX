@@ -44,7 +44,9 @@ contract CrossChainLiquidityHook is
 
     event CrossChainLiquidityEvent(uint16 chainId, address token0, address token1, int256 liquidityDelta);
     event RemoteHookSet(uint16 indexed chainId, address indexed hookAddress);
-    event CrossChainLiquidityError(uint16 chainId, address token0, address token1, int256 liquidityDelta, string reason);
+    event CrossChainLiquidityError(
+        uint16 chainId, address token0, address token1, int256 liquidityDelta, string reason
+    );
 
     constructor(address _poolManager, address _lzEndpoint, address _localToken0, address _localToken1)
         BaseHook(_poolManager)
@@ -101,7 +103,9 @@ contract CrossChainLiquidityHook is
         // Removed call to validateHookAddress
         // Only process non-zero liquidity changes
         if (params.liquidityDelta != 0) {
-            _sendCrossChainLiquidityUpdate(Currency.unwrap(key.currency0), Currency.unwrap(key.currency1), params.liquidityDelta);
+            _sendCrossChainLiquidityUpdate(
+                Currency.unwrap(key.currency0), Currency.unwrap(key.currency1), params.liquidityDelta
+            );
         }
         return IHooks.afterAddLiquidity.selector;
     }
@@ -198,9 +202,7 @@ contract CrossChainLiquidityHook is
         // Construct params for modifyPosition
         // Assuming adding/removing liquidity across the full range for rebalancing
         IPoolManager.ModifyPositionParams memory params = IPoolManager.ModifyPositionParams({
-            tickLower: TickMath.MIN_TICK,
-            tickUpper: TickMath.MAX_TICK,
-            liquidityDelta: liquidityDelta
+            tickLower: TickMath.MIN_TICK, tickUpper: TickMath.MAX_TICK, liquidityDelta: liquidityDelta
         });
         console.log("lzReceive: Constructed Params.liquidityDelta=", params.liquidityDelta);
         console.log("lzReceive: Constructed Params.tickLower=", params.tickLower);
@@ -209,17 +211,29 @@ contract CrossChainLiquidityHook is
         // Call the local pool manager to apply the change
         console.log("lzReceive: Attempting poolManager.modifyPosition...");
 
-        try poolManager.modifyPosition(key, params, "") returns (BalanceDelta memory /*delta*/) {
+        try poolManager.modifyPosition(key, params, "") returns (
+            BalanceDelta memory /*delta*/
+        ) {
             // On success, emit cross-chain liquidity event
-            emit CrossChainLiquidityEvent(srcChainId, Currency.unwrap(key.currency0), Currency.unwrap(key.currency1), liquidityDelta);
+            emit CrossChainLiquidityEvent(
+                srcChainId, Currency.unwrap(key.currency0), Currency.unwrap(key.currency1), liquidityDelta
+            );
         } catch Error(string memory reason) {
             // Log error with reason instead of silently failing
-            emit CrossChainLiquidityError(srcChainId, Currency.unwrap(key.currency0), Currency.unwrap(key.currency1), liquidityDelta, reason);
-        } catch (bytes memory /* lowLevelData */) {
+            emit CrossChainLiquidityError(
+                srcChainId, Currency.unwrap(key.currency0), Currency.unwrap(key.currency1), liquidityDelta, reason
+            );
+        } catch (bytes memory) {
+            /* lowLevelData */
             // Log error with generic message for low-level errors
-            emit CrossChainLiquidityError(srcChainId, Currency.unwrap(key.currency0), Currency.unwrap(key.currency1), liquidityDelta, "Low-level error");
+            emit CrossChainLiquidityError(
+                srcChainId,
+                Currency.unwrap(key.currency0),
+                Currency.unwrap(key.currency1),
+                liquidityDelta,
+                "Low-level error"
+            );
         }
-
     }
 
     /**
@@ -247,8 +261,9 @@ contract CrossChainLiquidityHook is
                 address(0),
                 bytes("")
             ) {
-                // Success case - event already emitted
-            } catch {
+            // Success case - event already emitted
+            }
+            catch {
                 // Log failure but continue with other chains
                 // Consider adding a specific event for failed sends
                 continue;
@@ -264,7 +279,11 @@ contract CrossChainLiquidityHook is
         address token0,
         address token1,
         int256 liquidityDelta
-    ) external view returns (uint256 nativeFee, uint256 zroFee) {
+    )
+        external
+        view
+        returns (uint256 nativeFee, uint256 zroFee)
+    {
         bytes memory payload = abi.encode(token0, token1, liquidityDelta);
         bytes memory remoteAndLocalAddresses = abi.encodePacked(remoteHooks[chainId], address(this));
 

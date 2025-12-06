@@ -68,7 +68,8 @@ contract AetherVaultFactory is
         external
         onlyOwner
         nonReentrant // Added nonReentrant modifier
-        returns (address vaultAddress, address trueStrategyAddress) // Renamed return variables
+        returns (address vaultAddress, address trueStrategyAddress)
+     // Renamed return variables
     {
         // --- Checks ---
         require(asset != address(0), "Invalid asset address");
@@ -87,9 +88,8 @@ contract AetherVaultFactory is
 
         // Create the flagged strategy address for hook registration / storage
         address flaggedStrategyAddress = address(
-            uint160(trueStrategyAddress) |
-            uint160(HookFlags.Flags.AFTER_MODIFY_POSITION) |
-            uint160(HookFlags.Flags.AFTER_SWAP)
+            uint160(trueStrategyAddress) | uint160(HookFlags.Flags.AFTER_MODIFY_POSITION)
+                | uint160(HookFlags.Flags.AFTER_SWAP)
         );
 
         // --- Effects (Update state *before* external setStrategy call) ---

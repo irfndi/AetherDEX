@@ -35,11 +35,7 @@ interface IPoolManager {
     );
 
     /// @notice Emitted when pool parameters are updated
-    event PoolParametersUpdated(
-        PoolKey indexed poolKey,
-        uint256 newFee,
-        int24 newTickSpacing
-    );
+    event PoolParametersUpdated(PoolKey indexed poolKey, uint256 newFee, int24 newTickSpacing);
 
     /// @notice Emitted when a pool is paused or unpaused
     event PoolPauseStatusChanged(PoolKey indexed poolKey, bool paused);
@@ -100,11 +96,7 @@ interface IPoolManager {
      * @param newFee The new fee (in hundredths of a bip)
      * @param newTickSpacing The new tick spacing
      */
-    function updatePoolParameters(
-        PoolKey calldata key,
-        uint24 newFee,
-        int24 newTickSpacing
-    ) external;
+    function updatePoolParameters(PoolKey calldata key, uint24 newFee, int24 newTickSpacing) external;
 
     /**
      * @notice Gets the pause status of a pool
@@ -120,14 +112,7 @@ interface IPoolManager {
      * @return paused Whether the pool is paused
      * @return createdAt Block timestamp when pool was created
      */
-    function getPoolInfo(PoolKey calldata key)
-        external
-        view
-        returns (
-            address pool,
-            bool paused,
-            uint256 createdAt
-        );
+    function getPoolInfo(PoolKey calldata key) external view returns (address pool, bool paused, uint256 createdAt);
 
     /**
      * @notice Validates pool key parameters
@@ -149,10 +134,7 @@ interface IPoolManager {
      * @param token1 Second token address
      * @return pools Array of pool addresses for the token pair
      */
-    function getPoolsByTokenPair(address token0, address token1)
-        external
-        view
-        returns (address[] memory pools);
+    function getPoolsByTokenPair(address token0, address token1) external view returns (address[] memory pools);
 
     /**
      * @notice Execute a swap in the specified pool
@@ -182,6 +164,5 @@ interface IPoolManager {
      * @param sqrtPriceX96 The initial sqrt price
      * @param hookData Additional data for hooks
      */
-    function initialize(PoolKey calldata key, uint160 sqrtPriceX96, bytes calldata hookData)
-        external;
+    function initialize(PoolKey calldata key, uint160 sqrtPriceX96, bytes calldata hookData) external;
 }

@@ -31,12 +31,12 @@ contract AetherFactory is
      * @notice Mapping from pool key hash to pool address
      */
     mapping(bytes32 => address) public getPool;
-    
+
     /**
      * @notice Legacy mapping for backward compatibility (token pair to pool)
      */
     mapping(address => mapping(address => address)) public getPoolLegacy;
-    
+
     /**
      * @notice Array of all deployed pool addresses.
      * @notice Returns array of AetherPool contract addresses.
@@ -56,7 +56,9 @@ contract AetherFactory is
      * @param pool The address of the newly deployed AetherPool contract.
      * @param allPoolsLength The total number of pools after creation.
      */
-    event PoolCreated(address indexed token0, address indexed token1, uint24 indexed fee, address pool, uint256 allPoolsLength);
+    event PoolCreated(
+        address indexed token0, address indexed token1, uint24 indexed fee, address pool, uint256 allPoolsLength
+    );
 
     /**
      * @notice Emitted when the fee configuration for new pools is changed.
@@ -84,11 +86,7 @@ contract AetherFactory is
      * @param fee The fee tier for the pool.
      * @return pool The address of the newly created AetherPool contract.
      */
-    function createPool(
-        address token0,
-        address token1,
-        uint24 fee
-    ) external nonReentrant returns (address pool) {
+    function createPool(address token0, address token1, uint24 fee) external nonReentrant returns (address pool) {
         // Input validation
         if (token0 == address(0) || token1 == address(0)) {
             revert Errors.ZeroAddress();
@@ -96,47 +94,48 @@ contract AetherFactory is
         if (token0 == token1) {
             revert Errors.IdenticalAddresses();
         }
-        if (fee == 0 || fee > 10000) { // Fee should be between 0.01% and 100%
-             revert Errors.InvalidFeeTier();
-         }
-        
+        if (fee == 0 || fee > 10000) {
+            // Fee should be between 0.01% and 100%
+            revert Errors.InvalidFeeTier();
+        }
+
         // Ensure token0 < token1 for consistent ordering
         if (token0 > token1) {
             (token0, token1) = (token1, token0);
         }
-        
+
         // Check if pool already exists
         bytes32 poolKey = keccak256(abi.encodePacked(token0, token1, fee));
         if (getPool[poolKey] != address(0)) {
-             revert Errors.PoolAlreadyExists();
-         }
-        
+            revert Errors.PoolAlreadyExists();
+        }
+
         // Generate deterministic salt for CREATE2
         bytes32 salt = keccak256(abi.encodePacked(token0, token1, fee));
-        
+
         // Note: Since AetherPool is implemented in Vyper, we need the compiled bytecode
         // This is a placeholder for the actual Vyper bytecode deployment
         // In practice, you would have the compiled Vyper bytecode here
         bytes memory bytecode = getPoolBytecode();
-        
+
         // Deploy using CREATE2
         assembly {
             pool := create2(0, add(bytecode, 0x20), mload(bytecode), salt)
         }
-        
+
         if (pool == address(0)) {
-             revert Errors.PoolCreationFailed();
-         }
-        
+            revert Errors.PoolCreationFailed();
+        }
+
         // Initialize the pool with token addresses and fee
         IAetherPool(pool).initialize(token0, token1, fee);
-        
+
         // Store pool mapping
         getPool[poolKey] = pool;
         getPoolLegacy[token0][token1] = pool; // Legacy mapping
         getPoolLegacy[token1][token0] = pool; // Allow lookup in reverse order too
         allPools.push(pool);
-        
+
         emit PoolCreated(token0, token1, fee, pool, allPools.length);
     }
 
@@ -154,14 +153,14 @@ contract AetherFactory is
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
 
         bytes32 poolKey = keccak256(abi.encodePacked(token0, token1, IAetherPool(poolAddress).fee()));
-         if (getPool[poolKey] != address(0)) revert Errors.PoolAlreadyExists();
+        if (getPool[poolKey] != address(0)) revert Errors.PoolAlreadyExists();
 
         getPool[poolKey] = poolAddress;
         getPoolLegacy[token0][token1] = poolAddress;
         getPoolLegacy[token1][token0] = poolAddress; // Allow lookup in reverse order too
         allPools.push(poolAddress);
 
-        uint24 registeredFee = IAetherPool(poolAddress).fee(); 
+        uint24 registeredFee = IAetherPool(poolAddress).fee();
         emit PoolCreated(token0, token1, registeredFee, poolAddress, allPools.length);
     }
 
@@ -183,7 +182,7 @@ contract AetherFactory is
     function poolCount() external view returns (uint256) {
         return allPools.length;
     }
-    
+
     /**
      * @notice Get the bytecode for AetherPool deployment
      * @dev This function returns the compiled Vyper bytecode for AetherPool
@@ -193,20 +192,16 @@ contract AetherFactory is
         // TODO: Replace with actual compiled Vyper bytecode
         // This is a placeholder - in practice, you would include the compiled
         // Vyper bytecode for AetherPool.vy here
-        
+
         // For now, we'll use a minimal proxy pattern as a fallback
         // This creates a minimal proxy that delegates to a master pool implementation
         bytes memory implementationBytecode = hex"3d602d80600a3d3981f3363d3d373d3d3d363d73";
         bytes memory implementationAddress = abi.encodePacked(address(this)); // Placeholder
         bytes memory suffix = hex"5af43d82803e903d91602b57fd5bf3";
-        
-        bytecode = abi.encodePacked(
-            implementationBytecode,
-            implementationAddress,
-            suffix
-        );
+
+        bytecode = abi.encodePacked(implementationBytecode, implementationAddress, suffix);
     }
-    
+
     /**
      * @notice Compute the CREATE2 address for a pool
      * @param token0 The first token address
@@ -214,28 +209,19 @@ contract AetherFactory is
      * @param fee The fee tier
      * @return pool The computed pool address
      */
-    function computePoolAddress(
-        address token0,
-        address token1,
-        uint24 fee
-    ) external view returns (address pool) {
+    function computePoolAddress(address token0, address token1, uint24 fee) external view returns (address pool) {
         // Ensure token0 < token1 for consistent ordering
         if (token0 > token1) {
             (token0, token1) = (token1, token0);
         }
-        
+
         bytes32 salt = keccak256(abi.encodePacked(token0, token1, fee));
         bytes memory bytecode = getPoolBytecode();
         bytes32 bytecodeHash = keccak256(bytecode);
-        
-        pool = address(uint160(uint256(keccak256(abi.encodePacked(
-            bytes1(0xff),
-            address(this),
-            salt,
-            bytecodeHash
-        )))));
+
+        pool = address(uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, bytecodeHash)))));
     }
-    
+
     /**
      * @notice Get pool address by tokens and fee
      * @param token0 The first token address
@@ -243,16 +229,12 @@ contract AetherFactory is
      * @param fee The fee tier
      * @return pool The pool address (zero if doesn't exist)
      */
-    function getPoolAddress(
-        address token0,
-        address token1,
-        uint24 fee
-    ) external view returns (address pool) {
+    function getPoolAddress(address token0, address token1, uint24 fee) external view returns (address pool) {
         // Ensure token0 < token1 for consistent ordering
         if (token0 > token1) {
             (token0, token1) = (token1, token0);
         }
-        
+
         bytes32 poolKey = keccak256(abi.encodePacked(token0, token1, fee));
         pool = getPool[poolKey];
     }

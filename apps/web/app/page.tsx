@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import { ArrowDown } from "lucide-react";
+import { useState } from "react";
+import { BackgroundTokens } from "@/components/BackgroundTokens";
+import { Header } from "@/components/Header";
+import type { Token } from "@/components/TokenSelector";
+import { TokenSelector } from "@/components/TokenSelector";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Header } from "@/components/Header";
-import { TokenSelector } from "@/components/TokenSelector";
-import { BackgroundTokens } from "@/components/BackgroundTokens";
-import type { Token } from "@/components/TokenSelector"; 
 
 export default function Home() {
   const [fromToken, setFromToken] = useState<Token>({
@@ -42,13 +42,13 @@ export default function Home() {
       } else {
         setToAmount("");
       }
-    } 
+    }
   };
 
   const calculateFromAmount = (value: string) => {
     setToAmount(value);
     if (fromToken && toToken && value) {
-      const toValue = Number.parseFloat(value);
+      const _toValue = Number.parseFloat(value);
       let exchangeRate: number | undefined;
       if (toToken.price !== undefined && fromToken.price !== undefined) {
         exchangeRate = toToken.price / fromToken.price;
@@ -62,17 +62,14 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen text-foreground" style={{ backgroundColor: 'lightgreen' }}>
-      <Header
-        onWalletConnect={(address) => console.log("Connected:", address)}
-      />
+    <div className="min-h-screen text-foreground" style={{ backgroundColor: "lightgreen" }}>
+      <Header onWalletConnect={(address) => console.log("Connected:", address)} />
       <BackgroundTokens />
       <main className="pt-32 px-4">
         <div className="max-w-[480px] mx-auto text-center mb-8">
           <h1 className="text-5xl font-bold mb-4">Swap anytime, anywhere.</h1>
           <p className="text-gray-400">
-            The largest onchain marketplace. Buy and sell crypto on Ethereum and
-            11+ other chains.
+            The largest onchain marketplace. Buy and sell crypto on Ethereum and 11+ other chains.
           </p>
         </div>
         <div className="w-full max-w-[480px] mx-auto bg-card rounded-2xl p-4">
@@ -92,14 +89,12 @@ export default function Home() {
                   onChange={(e) => calculateToAmount(e.target.value)}
                   className="border-0 bg-transparent text-2xl font-medium focus-visible:ring-0 p-0 h-auto"
                 />
-                <TokenSelector tokens={[]} token={fromToken} onSelect={setFromToken} /> 
+                <TokenSelector tokens={[]} token={fromToken} onSelect={setFromToken} />
               </div>
               <div className="text-sm text-right text-gray-400 mt-1">
                 $
                 {fromToken && fromAmount
-                  ? (Number.parseFloat(fromAmount) * (fromToken.price ?? 0)).toFixed(
-                      2,
-                    )
+                  ? (Number.parseFloat(fromAmount) * (fromToken.price ?? 0)).toFixed(2)
                   : "0.00"}
               </div>
             </div>
@@ -128,7 +123,7 @@ export default function Home() {
                   onChange={(e) => calculateFromAmount(e.target.value)}
                   className="border-0 bg-transparent text-2xl font-medium focus-visible:ring-0 p-0 h-auto"
                 />
-                <TokenSelector tokens={[]} token={toToken} onSelect={setToToken} /> 
+                <TokenSelector tokens={[]} token={toToken} onSelect={setToToken} />
               </div>
               <div className="text-sm text-right text-gray-400 mt-1">
                 $

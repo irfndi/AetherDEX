@@ -61,18 +61,14 @@ contract CircuitBreaker is AccessControl, Pausable, ReentrancyGuard {
      * @param initialGasLimit Initial maximum gas price
      * @param initialValueLimit Initial maximum transaction value
      */
-    constructor(
-        address admin,
-        uint256 initialGasLimit,
-        uint256 initialValueLimit
-    ) {
+    constructor(address admin, uint256 initialGasLimit, uint256 initialValueLimit) {
         if (admin == address(0)) revert Errors.ZeroAddress();
-        
+
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(ADMIN_ROLE, admin);
         _grantRole(OPERATOR_ROLE, admin);
         _grantRole(PAUSER_ROLE, admin);
-        
+
         maxGasPrice = initialGasLimit;
         maxTransactionValue = initialValueLimit;
         gasLimitEnabled = true;
@@ -108,7 +104,7 @@ contract CircuitBreaker is AccessControl, Pausable, ReentrancyGuard {
             if (value > maxTransactionValue) {
                 revert Errors.AmountTooLow(); // Reusing for value limit
             }
-            
+
             uint256 today = block.timestamp / 1 days;
             if (dailyVolume[today] + value > maxDailyVolume) {
                 revert Errors.AmountTooLow(); // Reusing for daily limit
@@ -235,41 +231,39 @@ contract CircuitBreaker is AccessControl, Pausable, ReentrancyGuard {
     }
 
     // Security check function for external contracts
-    function performSecurityChecks(
-        address token,
-        address user,
-        uint256 value
-    ) external view 
-        whenNotPaused 
-        returns (bool) 
+    function performSecurityChecks(address token, address user, uint256 value)
+        external
+        view
+        whenNotPaused
+        returns (bool)
     {
         // Check emergency mode
         if (emergencyMode && block.timestamp < emergencyActivatedAt + EMERGENCY_DURATION) {
             return false;
         }
-        
+
         // Check blacklists
         if (blacklistEnabled && (blacklistedTokens[token] || blacklistedAddresses[user])) {
             return false;
         }
-        
+
         // Check gas price
         if (gasLimitEnabled && tx.gasprice > maxGasPrice) {
             return false;
         }
-        
+
         // Check value limits
         if (valueLimitsEnabled) {
             if (value > maxTransactionValue) {
                 return false;
             }
-            
+
             uint256 today = block.timestamp / 1 days;
             if (dailyVolume[today] + value > maxDailyVolume) {
                 return false;
             }
         }
-        
+
         return true;
     }
 }

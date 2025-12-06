@@ -1,32 +1,34 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { ChevronDown } from "lucide-react"
-import { Button } from "./ui/button"
-import { TokenList } from "./TokenList"
+import { ChevronDown } from "lucide-react";
+import { useState } from "react";
+import { TokenList } from "./TokenList";
+import { Button } from "./ui/button";
 
-export interface Token { // Moved Token interface definition here and exported it
-  symbol: string
-  name: string
-  icon: string | null | undefined
-  balance: string | null | undefined
-  price?: number
+export interface Token {
+  // Moved Token interface definition here and exported it
+  symbol: string;
+  name: string;
+  icon: string | null | undefined;
+  balance: string | null | undefined;
+  price?: number;
 }
 
 interface TokenSelectorProps {
   tokens: Token[]; // Added tokens prop to TokenSelectorProps
-  token?: Token
-  onSelect: (token: Token) => void
-  className?: string
+  token?: Token;
+  onSelect: (token: Token) => void;
+  className?: string;
 }
 
-export function TokenSelector({ tokens, token, onSelect, className = "" }: TokenSelectorProps) { // Updated component props to accept tokens
-  const [isOpen, setIsOpen] = useState(false)
+export function TokenSelector({ tokens, token, onSelect, className = "" }: TokenSelectorProps) {
+  // Updated component props to accept tokens
+  const [isOpen, setIsOpen] = useState(false);
 
   const handleSelect = (selectedToken: Token) => {
-    onSelect(selectedToken)
-    setIsOpen(false)
-  }
+    onSelect(selectedToken);
+    setIsOpen(false);
+  };
 
   if (!token) {
     return (
@@ -41,7 +43,7 @@ export function TokenSelector({ tokens, token, onSelect, className = "" }: Token
         </Button>
         {isOpen && <TokenList tokens={tokens} onSelect={handleSelect} />}
       </>
-    )
+    );
   }
 
   return (
@@ -57,5 +59,5 @@ export function TokenSelector({ tokens, token, onSelect, className = "" }: Token
       </Button>
       {isOpen && <TokenList tokens={tokens} onSelect={handleSelect} />}
     </>
-  )
+  );
 }

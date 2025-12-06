@@ -16,7 +16,9 @@
   border-radius: 50%;
   opacity: 0.6;
   will-change: transform, filter;
-  transition: transform 3s cubic-bezier(0.4, 0, 0.2, 1), filter 2s ease-in-out;
+  transition:
+    transform 3s cubic-bezier(0.4, 0, 0.2, 1),
+    filter 2s ease-in-out;
 }
 
 .token:hover {

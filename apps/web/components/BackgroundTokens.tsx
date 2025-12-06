@@ -4,9 +4,36 @@ import { useEffect, useRef } from "react";
 import styles from "./BackgroundTokens.module.css";
 
 const tokens = [
-  "ETH", "BTC", "USDT", "BNB", "XRP", "ADA", "DOGE", "SOL", "DOT", "MATIC",
-  "LTC", "TRX", "SHIB", "AVAX", "UNI", "LINK", "XLM", "XMR", "ETC", "ICP",
-  "FIL", "VET", "EGLD", "AAVE", "EOS", "THETA", "XTZ", "NEO", "BSV", "ZEC"
+  "ETH",
+  "BTC",
+  "USDT",
+  "BNB",
+  "XRP",
+  "ADA",
+  "DOGE",
+  "SOL",
+  "DOT",
+  "MATIC",
+  "LTC",
+  "TRX",
+  "SHIB",
+  "AVAX",
+  "UNI",
+  "LINK",
+  "XLM",
+  "XMR",
+  "ETC",
+  "ICP",
+  "FIL",
+  "VET",
+  "EGLD",
+  "AAVE",
+  "EOS",
+  "THETA",
+  "XTZ",
+  "NEO",
+  "BSV",
+  "ZEC",
 ];
 
 export const BackgroundTokens = () => {
@@ -24,12 +51,12 @@ export const BackgroundTokens = () => {
       const x = Math.random() * 90 + 5; // Keep within 5-95% to avoid edge clipping
       const y = Math.random() * 90 + 5;
       element.style.transform = `translate(${x}vw, ${y}vh)`;
-      
+
       // Set color with animation
       const hue = Math.random() * 360;
       element.style.backgroundColor = `hsl(${hue}deg, 100%, 50%)`;
       element.style.filter = `saturate(${Math.random() * 0.5 + 0.5})`;
-      
+
       // Randomize animation properties
       const duration = 2 + Math.random() * 2;
       const delay = Math.random() * -2;
@@ -62,15 +89,12 @@ export const BackgroundTokens = () => {
   }, []);
 
   return (
-    <div
-      ref={containerRef}
-      className={styles.container}
-    >
+    <div ref={containerRef} className={styles.container}>
       {tokens.map((token) => (
         <div
           key={token}
           className={styles.token}
-          style={{ 
+          style={{
             backgroundColor: `hsl(${Math.random() * 360}deg, 100%, 50%)`,
           }}
         />

@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import { ArrowDown } from "lucide-react";
+import { useState } from "react";
+import { BackgroundTokens } from "@/components/BackgroundTokens";
+import { Header } from "@/components/Header";
+import type { Token } from "@/components/TokenSelector"; // Updated import path for Token
+import { TokenSelector } from "@/components/TokenSelector";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Header } from "@/components/Header";
-import { TokenSelector } from "@/components/TokenSelector";
-import { BackgroundTokens } from "@/components/BackgroundTokens";
-import type { Token } from "@/components/TokenSelector"; // Updated import path for Token
 
 export default function SwapPage() {
   const [fromToken, setFromToken] = useState<Token>({
@@ -63,7 +63,7 @@ export default function SwapPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <Header onWalletConnect={(address) => setIsWalletConnected(!!address)} /> 
+      <Header onWalletConnect={(address) => setIsWalletConnected(!!address)} />
       <BackgroundTokens />
       <main className="pt-32 px-4">
         <div className="max-w-[480px] mx-auto text-center mb-8">
@@ -89,12 +89,13 @@ export default function SwapPage() {
                   onChange={(e) => calculateToAmount(e.target.value)}
                   className="border-0 bg-transparent text-2xl font-medium focus-visible:ring-0 p-0 h-auto"
                 />
-                <TokenSelector tokens={[]} token={fromToken} onSelect={setFromToken} /> 
+                <TokenSelector tokens={[]} token={fromToken} onSelect={setFromToken} />
               </div>
               <div className="text-sm text-right text-muted-foreground mt-1">
                 $
                 {fromToken && fromAmount
-                  ? (Number.parseFloat(fromAmount) * (fromToken.price ?? 0)).toFixed( // Use optional chaining and default value
+                  ? (Number.parseFloat(fromAmount) * (fromToken.price ?? 0)).toFixed(
+                      // Use optional chaining and default value
                       2,
                     )
                   : "0.00"}
@@ -125,7 +126,7 @@ export default function SwapPage() {
                   onChange={(e) => calculateFromAmount(e.target.value)}
                   className="border-0 bg-transparent text-2xl font-medium focus-visible:ring-0 p-0 h-auto"
                 />
-                <TokenSelector tokens={[]} token={toToken} onSelect={setToToken} /> 
+                <TokenSelector tokens={[]} token={toToken} onSelect={setToToken} />
               </div>
               <div className="text-sm text-right text-muted-foreground mt-1">
                 $
@@ -142,9 +143,7 @@ export default function SwapPage() {
               if (!isWalletConnected) {
                 // Trigger wallet connection
                 (
-                  document.querySelector(
-                    'button:contains("Connect Wallet")',
-                  ) as HTMLElement
+                  document.querySelector('button:contains("Connect Wallet")') as HTMLElement
                 )?.click();
               } else {
                 // Perform swap
@@ -152,11 +151,7 @@ export default function SwapPage() {
               }
             }}
           >
-            {!isWalletConnected
-              ? "Get Started"
-              : !fromToken || !toToken
-                ? "Select tokens"
-                : "Swap"}
+            {!isWalletConnected ? "Get Started" : !fromToken || !toToken ? "Select tokens" : "Swap"}
           </Button>
         </div>
       </main>

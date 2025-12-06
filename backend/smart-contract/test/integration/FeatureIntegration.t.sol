@@ -50,15 +50,19 @@ contract MockPool is IAetherPool {
         return (token0, token1);
     }
 
-    function mint(address /* recipient */, uint128 amount) 
-        external 
-        pure 
-        override 
-        returns (uint256 amount0Minted, uint256 amount1Minted) 
+    function mint(
+        address,
+        /* recipient */
+        uint128 amount
+    )
+        external
+        pure
+        override
+        returns (uint256 amount0Minted, uint256 amount1Minted)
     {
         if (amount > 0) {
-            amount0Minted = uint256(amount) * 100; 
-            amount1Minted = uint256(amount) * 150; 
+            amount0Minted = uint256(amount) * 100;
+            amount1Minted = uint256(amount) * 150;
         } else {
             amount0Minted = 0;
             amount1Minted = 0;
@@ -66,27 +70,28 @@ contract MockPool is IAetherPool {
         return (amount0Minted, amount1Minted);
     }
 
-    function mint(address /* to */, uint256 amount0Desired, uint256 amount1Desired)
+    function mint(
+        address,
+        /* to */
+        uint256 amount0Desired,
+        uint256 amount1Desired
+    )
         external
         pure
         returns (uint256 amount0Out, uint256 amount1Out, uint256 liquidityOut)
     {
         amount0Out = amount0Desired;
         amount1Out = amount1Desired;
-        liquidityOut = (amount0Desired + amount1Desired) / 2; 
+        liquidityOut = (amount0Desired + amount1Desired) / 2;
         if (liquidityOut == 0 && (amount0Desired > 0 || amount1Desired > 0)) {
-            liquidityOut = 1; 
+            liquidityOut = 1;
         }
         return (amount0Out, amount1Out, liquidityOut);
     }
 
-    function swap(uint256 amountIn, address tokenIn, address to)
-        external
-        override
-        returns (uint256 amountOut)
-    {
+    function swap(uint256 amountIn, address tokenIn, address to) external override returns (uint256 amountOut) {
         require(tokenIn == token0 || tokenIn == token1, "MockPool: INVALID_INPUT_TOKEN");
-        amountOut = amountIn / 2; 
+        amountOut = amountIn / 2;
 
         if (amountOut > 0) {
             address tokenToTransferOut;
@@ -101,15 +106,19 @@ contract MockPool is IAetherPool {
         return amountOut;
     }
 
-    function burn(address /* to */, uint256 liquidityToBurn) 
-        external 
+    function burn(
+        address,
+        /* to */
+        uint256 liquidityToBurn
+    )
+        external
         pure
-        override 
+        override
         returns (uint256 amount0Burned, uint256 amount1Burned)
     {
         if (liquidityToBurn > 0) {
-            amount0Burned = liquidityToBurn * 50; 
-            amount1Burned = liquidityToBurn * 75; 
+            amount0Burned = liquidityToBurn * 50;
+            amount1Burned = liquidityToBurn * 75;
         } else {
             amount0Burned = 0;
             amount1Burned = 0;
@@ -117,25 +126,31 @@ contract MockPool is IAetherPool {
         return (amount0Burned, amount1Burned);
     }
 
-    function addInitialLiquidity(uint256 amount0Desired, uint256 amount1Desired) 
-        external 
+    function addInitialLiquidity(uint256 amount0Desired, uint256 amount1Desired)
+        external
         pure
-        override 
+        override
         returns (uint256 liquidityOut)
     {
-        liquidityOut = (amount0Desired + amount1Desired) / 3; 
+        liquidityOut = (amount0Desired + amount1Desired) / 3;
         if (liquidityOut == 0 && (amount0Desired > 0 || amount1Desired > 0)) {
-            liquidityOut = 1; 
+            liquidityOut = 1;
         }
         return liquidityOut;
     }
 
     function addLiquidityNonInitial(
-        address /* recipient */,
+        address,
+        /* recipient */
         uint256 amount0Desired,
         uint256 amount1Desired,
         bytes calldata /* data */
-    ) external pure override returns (uint256 amount0Actual, uint256 amount1Actual, uint256 liquidityMinted) {
+    )
+        external
+        pure
+        override
+        returns (uint256 amount0Actual, uint256 amount1Actual, uint256 liquidityMinted)
+    {
         // Mock: Use desired amounts as actual amounts
         amount0Actual = amount0Desired;
         amount1Actual = amount1Desired;
@@ -147,7 +162,16 @@ contract MockPool is IAetherPool {
     }
 
     // Placeholder for initialize if needed by IPoolManager interactions
-    function initialize(address /*_token0*/, address /*_token1*/, uint24 /*_fee*/) external override {
+    function initialize(
+        address,
+        /*_token0*/
+        address,
+        /*_token1*/
+        uint24 /*_fee*/
+    )
+        external
+        override
+    {
         // This function is required by IAetherPool.
         // For the mock, it can be a no-op or could re-initialize if needed.
         // For instance, it could update token0, token1, storedFee if the mock pool were mutable.
@@ -204,7 +228,7 @@ contract FeatureIntegrationTest is Test {
         // Setup factory with fee configuration
         factories[chainId] = new AetherVaultFactory(address(new MockLayerZeroEndpoint()), address(feeRegistry));
 
-        // --- Deploy Actual Mock Pool --- 
+        // --- Deploy Actual Mock Pool ---
         console2.log("Deploying MockPool for chain", chainId);
         MockPool mockPoolInstance = new MockPool(poolToken0, poolToken1, DEFAULT_FEE);
         address deployedPoolAddress = address(mockPoolInstance);
@@ -212,13 +236,13 @@ contract FeatureIntegrationTest is Test {
         pools[chainId] = IAetherPool(deployedPoolAddress); // Store pool interface
 
         // Fund the MockPool with tokens so it can perform swaps
-        uint256 poolSupply = 1_000_000 * 10**18; // A large supply for the pool
-        
+        uint256 poolSupply = 1_000_000 * 10 ** 18; // A large supply for the pool
+
         // Safely mint tokens to the pool, checking if the token supports the mint function
         if (address(poolToken0).code.length > 0) {
             try MockERC20(poolToken0).mint(address(mockPoolInstance), poolSupply) {} catch {}
         }
-        
+
         if (address(poolToken1).code.length > 0) {
             try MockERC20(poolToken1).mint(address(mockPoolInstance), poolSupply) {} catch {}
         }
@@ -407,18 +431,18 @@ contract FeatureIntegrationTest is Test {
         // Record balance before swap for verification
         address tokenOut = zeroForOne ? token1Addr : token0Addr;
         uint256 balanceBefore = MockERC20(tokenOut).balanceOf(address(this));
-        
+
         // Call swap via the MockPoolManager
         BalanceDelta memory delta = manager.swap(key, params, "");
-        
+
         // Get the relevant amount from the delta based on zeroForOne
         int256 amountOut = zeroForOne ? delta.amount1 : delta.amount0;
-        
+
         // Assert that the output amount is negative (representing tokens sent from the pool)
         assertTrue(amountOut < 0, "Output amount should be negative (representing tokens received)");
         uint256 outputAmount = uint256(-amountOut);
         assertTrue(outputAmount > 0, "Output amount should be greater than zero");
-        
+
         // Assert that the recipient's balance has increased by the expected amount
         uint256 balanceAfter = MockERC20(tokenOut).balanceOf(address(this));
         assertEq(balanceAfter - balanceBefore, outputAmount, "Recipient balance should increase by the output amount");

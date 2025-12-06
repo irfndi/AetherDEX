@@ -162,11 +162,7 @@ contract FeeRegistry is Ownable, ReentrancyGuard, Pausable {
      * @param tickSpacing Tick spacing for the fee tier
      * @param description Description of the fee tier
      */
-    function addFeeTier(
-        uint24 fee,
-        int24 tickSpacing,
-        string calldata description
-    ) external onlyOwner {
+    function addFeeTier(uint24 fee, int24 tickSpacing, string calldata description) external onlyOwner {
         _addFeeTier(fee, tickSpacing, description);
     }
 
@@ -176,9 +172,9 @@ contract FeeRegistry is Ownable, ReentrancyGuard, Pausable {
      */
     function removeFeeTier(uint24 fee) public onlyOwner {
         if (!feeTiers[fee].active) revert FeeTierNotFound();
-        
+
         feeTiers[fee].active = false;
-        
+
         // Remove from active list
         for (uint256 i = 0; i < activeFeeList.length; i++) {
             if (activeFeeList[i] == fee) {
@@ -187,7 +183,7 @@ contract FeeRegistry is Ownable, ReentrancyGuard, Pausable {
                 break;
             }
         }
-        
+
         emit FeeTierRemoved(fee);
     }
 
@@ -198,9 +194,9 @@ contract FeeRegistry is Ownable, ReentrancyGuard, Pausable {
      */
     function updateFeeTierStatus(uint24 fee, bool active) external onlyOwner {
         if (feeTiers[fee].createdAt == 0) revert FeeTierNotFound();
-        
+
         feeTiers[fee].active = active;
-        
+
         if (active) {
             // Add to active list if not already present
             bool found = false;
@@ -223,7 +219,7 @@ contract FeeRegistry is Ownable, ReentrancyGuard, Pausable {
                 }
             }
         }
-        
+
         emit FeeTierUpdated(fee, active);
     }
 
@@ -244,17 +240,13 @@ contract FeeRegistry is Ownable, ReentrancyGuard, Pausable {
      * @param percentage New percentage
      * @param active New active status
      */
-    function updateRevenueShare(
-        address recipient,
-        uint256 percentage,
-        bool active
-    ) public onlyOwner {
+    function updateRevenueShare(address recipient, uint256 percentage, bool active) public onlyOwner {
         if (revenueShares[recipient].recipient == address(0)) revert RecipientNotFound();
         if (percentage > BASIS_POINTS) revert InvalidPercentage();
-        
+
         revenueShares[recipient].percentage = percentage;
         revenueShares[recipient].active = active;
-        
+
         emit RevenueShareUpdated(recipient, percentage, active);
     }
 
@@ -266,22 +258,22 @@ contract FeeRegistry is Ownable, ReentrancyGuard, Pausable {
     function distributeRevenue(address token, uint256 amount) external nonReentrant whenNotPaused {
         if (token == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
-        
+
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
         protocolRevenue[token] += amount;
-        
+
         // Distribute to active recipients
         for (uint256 i = 0; i < revenueRecipients.length; i++) {
             address recipient = revenueRecipients[i];
             RevenueShare storage share = revenueShares[recipient];
-            
+
             if (share.active && share.percentage > 0) {
                 uint256 shareAmount = (amount * share.percentage) / BASIS_POINTS;
                 if (shareAmount > 0) {
                     IERC20(token).safeTransfer(recipient, shareAmount);
                     share.totalClaimed += shareAmount;
                     totalDistributed[token] += shareAmount;
-                    
+
                     emit RevenueDistributed(token, shareAmount, recipient);
                 }
             }
@@ -297,18 +289,17 @@ contract FeeRegistry is Ownable, ReentrancyGuard, Pausable {
      * @param data Encoded proposal data
      * @return proposalId The ID of the created proposal
      */
-    function createProposal(
-        string calldata description,
-        ProposalType proposalType,
-        bytes calldata data
-    ) external returns (uint256 proposalId) {
+    function createProposal(string calldata description, ProposalType proposalType, bytes calldata data)
+        external
+        returns (uint256 proposalId)
+    {
         if (votingPower[msg.sender] < (totalVotingPower * proposalThreshold) / BASIS_POINTS) {
             revert InsufficientVotingPower();
         }
-        
+
         proposalId = ++proposalCount;
         Proposal storage proposal = proposals[proposalId];
-        
+
         proposal.id = proposalId;
         proposal.proposer = msg.sender;
         proposal.description = description;
@@ -316,7 +307,7 @@ contract FeeRegistry is Ownable, ReentrancyGuard, Pausable {
         proposal.data = data;
         proposal.startTime = block.timestamp;
         proposal.endTime = block.timestamp + votingPeriod;
-        
+
         emit ProposalCreated(proposalId, msg.sender, description);
     }
 
@@ -327,17 +318,17 @@ contract FeeRegistry is Ownable, ReentrancyGuard, Pausable {
      */
     function castVote(uint256 proposalId, VoteType voteType) external {
         Proposal storage proposal = proposals[proposalId];
-        
+
         if (proposal.id == 0) revert ProposalNotFound();
         if (block.timestamp < proposal.startTime || block.timestamp > proposal.endTime) {
             revert ProposalNotActive();
         }
         if (proposal.hasVoted[msg.sender]) revert ProposalAlreadyVoted();
-        
+
         uint256 weight = getVotingPower(msg.sender);
         proposal.hasVoted[msg.sender] = true;
         proposal.votes[msg.sender] = voteType;
-        
+
         if (voteType == VoteType.FOR) {
             proposal.forVotes += weight;
         } else if (voteType == VoteType.AGAINST) {
@@ -345,7 +336,7 @@ contract FeeRegistry is Ownable, ReentrancyGuard, Pausable {
         } else {
             proposal.abstainVotes += weight;
         }
-        
+
         emit VoteCast(proposalId, msg.sender, voteType, weight);
     }
 
@@ -355,34 +346,33 @@ contract FeeRegistry is Ownable, ReentrancyGuard, Pausable {
      */
     function executeProposal(uint256 proposalId) external {
         Proposal storage proposal = proposals[proposalId];
-        
+
         if (proposal.id == 0) revert ProposalNotFound();
         if (proposal.executed) revert ProposalAlreadyExecuted();
         if (block.timestamp < proposal.endTime + executionDelay) revert ExecutionDelayNotMet();
-        
+
         ProposalState state = getProposalState(proposalId);
         if (state != ProposalState.SUCCEEDED) revert ProposalNotSucceeded();
-        
+
         proposal.executed = true;
-        
+
         // Execute based on proposal type
         if (proposal.proposalType == ProposalType.ADD_FEE_TIER) {
-            (uint24 fee, int24 tickSpacing, string memory description) = 
+            (uint24 fee, int24 tickSpacing, string memory description) =
                 abi.decode(proposal.data, (uint24, int24, string));
             _addFeeTier(fee, tickSpacing, description);
         } else if (proposal.proposalType == ProposalType.REMOVE_FEE_TIER) {
             uint24 fee = abi.decode(proposal.data, (uint24));
             removeFeeTier(fee);
         } else if (proposal.proposalType == ProposalType.UPDATE_REVENUE_SHARE) {
-            (address recipient, uint256 percentage, bool active) = 
-                abi.decode(proposal.data, (address, uint256, bool));
+            (address recipient, uint256 percentage, bool active) = abi.decode(proposal.data, (address, uint256, bool));
             updateRevenueShare(recipient, percentage, active);
         } else if (proposal.proposalType == ProposalType.UPDATE_GOVERNANCE_PARAMS) {
-            (uint256 newVotingPeriod, uint256 newQuorum, uint256 newThreshold) = 
+            (uint256 newVotingPeriod, uint256 newQuorum, uint256 newThreshold) =
                 abi.decode(proposal.data, (uint256, uint256, uint256));
             _updateGovernanceParams(newVotingPeriod, newQuorum, newThreshold);
         }
-        
+
         emit ProposalExecuted(proposalId);
     }
 
@@ -396,9 +386,9 @@ contract FeeRegistry is Ownable, ReentrancyGuard, Pausable {
     function updateVotingPower(address account, uint256 newPower) external onlyOwner {
         uint256 oldPower = votingPower[account];
         votingPower[account] = newPower;
-        
+
         totalVotingPower = totalVotingPower - oldPower + newPower;
-        
+
         emit VotingPowerUpdated(account, newPower);
     }
 
@@ -408,18 +398,18 @@ contract FeeRegistry is Ownable, ReentrancyGuard, Pausable {
      */
     function delegate(address delegatee) external {
         address currentDelegate = delegates[msg.sender];
-        
+
         // Remove from current delegate
         if (currentDelegate != address(0)) {
             delegatedVotes[currentDelegate] -= votingPower[msg.sender];
         }
-        
+
         // Add to new delegate
         delegates[msg.sender] = delegatee;
         if (delegatee != address(0)) {
             delegatedVotes[delegatee] += votingPower[msg.sender];
         }
-        
+
         emit VotesDelegated(msg.sender, delegatee);
     }
 
@@ -441,11 +431,11 @@ contract FeeRegistry is Ownable, ReentrancyGuard, Pausable {
      */
     function getProposalState(uint256 proposalId) public view returns (ProposalState) {
         Proposal storage proposal = proposals[proposalId];
-        
+
         if (proposal.id == 0) return ProposalState.PENDING;
         if (proposal.canceled) return ProposalState.CANCELED;
         if (proposal.executed) return ProposalState.EXECUTED;
-        
+
         if (block.timestamp < proposal.startTime) {
             return ProposalState.PENDING;
         } else if (block.timestamp <= proposal.endTime) {
@@ -453,7 +443,7 @@ contract FeeRegistry is Ownable, ReentrancyGuard, Pausable {
         } else {
             uint256 totalVotes = proposal.forVotes + proposal.againstVotes + proposal.abstainVotes;
             uint256 quorum = (totalVotingPower * quorumPercentage) / BASIS_POINTS;
-            
+
             if (totalVotes < quorum) {
                 return ProposalState.DEFEATED;
             } else if (proposal.forVotes > proposal.againstVotes) {
@@ -587,7 +577,7 @@ contract FeeRegistry is Ownable, ReentrancyGuard, Pausable {
     function cancelProposal(uint256 proposalId) external onlyOwner {
         Proposal storage proposal = proposals[proposalId];
         if (proposal.id == 0) revert ProposalNotFound();
-        
+
         proposal.canceled = true;
         emit ProposalCanceled(proposalId);
     }
@@ -601,17 +591,13 @@ contract FeeRegistry is Ownable, ReentrancyGuard, Pausable {
         if (fee > MAX_FEE) revert InvalidFee();
         if (feeTiers[fee].createdAt != 0) revert FeeTierExists();
         if (tickSpacing <= 0) revert InvalidTickSpacing();
-        
+
         feeTiers[fee] = FeeTier({
-            fee: fee,
-            tickSpacing: tickSpacing,
-            active: true,
-            createdAt: block.timestamp,
-            description: description
+            fee: fee, tickSpacing: tickSpacing, active: true, createdAt: block.timestamp, description: description
         });
-        
+
         activeFeeList.push(fee);
-        
+
         emit FeeTierAdded(fee, tickSpacing, description);
     }
 
@@ -622,27 +608,19 @@ contract FeeRegistry is Ownable, ReentrancyGuard, Pausable {
         if (recipient == address(0)) revert ZeroAddress();
         if (percentage > BASIS_POINTS) revert InvalidPercentage();
         if (revenueShares[recipient].recipient != address(0)) revert RecipientExists();
-        
-        revenueShares[recipient] = RevenueShare({
-            recipient: recipient,
-            percentage: percentage,
-            active: true,
-            totalClaimed: 0
-        });
-        
+
+        revenueShares[recipient] =
+            RevenueShare({recipient: recipient, percentage: percentage, active: true, totalClaimed: 0});
+
         revenueRecipients.push(recipient);
-        
+
         emit RevenueShareAdded(recipient, percentage);
     }
 
     /**
      * @notice Internal function to update governance parameters
      */
-    function _updateGovernanceParams(
-        uint256 newVotingPeriod,
-        uint256 newQuorum,
-        uint256 newThreshold
-    ) internal {
+    function _updateGovernanceParams(uint256 newVotingPeriod, uint256 newQuorum, uint256 newThreshold) internal {
         if (newVotingPeriod < MIN_VOTING_PERIOD || newVotingPeriod > MAX_VOTING_PERIOD) {
             revert InvalidGovernanceParams();
         }
@@ -652,11 +630,11 @@ contract FeeRegistry is Ownable, ReentrancyGuard, Pausable {
         if (newThreshold > BASIS_POINTS) {
             revert InvalidGovernanceParams();
         }
-        
+
         votingPeriod = newVotingPeriod;
         quorumPercentage = newQuorum;
         proposalThreshold = newThreshold;
-        
+
         emit GovernanceParamsUpdated(newVotingPeriod, newQuorum, newThreshold);
     }
 }

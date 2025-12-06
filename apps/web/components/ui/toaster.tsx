@@ -18,9 +18,7 @@ export function Toaster() {
         >
           <div className="flex flex-col gap-1">
             {toast.title && <p className="text-sm font-semibold">{toast.title}</p>}
-            {toast.description && (
-              <p className="text-sm opacity-90">{toast.description}</p>
-            )}
+            {toast.description && <p className="text-sm opacity-90">{toast.description}</p>}
           </div>
           {toast.action}
           <button

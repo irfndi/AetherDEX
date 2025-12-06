@@ -261,9 +261,7 @@ contract FeeRegistryTest is Test {
         });
 
         // Still returns the lowest fee for the tick spacing
-        assertEq(
-            registry.getFee(keyHigher), FEE_TIER_4_LOW, "Should still return the lowest fee for TICK_SPACING_1"
-        );
+        assertEq(registry.getFee(keyHigher), FEE_TIER_4_LOW, "Should still return the lowest fee for TICK_SPACING_1");
     }
 
     function test_GetFee_Static_Revert_UnsupportedFeeTier() public {
@@ -343,7 +341,11 @@ contract FeeRegistryTest is Test {
         bytes32 poolKeyBCHash = _getPoolKeyHash(poolKeyBC);
 
         // Correct: Reference the error from FeeRegistry directly, error uses hash
-        vm.expectRevert(abi.encodeWithSelector(FeeRegistry.InvalidInitialFeeOrUpdater.selector, poolKeyBCHash, FEE_TIER_2, address(0)));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                FeeRegistry.InvalidInitialFeeOrUpdater.selector, poolKeyBCHash, FEE_TIER_2, address(0)
+            )
+        );
         registry.registerDynamicFeePool(poolKeyBC, FEE_TIER_2, address(0));
     }
 
@@ -431,7 +433,7 @@ contract FeeRegistryTest is Test {
 
     function test_GetFee_Dynamic_AfterUpdate() public {
         bytes32 poolKeyABHash = _getPoolKeyHash(poolKeyAB);
-        uint24 expectedNewFee = 1000;   // Max possible fee from 500 current + 500 max adjustment
+        uint24 expectedNewFee = 1000; // Max possible fee from 500 current + 500 max adjustment
         // To get feeAdjustment = 500 (max), need volumeMultiplierRaw >= 10
         // Let swapVolume = 17001 ether (gives volumeMultiplierRaw = 18, capped to 10 -> adjustment 500)
         uint256 calculatedSwapVolume = 17001 ether;
@@ -461,7 +463,11 @@ contract FeeRegistryTest is Test {
 
         // Check consistency for unregistered pool - should return zero/null values
         assertEq(registry.dynamicFees(poolKeyACHash), 0, "Should return zero for unregistered pool's fee");
-        assertEq(registry.feeUpdaters(poolKeyACHash), address(0), "Should return zero address for unregistered pool's updater");
+        assertEq(
+            registry.feeUpdaters(poolKeyACHash),
+            address(0),
+            "Should return zero address for unregistered pool's updater"
+        );
         // No revert expected here
     }
 

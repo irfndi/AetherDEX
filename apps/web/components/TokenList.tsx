@@ -1,19 +1,21 @@
 "use client";
 
+import { ScrollArea } from "@radix-ui/react-scroll-area"; // Updated import path for ScrollArea
 import { useState } from "react";
 import type { Token } from "./TokenSelector";
-import { ScrollArea } from "@radix-ui/react-scroll-area"; // Updated import path for ScrollArea
 
-export interface TokenListProps { 
+export interface TokenListProps {
   tokens: Token[];
   onSelect: (token: Token) => void;
 }
 
-export const TokenList = ({ tokens, onSelect }: TokenListProps) => { 
+export const TokenList = ({ tokens, onSelect }: TokenListProps) => {
   const [search, setSearch] = useState("");
 
-  const filteredTokens = tokens.filter((token) =>
-    token.name.toLowerCase().includes(search.toLowerCase()) || token.symbol.toLowerCase().includes(search.toLowerCase()),
+  const filteredTokens = tokens.filter(
+    (token) =>
+      token.name.toLowerCase().includes(search.toLowerCase()) ||
+      token.symbol.toLowerCase().includes(search.toLowerCase()),
   );
 
   return (

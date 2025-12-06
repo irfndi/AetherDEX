@@ -52,11 +52,11 @@ contract CrossChainIntegrationTest is Test {
 
     function test_CrossChainLiquidityRebalancing() public {
         vm.label(LP, "LP");
-        
+
         TestContracts memory contracts = _setupTestContracts();
         _setupTrustedRemotes(contracts);
         _mintInitialTokens(contracts);
-        
+
         int256 initialLiquidity = _performInitialDeposit(contracts);
         _simulateCrossChainMessage(contracts, initialLiquidity);
     }
@@ -69,12 +69,22 @@ contract CrossChainIntegrationTest is Test {
         vm.label(address(contracts.srcToken1), "SrcToken1");
         contracts.srcPoolManager = new MockPoolManager(address(0));
         contracts.srcLzEndpoint = new MockLayerZeroEndpoint();
-        
-        address srcHookToken0 = srcNativeToken < address(contracts.srcToken1) ? srcNativeToken : address(contracts.srcToken1);
-        address srcHookToken1 = srcNativeToken < address(contracts.srcToken1) ? address(contracts.srcToken1) : srcNativeToken;
-        contracts.srcHook = new CrossChainLiquidityHook(address(contracts.srcPoolManager), address(contracts.srcLzEndpoint), srcHookToken0, srcHookToken1);
+
+        address srcHookToken0 =
+            srcNativeToken < address(contracts.srcToken1) ? srcNativeToken : address(contracts.srcToken1);
+        address srcHookToken1 =
+            srcNativeToken < address(contracts.srcToken1) ? address(contracts.srcToken1) : srcNativeToken;
+        contracts.srcHook = new CrossChainLiquidityHook(
+            address(contracts.srcPoolManager), address(contracts.srcLzEndpoint), srcHookToken0, srcHookToken1
+        );
         contracts.srcPoolManager.setHookAddress(address(contracts.srcHook));
-        contracts.srcKey = PoolKey({hooks: IHooks(address(contracts.srcHook)), currency0: Currency.wrap(srcHookToken0), currency1: Currency.wrap(srcHookToken1), fee: 3000, tickSpacing: 60});
+        contracts.srcKey = PoolKey({
+            hooks: IHooks(address(contracts.srcHook)),
+            currency0: Currency.wrap(srcHookToken0),
+            currency1: Currency.wrap(srcHookToken1),
+            fee: 3000,
+            tickSpacing: 60
+        });
         contracts.srcPoolManager.setPool(keccak256(abi.encode(contracts.srcKey)), address(0x1));
         contracts.srcPoolManager.initialize(contracts.srcKey, TickMath.MIN_SQRT_PRICE + 1, "");
 
@@ -85,12 +95,22 @@ contract CrossChainIntegrationTest is Test {
         vm.label(address(contracts.dstToken2), "DstToken2");
         contracts.dstPoolManager = new MockPoolManager(address(0));
         contracts.dstLzEndpoint = new MockLayerZeroEndpoint();
-        
-        address dstHookToken0 = dstNativeToken < address(contracts.dstToken2) ? dstNativeToken : address(contracts.dstToken2);
-        address dstHookToken1 = dstNativeToken < address(contracts.dstToken2) ? address(contracts.dstToken2) : dstNativeToken;
-        contracts.dstHook = new CrossChainLiquidityHook(address(contracts.dstPoolManager), address(contracts.dstLzEndpoint), dstHookToken0, dstHookToken1);
+
+        address dstHookToken0 =
+            dstNativeToken < address(contracts.dstToken2) ? dstNativeToken : address(contracts.dstToken2);
+        address dstHookToken1 =
+            dstNativeToken < address(contracts.dstToken2) ? address(contracts.dstToken2) : dstNativeToken;
+        contracts.dstHook = new CrossChainLiquidityHook(
+            address(contracts.dstPoolManager), address(contracts.dstLzEndpoint), dstHookToken0, dstHookToken1
+        );
         contracts.dstPoolManager.setHookAddress(address(contracts.dstHook));
-        contracts.dstKey = PoolKey({hooks: IHooks(address(contracts.dstHook)), currency0: Currency.wrap(dstHookToken0), currency1: Currency.wrap(dstHookToken1), fee: 3000, tickSpacing: 60});
+        contracts.dstKey = PoolKey({
+            hooks: IHooks(address(contracts.dstHook)),
+            currency0: Currency.wrap(dstHookToken0),
+            currency1: Currency.wrap(dstHookToken1),
+            fee: 3000,
+            tickSpacing: 60
+        });
         contracts.dstPoolManager.setPool(keccak256(abi.encode(contracts.dstKey)), address(0x2));
         contracts.dstPoolManager.initialize(contracts.dstKey, TickMath.MIN_SQRT_PRICE + 1, "");
     }
@@ -117,14 +137,14 @@ contract CrossChainIntegrationTest is Test {
     function _performInitialDeposit(TestContracts memory contracts) private returns (int256 initialLiquidity) {
         vm.chainId(srcChain);
         vm.startPrank(LP);
-        MockERC20(Currency.unwrap(contracts.srcKey.currency0)).approve(address(contracts.srcPoolManager), type(uint256).max);
-        MockERC20(Currency.unwrap(contracts.srcKey.currency1)).approve(address(contracts.srcPoolManager), type(uint256).max);
+        MockERC20(Currency.unwrap(contracts.srcKey.currency0))
+            .approve(address(contracts.srcPoolManager), type(uint256).max);
+        MockERC20(Currency.unwrap(contracts.srcKey.currency1))
+            .approve(address(contracts.srcPoolManager), type(uint256).max);
 
         initialLiquidity = 100e18;
         IPoolManager.ModifyPositionParams memory params = IPoolManager.ModifyPositionParams({
-            tickLower: TickMath.MIN_TICK,
-            tickUpper: TickMath.MAX_TICK,
-            liquidityDelta: initialLiquidity
+            tickLower: TickMath.MIN_TICK, tickUpper: TickMath.MAX_TICK, liquidityDelta: initialLiquidity
         });
         BalanceDelta memory delta = contracts.srcPoolManager.modifyPosition(contracts.srcKey, params, "");
         vm.stopPrank();
@@ -134,8 +154,10 @@ contract CrossChainIntegrationTest is Test {
     }
 
     function _simulateCrossChainMessage(TestContracts memory contracts, int256 initialLiquidity) private {
-        bytes memory payload = abi.encode(Currency.unwrap(contracts.srcKey.currency0), Currency.unwrap(contracts.srcKey.currency1), initialLiquidity);
-        
+        bytes memory payload = abi.encode(
+            Currency.unwrap(contracts.srcKey.currency0), Currency.unwrap(contracts.srcKey.currency1), initialLiquidity
+        );
+
         vm.chainId(dstChain);
         vm.prank(address(contracts.dstLzEndpoint));
         contracts.dstHook.lzReceive(srcChain, address(contracts.srcHook), 1, payload);

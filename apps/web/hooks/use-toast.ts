@@ -20,26 +20,26 @@ const toastStore = {
     return () => this.listeners.delete(listener);
   },
 
-  notify(props: Omit<ToastProps, 'id'>) {
+  notify(props: Omit<ToastProps, "id">) {
     const id = crypto.randomUUID();
-    
+
     if (this.toasts.length >= TOAST_LIMIT) {
       this.toasts.pop();
     }
 
-    this.toasts = [{...props, id}, ...this.toasts];
+    this.toasts = [{ ...props, id }, ...this.toasts];
     for (const listener of Array.from(this.listeners)) listener();
     return id;
   },
 
   dismiss(toastId?: string) {
-    this.toasts = this.toasts.filter(t => t.id !== toastId);
+    this.toasts = this.toasts.filter((t) => t.id !== toastId);
     for (const listener of Array.from(this.listeners)) listener();
   },
 
   getToasts() {
     return this.toasts;
-  }
+  },
 };
 
 export function useToast() {
@@ -53,10 +53,8 @@ export function useToast() {
   }, []);
 
   return {
-    toast: React.useCallback((props: Omit<ToastProps, 'id'>) => 
-      toastStore.notify(props), []),
-    dismiss: React.useCallback((toastId?: string) => 
-      toastStore.dismiss(toastId), []),
-    toasts
+    toast: React.useCallback((props: Omit<ToastProps, "id">) => toastStore.notify(props), []),
+    dismiss: React.useCallback((toastId?: string) => toastStore.dismiss(toastId), []),
+    toasts,
   };
 }
