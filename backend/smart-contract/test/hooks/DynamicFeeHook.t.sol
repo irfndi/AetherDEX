@@ -44,7 +44,7 @@ contract DynamicFeeHookImprovedTest is Test {
     uint256 public constant MAX_VOLUME_MULTIPLIER = 10; // Maximum volume multiplier
 
     // Events to test
-    event FeeUpdated(address token0, address token1, uint24 newFee);
+    event FeeUpdated(address token0, address token1, uint24 newFee, uint256 volatilityScore, uint256 liquidityScore);
 
     // Removed incomplete comment block that was causing compilation errors
     /*notice Set up the test environment
@@ -211,7 +211,7 @@ contract DynamicFeeHookImprovedTest is Test {
         // Expected calculated fee: EXPECTED_DYNAMIC_FEE (not the initial fee of 3000)
         // Expect the FeeUpdated event with the dynamically calculated fee
         vm.expectEmit(true, true, true, true);
-        emit FeeUpdated(address(token0), address(token1), EXPECTED_DYNAMIC_FEE);
+        emit FeeUpdated(address(token0), address(token1), EXPECTED_DYNAMIC_FEE, 10000, 5000);
 
         // Call afterSwap
         bytes4 selector = hook.afterSwap(
