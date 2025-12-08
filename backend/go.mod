@@ -1,6 +1,8 @@
 module github.com/irfndi/AetherDEX/backend
 
-go 1.23
+go 1.23.0
+
+toolchain go1.24.10
 
 require (
 	github.com/ethereum/go-ethereum v1.16.2
