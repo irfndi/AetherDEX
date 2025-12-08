@@ -28,8 +28,10 @@ revert_strings = 'strip'
 # ffi = true # Assuming default ffi=true is sufficient, or can be re-added if test needs specific
 fuzz_runs = 500
 
-[rpc_endpoints]
-polygonzkevm = 'https://polygonzkevm-cardona.g.alchemy.com/v2/Ys7mXBCGPyrC30IezKb1b362vYOI1XBL'
+# [rpc_endpoints]
+# RPC endpoints should be configured via environment variables:
+# polygonzkevm = "${POLYGON_ZKEVM_RPC_URL}"
+# Example: export POLYGON_ZKEVM_RPC_URL="https://polygonzkevm-cardona.g.alchemy.com/v2/YOUR_API_KEY"
 
 [fmt]
 line_length = 120

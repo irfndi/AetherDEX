@@ -53,6 +53,8 @@ jobs:
             build-mode: none
           - language: "javascript-typescript"
             build-mode: none
+          - language: "go"
+            build-mode: autobuild
         # CodeQL supports the following values keywords for 'language': 'actions', 'c-cpp', 'csharp', 'go', 'java-kotlin', 'javascript-typescript', 'python', 'ruby', 'swift'
         # Use `c-cpp` to analyze code written in C, C++ or both
         # Use 'java-kotlin' to analyze code written in Java, Kotlin or both
@@ -104,6 +106,15 @@ jobs:
           node-version: "18"
           cache: "npm"
           cache-dependency-path: "**/package.json"
+
+      - name: Setup Go
+        if: matrix.language == 'go'
+        uses: actions/setup-go@4d34df0c2316fe8122ab82dc22947d607c0c91f9 # v4.0.0
+        with:
+          go-version: '1.25'
+          cache-dependency-path: |
+            backend/go.sum
+            go.work.sum
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@48ab28a6f5dbc2a99bf1e0131198dd8f1df78169 # v3.28.0
