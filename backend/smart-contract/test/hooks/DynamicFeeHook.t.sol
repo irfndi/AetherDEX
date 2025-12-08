@@ -39,6 +39,7 @@ contract DynamicFeeHookImprovedTest is Test {
     uint24 public constant MAX_FEE = 100000; // 10%
     uint24 public constant FEE_STEP = 50; // 0.005%
     uint24 public constant INITIAL_FEE = 3000; // 0.3%
+    uint24 public constant EXPECTED_DYNAMIC_FEE = 3663; // Dynamically calculated fee based on high volatility + medium liquidity
     uint256 public constant VOLUME_THRESHOLD = 1000e18; // 1000 tokens
     uint256 public constant MAX_VOLUME_MULTIPLIER = 10; // Maximum volume multiplier
 
@@ -207,10 +208,10 @@ contract DynamicFeeHookImprovedTest is Test {
         // - High volatility (volatilityScore: 10000) 
         // - Medium liquidity (liquidityScore: 5000)
         // - High activity (activityScore: 10000)
-        // Expected calculated fee: 3663 (not the initial fee of 3000)
+        // Expected calculated fee: EXPECTED_DYNAMIC_FEE (not the initial fee of 3000)
         // Expect the FeeUpdated event with the dynamically calculated fee
         vm.expectEmit(true, true, true, true);
-        emit FeeUpdated(address(token0), address(token1), 3663);
+        emit FeeUpdated(address(token0), address(token1), EXPECTED_DYNAMIC_FEE);
 
         // Call afterSwap
         bytes4 selector = hook.afterSwap(
