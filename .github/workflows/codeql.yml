@@ -111,7 +111,7 @@ jobs:
         if: matrix.language == 'go'
         uses: actions/setup-go@4d34df0c2316fe8122ab82dc22947d607c0c91f9 # v4.0.0
         with:
-          go-version: '1.23'
+          go-version: '1.25'
           cache-dependency-path: |
             backend/go.sum
             go.work.sum
