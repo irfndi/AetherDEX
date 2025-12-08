@@ -205,7 +205,7 @@ contract DynamicFeeHookImprovedTest is Test {
         );
 
         // The DynamicFeeHook calculates a new fee based on market conditions:
-        // - High volatility (volatilityScore: 10000) 
+        // - High volatility (volatilityScore: 10000)
         // - Medium liquidity (liquidityScore: 5000)
         // - High activity (activityScore: 10000)
         // Expected calculated fee: EXPECTED_DYNAMIC_FEE (not the initial fee of 3000)
