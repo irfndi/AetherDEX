@@ -213,8 +213,13 @@ const MockSwapInterface = () => {
   const handleConfirmSwap = async () => {
     setIsSwapping(true);
     try {
-      // Simulate swap execution
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      // Use the mock service if available
+      if (mockSwapService.executeSwap) {
+        await mockSwapService.executeSwap();
+      } else {
+        // Fallback simulation
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
 
       const result = {
         success: true,
@@ -233,6 +238,7 @@ const MockSwapInterface = () => {
       setToAmount("");
     } catch (err) {
       setError("Swap failed. Please try again.");
+      setShowReview(false);
     } finally {
       setIsSwapping(false);
     }

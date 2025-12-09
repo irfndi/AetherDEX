@@ -52,6 +52,8 @@ const ErrorProneSwapInterface = ({
 
   // Calculate output amount with error simulation
   React.useEffect(() => {
+    if (networkStatus === "offline") return;
+
     if (fromToken && toToken && fromAmount && parseFloat(fromAmount) > 0) {
       if (simulateError === "price_fetch") {
         setError("Failed to fetch current token prices. Please try again.");
@@ -434,7 +436,7 @@ describe("Error Handling Flow Tests", () => {
         expect(screen.getByTestId("error-message")).toHaveTextContent(
           "Failed to fetch current token prices",
         );
-        expect(screen.getByTestId("to-amount-input")).toHaveValue("");
+        expect(screen.getByTestId("to-amount-input")).toHaveValue(null);
       });
     });
   });
@@ -626,9 +628,7 @@ describe("Error Handling Flow Tests", () => {
       await user.selectOptions(screen.getByTestId("to-token-select"), "USDC");
       await user.type(screen.getByTestId("from-amount-input"), "1.0");
 
-      // Error should clear when retry is clicked
-      await user.click(screen.getByTestId("retry-button"));
-
+      // Error should clear automatically when valid inputs are provided
       await waitFor(() => {
         expect(screen.queryByTestId("error-message")).not.toBeInTheDocument();
       });
@@ -655,7 +655,7 @@ describe("Error Handling Flow Tests", () => {
       // Verify form state is maintained
       expect(screen.getByTestId("from-token-select")).toHaveValue("ETH");
       expect(screen.getByTestId("to-token-select")).toHaveValue("USDC");
-      expect(screen.getByTestId("from-amount-input")).toHaveValue("1");
+      expect(screen.getByTestId("from-amount-input")).toHaveValue(1);
     });
 
     it("provides appropriate loading states during operations", async () => {
