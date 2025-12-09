@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom'
+import { cleanup } from '@testing-library/react'
 import { vi, beforeAll, afterEach } from 'vitest'
 
 // Setup jsdom environment
@@ -16,6 +17,7 @@ beforeAll(() => {
 
 // Clean up after each test
 afterEach(() => {
+  cleanup()
   vi.clearAllMocks()
 })
 
@@ -60,6 +62,6 @@ export const createMockToken = (overrides = {}) => ({
 
 export const createMockTokenList = () => [
   createMockToken({ symbol: 'ETH', name: 'Ethereum' }),
-  createMockToken({ symbol: 'USDC', name: 'USD Coin', icon: '/usdc-icon.svg' }),
-  createMockToken({ symbol: 'WBTC', name: 'Wrapped Bitcoin', icon: '/wbtc-icon.svg' }),
+  createMockToken({ symbol: 'USDC', name: 'USD Coin', icon: '/usdc-icon.svg', price: 1 }),
+  createMockToken({ symbol: 'WBTC', name: 'Wrapped Bitcoin', icon: '/wbtc-icon.svg', price: 30000 }),
 ]

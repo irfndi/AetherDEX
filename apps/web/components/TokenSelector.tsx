@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronDown } from "lucide-react";
+import Image from "next/image";
 import { useState } from "react";
 import { TokenList } from "./TokenList";
 import { Button } from "./ui/button";
@@ -53,7 +54,13 @@ export function TokenSelector({ tokens, token, onSelect, className = "" }: Token
         variant="ghost"
         className={`h-9 gap-2 px-3 font-semibold hover:bg-secondary/80 rounded-full ${className}`}
       >
-        <img src={token.icon || "/placeholder.svg"} alt={token.symbol} className="w-5 h-5" />
+        <Image
+          src={token.icon || "/placeholder.svg"}
+          alt={token.symbol}
+          width={20}
+          height={20}
+          className="rounded-full"
+        />
         {token.symbol}
         <ChevronDown className="h-4 w-4" />
       </Button>

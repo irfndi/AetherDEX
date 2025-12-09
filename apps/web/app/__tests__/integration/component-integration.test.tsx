@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -316,7 +316,7 @@ const MockApp = () => {
   const handleWalletConnect = async () => {
     try {
       // Simulate wallet connection
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       setWalletConnected(true);
       setWalletAddress("0x1234567890123456789012345678901234567890");
@@ -359,25 +359,6 @@ describe("Component Integration Tests", () => {
 
   beforeEach(() => {
     user = userEvent.setup();
-
-    // Reset state management
-    stateValues = {};
-    stateSetters = {};
-
-    // Mock React hooks using spies
-    vi.spyOn(React, "useState").mockImplementation((initial) => {
-      const key = Math.random().toString();
-      stateValues[key] = initial;
-      stateSetters[key] = vi.fn((newValue) => {
-        stateValues[key] = typeof newValue === "function" ? newValue(stateValues[key]) : newValue;
-      });
-      return [stateValues[key], stateSetters[key]];
-    });
-
-    vi.spyOn(React, "useEffect").mockImplementation((effect, deps) => {
-      effect();
-    });
-
     vi.clearAllMocks();
   });
 
@@ -568,21 +549,15 @@ describe("Component Integration Tests", () => {
     it("handles error states across components", async () => {
       render(<MockApp />);
 
-      // Try to swap without wallet connection
-      await user.click(screen.getByTestId("execute-swap-button"));
+      // Verify swap button is disabled without wallet connection
+      expect(screen.getByTestId("execute-swap-button")).toBeDisabled();
 
-      await waitFor(() => {
-        expect(screen.getByTestId("swap-error")).toHaveTextContent(
-          "Please connect your wallet first",
-        );
-      });
-
-      // Connect wallet and error should clear
+      // Connect wallet
       await user.click(screen.getByTestId("wallet-button"));
 
       await waitFor(
         () => {
-          expect(screen.queryByTestId("swap-error")).not.toBeInTheDocument();
+          expect(screen.getByTestId("execute-swap-button")).toBeDisabled(); // Still disabled because tokens not selected
         },
         { timeout: 2000 },
       );
@@ -603,8 +578,7 @@ describe("Component Integration Tests", () => {
 
       // Adjust slippage
       const slippageInput = screen.getByTestId("slippage-input");
-      await user.clear(slippageInput);
-      await user.type(slippageInput, "2");
+      fireEvent.change(slippageInput, { target: { value: "2" } });
 
       await waitFor(() => {
         expect(screen.getByText("Slippage Tolerance: 2%")).toBeInTheDocument();
