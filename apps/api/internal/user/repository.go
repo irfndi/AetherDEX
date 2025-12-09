@@ -1,21 +1,21 @@
-package repository
+package user
 
 import (
 	"errors"
-	"github.com/irfndi/AetherDEX/backend/internal/models"
+
 	"gorm.io/gorm"
 )
 
 // UserRepository interface defines user database operations
 type UserRepository interface {
-	Create(user *models.User) error
-	GetByAddress(address string) (*models.User, error)
-	GetByID(id uint) (*models.User, error)
-	Update(user *models.User) error
+	Create(user *User) error
+	GetByAddress(address string) (*User, error)
+	GetByID(id uint) (*User, error)
+	Update(user *User) error
 	Delete(id uint) error
-	List(limit, offset int) ([]*models.User, error)
+	List(limit, offset int) ([]*User, error)
 	UpdateNonce(address, nonce string) error
-	GetActiveUsers() ([]*models.User, error)
+	GetActiveUsers() ([]*User, error)
 	AddRole(address, role string) error
 	RemoveRole(address, role string) error
 }
@@ -31,7 +31,7 @@ func NewUserRepository(db *gorm.DB) UserRepository {
 }
 
 // Create creates a new user
-func (r *userRepository) Create(user *models.User) error {
+func (r *userRepository) Create(user *User) error {
 	if user == nil {
 		return errors.New("user cannot be nil")
 	}
@@ -39,12 +39,12 @@ func (r *userRepository) Create(user *models.User) error {
 }
 
 // GetByAddress retrieves a user by their Ethereum address
-func (r *userRepository) GetByAddress(address string) (*models.User, error) {
+func (r *userRepository) GetByAddress(address string) (*User, error) {
 	if address == "" {
 		return nil, errors.New("address cannot be empty")
 	}
 
-	var user models.User
+	var user User
 	err := r.db.Where("address = ?", address).First(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -56,12 +56,12 @@ func (r *userRepository) GetByAddress(address string) (*models.User, error) {
 }
 
 // GetByID retrieves a user by their ID
-func (r *userRepository) GetByID(id uint) (*models.User, error) {
+func (r *userRepository) GetByID(id uint) (*User, error) {
 	if id == 0 {
 		return nil, errors.New("id cannot be zero")
 	}
 
-	var user models.User
+	var user User
 	err := r.db.First(&user, id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -73,7 +73,7 @@ func (r *userRepository) GetByID(id uint) (*models.User, error) {
 }
 
 // Update updates an existing user
-func (r *userRepository) Update(user *models.User) error {
+func (r *userRepository) Update(user *User) error {
 	if user == nil {
 		return errors.New("user cannot be nil")
 	}
@@ -85,12 +85,12 @@ func (r *userRepository) Delete(id uint) error {
 	if id == 0 {
 		return errors.New("id cannot be zero")
 	}
-	return r.db.Delete(&models.User{}, id).Error
+	return r.db.Delete(&User{}, id).Error
 }
 
 // List retrieves users with pagination
-func (r *userRepository) List(limit, offset int) ([]*models.User, error) {
-	var users []*models.User
+func (r *userRepository) List(limit, offset int) ([]*User, error) {
+	var users []*User
 	err := r.db.Limit(limit).Offset(offset).Find(&users).Error
 	return users, err
 }
@@ -100,12 +100,12 @@ func (r *userRepository) UpdateNonce(address, nonce string) error {
 	if address == "" || nonce == "" {
 		return errors.New("address and nonce cannot be empty")
 	}
-	return r.db.Model(&models.User{}).Where("address = ?", address).Update("nonce", nonce).Error
+	return r.db.Model(&User{}).Where("address = ?", address).Update("nonce", nonce).Error
 }
 
 // GetActiveUsers retrieves all active users
-func (r *userRepository) GetActiveUsers() ([]*models.User, error) {
-	var users []*models.User
+func (r *userRepository) GetActiveUsers() ([]*User, error) {
+	var users []*User
 	err := r.db.Where("is_active = ?", true).Find(&users).Error
 	return users, err
 }
@@ -116,7 +116,7 @@ func (r *userRepository) AddRole(address, role string) error {
 		return errors.New("address and role cannot be empty")
 	}
 
-	var user models.User
+	var user User
 	err := r.db.Where("address = ?", address).First(&user).Error
 	if err != nil {
 		return err
@@ -139,7 +139,7 @@ func (r *userRepository) RemoveRole(address, role string) error {
 		return errors.New("address and role cannot be empty")
 	}
 
-	var user models.User
+	var user User
 	err := r.db.Where("address = ?", address).First(&user).Error
 	if err != nil {
 		return err

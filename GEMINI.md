@@ -4,47 +4,50 @@
 
 **AetherDEX** is a comprehensive decentralized exchange (DEX) platform built as a monorepo. It features a modern web interface, a robust Go backend, and smart contracts for the Ethereum ecosystem.
 
-*   **Architecture:** Monorepo managed by `bun` and `turbo`.
+*   **Architecture:** Monorepo managed by `pnpm` and `turbo`.
 *   **Core Components:**
     *   **Frontend:** Next.js 15, React 19, Tailwind CSS (located in `apps/web`).
-    *   **Backend:** Go (Golang) REST API and worker services (located in `backend`).
-    *   **Smart Contracts:** Solidity and Vyper, managed with Foundry (located in `backend/smart-contract`).
+    *   **Backend:** Go (Golang) REST API and worker services (located in `apps/api`).
+    *   **Smart Contracts:** Solidity and Vyper, managed with Foundry (located in `packages/contracts`).
 
 ## Key Directories
 
 *   **`apps/web/`**: The Next.js frontend application.
-*   **`backend/`**: The Go backend services, API, and workers.
+*   **`apps/api/`**: The Go backend services, API, and workers.
     *   `api/`: REST API definitions.
     *   `cmd/`: Entry points for services.
     *   `internal/`: Private application logic.
-    *   `smart-contract/`: Foundry project for Solidity/Vyper contracts.
-*   **`.github/`**: CI/CD workflows, issue templates, and GitHub configuration.
+*   **`packages/contracts/`**: Foundry project for Solidity/Vyper contracts.
+    *   `src/primary/`: Main Solidity contracts (Routers, Factories).
+    *   `src/security/`: Critical Vyper contracts (Pools).
+    *   `src/_archive/`: Deprecated or legacy contracts.
 *   **`docs/`**: Comprehensive project documentation (Architecture, API, Guides).
 *   **`scripts/`**: Utility scripts for testing, coverage, and deployment.
 
 ## Building and Running
 
 ### Prerequisites
-*   Bun (v1.2+)
+*   Node.js (v24+) & pnpm
 *   Go (v1.25+)
 *   Foundry (forge, cast, anvil)
+*   Bun (v1.2+)
 
 ### Common Commands
 
 **Root Workspace:**
-*   **Install Dependencies:** `bun install`
-*   **Start Development (Frontend):** `bun run dev`
-*   **Build All:** `bun run build`
-*   **Lint:** `bun run lint`
-*   **Test:** `bun run test`
+*   **Install Dependencies:** `bun install` (or `pnpm install`)
+*   **Start Development (Frontend):** `bun dev` (or `pnpm dev --filter web`)
+*   **Build All:** `turbo run build`
+*   **Lint:** `turbo run lint`
+*   **Test:** `turbo run test`
 
-**Smart Contracts (`backend/smart-contract/`):**
+**Smart Contracts (`packages/contracts/`):**
 *   **Test:** `forge test` (or `forge test -vvv` for verbosity)
 *   **Build:** `forge build`
-*   **Coverage:** `forge coverage` (or use `../../scripts/coverage-all`)
-*   **Static Analysis:** `../../scripts/slither-all` (requires Slither)
+*   **Coverage:** `forge coverage` (or use `scripts/coverage-all`)
+*   **Static Analysis:** `scripts/slither-all` (requires Slither)
 
-**Backend (`backend/`):**
+**Backend (`apps/api/`):**
 *   **Install Deps:** `go mod download`
 *   **Run API:** `go run cmd/api/main.go` (verify entry point in `cmd/`)
 *   **Test:** `go test ./...`
@@ -56,16 +59,14 @@
     *   **Contracts:** Extensive usage of Foundry (`forge`). 100% coverage target for critical logic.
     *   **Frontend:** Vitest for unit/integration tests.
 *   **Linting & Formatting:**
-    *   Uses **Biome** and **Oxlint** for JS/TS.
+    *   Uses **Oxlint** for JS/TS.
     *   **Foundry** (`forge fmt`) for Solidity.
     *   Standard `go fmt` for Go.
 *   **Documentation:** Keep `docs/` updated with architectural changes.
 *   **Security:** Regular static analysis (Slither) and pre-commit checks are encouraged.
 
 ## Important Files
-*   `package.json`: Defines the workspace structure and scripts.
-*   `bun.lock`: Lockfile for dependencies.
+*   `package.json`: Defines the workspace structure (migrated to bun/turbo).
 *   `turbo.json`: Configures the task pipeline.
-*   `.github/workflows/`: CI/CD pipeline definitions.
-*   `docs/smart-contracts/workflow.md`: Detailed workflow for smart contracts.
-*   `backend/smart-contract/foundry.toml`: Foundry configuration.
+*   `docs/development-guide.md`: Detailed workflow for smart contracts.
+*   `packages/contracts/foundry.toml`: Foundry configuration.

@@ -1,4 +1,4 @@
-package models
+package user
 
 import (
 	"gorm.io/gorm"
@@ -17,8 +17,8 @@ type User struct {
 	DeletedAt gorm.DeletedAt `json:"deleted_at" gorm:"index"`
 
 	// Relationships
-	Transactions       []Transaction       `json:"transactions" gorm:"foreignKey:UserAddress;references:Address"`
-	LiquidityPositions []LiquidityPosition `json:"liquidity_positions" gorm:"foreignKey:UserAddress;references:Address"`
+	// Transactions       []Transaction       `json:"transactions" gorm:"foreignKey:UserAddress;references:Address"`
+	// LiquidityPositions []LiquidityPosition `json:"liquidity_positions" gorm:"foreignKey:UserAddress;references:Address"`
 }
 
 // TableName returns the table name for User model
