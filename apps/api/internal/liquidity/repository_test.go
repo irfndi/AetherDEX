@@ -4,8 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/irfndi/AetherDEX/apps/api/internal/pool"
-	"github.com/irfndi/AetherDEX/apps/api/internal/user"
+	"github.com/irfndi/AetherDEX/apps/api/internal/models"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/driver/sqlite"
@@ -27,7 +26,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) SetupSuite() {
 	suite.Require().NoError(err)
 
 	// Auto-migrate the schema
-	err = db.AutoMigrate(&LiquidityPosition{}, &user.User{}, &pool.Pool{})
+	err = db.AutoMigrate(&models.LiquidityPosition{}, &models.User{}, &models.Pool{})
 	suite.Require().NoError(err)
 
 	suite.db = db
@@ -49,7 +48,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TearDownSuite() {
 
 // TestCreateLiquidityPosition tests liquidity position creation
 func (suite *LiquidityPositionRepositoryTestSuite) TestCreateLiquidityPosition() {
-	position := &LiquidityPosition{
+	position := &models.LiquidityPosition{
 		UserAddress:  "0x1111111111111111111111111111111111111111",
 		PoolID:       "pool-1",
 		Liquidity:    decimal.NewFromInt(1000),
@@ -75,7 +74,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestCreateLiquidityPositionNi
 // TestGetLiquidityPositionByID tests retrieving liquidity position by ID
 func (suite *LiquidityPositionRepositoryTestSuite) TestGetLiquidityPositionByID() {
 	// Create test position
-	originalPosition := &LiquidityPosition{
+	originalPosition := &models.LiquidityPosition{
 		UserAddress:  "0x1111111111111111111111111111111111111111",
 		PoolID:       "pool-1",
 		Liquidity:    decimal.NewFromInt(1000),
@@ -114,7 +113,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetLiquidityPositionByIDZ
 // TestGetLiquidityPositionByUserAndPool tests retrieving position by user and pool
 func (suite *LiquidityPositionRepositoryTestSuite) TestGetLiquidityPositionByUserAndPool() {
 	// Create test position
-	originalPosition := &LiquidityPosition{
+	originalPosition := &models.LiquidityPosition{
 		UserAddress:  "0x1111111111111111111111111111111111111111",
 		PoolID:       "pool-1",
 		Liquidity:    decimal.NewFromInt(1000),
@@ -163,7 +162,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetLiquidityPositionsByUs
 
 	// Create multiple positions for the user
 	for i := 0; i < 3; i++ {
-		position := &LiquidityPosition{
+		position := &models.LiquidityPosition{
 			UserAddress:  userAddress,
 			PoolID:       fmt.Sprintf("pool-%d", i),
 			Liquidity:    decimal.NewFromInt(1000 + int64(i*100)),
@@ -177,7 +176,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetLiquidityPositionsByUs
 	}
 
 	// Create position for different user
-	differentUserPosition := &LiquidityPosition{
+	differentUserPosition := &models.LiquidityPosition{
 		UserAddress:  "0x2222222222222222222222222222222222222222",
 		PoolID:       "pool-different",
 		Liquidity:    decimal.NewFromInt(2000),
@@ -214,7 +213,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetLiquidityPositionsByPo
 
 	// Create multiple positions for the pool
 	for i := 0; i < 3; i++ {
-		position := &LiquidityPosition{
+		position := &models.LiquidityPosition{
 			UserAddress:  fmt.Sprintf("0x%040d", i),
 			PoolID:       poolID,
 			Liquidity:    decimal.NewFromInt(1000 + int64(i*100)),
@@ -250,7 +249,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetLiquidityPositionsByPo
 func (suite *LiquidityPositionRepositoryTestSuite) TestGetActivePositions() {
 	// Create active and inactive positions
 	for i := 0; i < 5; i++ {
-		position := &LiquidityPosition{
+		position := &models.LiquidityPosition{
 			UserAddress:  fmt.Sprintf("0x%040d", i),
 			PoolID:       fmt.Sprintf("pool-%d", i),
 			Liquidity:    decimal.NewFromInt(1000 + int64(i*100)),
@@ -280,7 +279,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetUserActivePositions() 
 
 	// Create active and inactive positions for the user
 	for i := 0; i < 4; i++ {
-		position := &LiquidityPosition{
+		position := &models.LiquidityPosition{
 			UserAddress:  userAddress,
 			PoolID:       fmt.Sprintf("pool-%d", i),
 			Liquidity:    decimal.NewFromInt(1000 + int64(i*100)),
@@ -294,7 +293,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetUserActivePositions() 
 	}
 
 	// Create active position for different user
-	differentUserPosition := &LiquidityPosition{
+	differentUserPosition := &models.LiquidityPosition{
 		UserAddress:  "0x2222222222222222222222222222222222222222",
 		PoolID:       "pool-different",
 		Liquidity:    decimal.NewFromInt(2000),
@@ -329,7 +328,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetUserActivePositionsEmp
 // TestUpdateLiquidityPosition tests updating liquidity position
 func (suite *LiquidityPositionRepositoryTestSuite) TestUpdateLiquidityPosition() {
 	// Create test position
-	position := &LiquidityPosition{
+	position := &models.LiquidityPosition{
 		UserAddress:  "0x1111111111111111111111111111111111111111",
 		PoolID:       "pool-1",
 		Liquidity:    decimal.NewFromInt(1000),
@@ -368,7 +367,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestUpdateLiquidityPositionNi
 // TestUpdateLiquidity tests updating liquidity amount
 func (suite *LiquidityPositionRepositoryTestSuite) TestUpdateLiquidity() {
 	// Create test position
-	position := &LiquidityPosition{
+	position := &models.LiquidityPosition{
 		UserAddress:  "0x1111111111111111111111111111111111111111",
 		PoolID:       "pool-1",
 		Liquidity:    decimal.NewFromInt(1000),
@@ -401,7 +400,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestUpdateLiquidityZeroID() {
 // TestUpdateAmounts tests updating token amounts
 func (suite *LiquidityPositionRepositoryTestSuite) TestUpdateAmounts() {
 	// Create test position
-	position := &LiquidityPosition{
+	position := &models.LiquidityPosition{
 		UserAddress:  "0x1111111111111111111111111111111111111111",
 		PoolID:       "pool-1",
 		Liquidity:    decimal.NewFromInt(1000),
@@ -436,7 +435,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestUpdateAmountsZeroID() {
 // TestDeleteLiquidityPosition tests deleting position
 func (suite *LiquidityPositionRepositoryTestSuite) TestDeleteLiquidityPosition() {
 	// Create test position
-	position := &LiquidityPosition{
+	position := &models.LiquidityPosition{
 		UserAddress:  "0x1111111111111111111111111111111111111111",
 		PoolID:       "pool-1",
 		Liquidity:    decimal.NewFromInt(1000),
@@ -469,7 +468,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestDeleteLiquidityPositionZe
 func (suite *LiquidityPositionRepositoryTestSuite) TestListLiquidityPositions() {
 	// Create multiple test positions
 	for i := 0; i < 5; i++ {
-		position := &LiquidityPosition{
+		position := &models.LiquidityPosition{
 			UserAddress:  fmt.Sprintf("0x%040d", i),
 			PoolID:       fmt.Sprintf("pool-%d", i),
 			Liquidity:    decimal.NewFromInt(1000 + int64(i*100)),
@@ -500,7 +499,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetTotalLiquidityByPool()
 	// Create positions with different liquidity amounts
 	liquidityAmounts := []int64{1000, 2000, 3000}
 	for i, amount := range liquidityAmounts {
-		position := &LiquidityPosition{
+		position := &models.LiquidityPosition{
 			UserAddress:  fmt.Sprintf("0x%040d", i),
 			PoolID:       poolID,
 			Liquidity:    decimal.NewFromInt(amount),
@@ -514,7 +513,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetTotalLiquidityByPool()
 	}
 
 	// Create inactive position (should not be counted)
-	inactivePosition := &LiquidityPosition{
+	inactivePosition := &models.LiquidityPosition{
 		UserAddress:  "0x9999999999999999999999999999999999999999",
 		PoolID:       poolID,
 		Liquidity:    decimal.NewFromInt(5000),
@@ -550,13 +549,13 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetUserTotalLiquidity() {
 	// Create positions with different liquidity amounts for the user
 	liquidityAmounts := []int64{1000, 2000, 3000}
 	for i, amount := range liquidityAmounts {
-		position := &LiquidityPosition{
+		position := &models.LiquidityPosition{
 			UserAddress:  userAddress,
 			PoolID:       fmt.Sprintf("pool-%d", i),
 			Liquidity:    decimal.NewFromInt(amount),
 			Token0Amount: decimal.NewFromInt(amount / 2),
 			Token1Amount: decimal.NewFromInt(amount / 2),
-			Shares:       decimal.NewFromInt(amount),
+			Shares:       decimal.NewFromInt(1000 + int64(i*100)),
 			IsActive:     true,
 		}
 		err := suite.repo.Create(position)
@@ -564,7 +563,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetUserTotalLiquidity() {
 	}
 
 	// Create inactive position for the user (should not be counted)
-	inactivePosition := &LiquidityPosition{
+	inactivePosition := &models.LiquidityPosition{
 		UserAddress:  userAddress,
 		PoolID:       "pool-inactive",
 		Liquidity:    decimal.NewFromInt(5000),
@@ -577,7 +576,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetUserTotalLiquidity() {
 	suite.NoError(err)
 
 	// Create position for different user (should not be counted)
-	differentUserPosition := &LiquidityPosition{
+	differentUserPosition := &models.LiquidityPosition{
 		UserAddress:  "0x2222222222222222222222222222222222222222",
 		PoolID:       "pool-different",
 		Liquidity:    decimal.NewFromInt(10000),

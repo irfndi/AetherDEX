@@ -6,81 +6,80 @@ import (
 	"testing"
 	"time"
 
-	"github.com/irfndi/AetherDEX/apps/api/internal/models"
-	"github.com/irfndi/AetherDEX/apps/api/internal/repository"
+	"github.com/irfndi/AetherDEX/apps/api/internal/user"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
-// MockUserRepository implements repository.UserRepository interface for testing
+// MockUserRepository implements user.UserRepository interface for testing
 type MockUserRepository struct {
-	users  map[string]*models.User
+	users  map[string]*user.User
 	nextID uint
 }
 
 func NewMockUserRepository() *MockUserRepository {
 	return &MockUserRepository{
-		users:  make(map[string]*models.User),
+		users:  make(map[string]*user.User),
 		nextID: 1,
 	}
 }
 
-func (m *MockUserRepository) Create(user *models.User) error {
-	if user == nil {
+func (m *MockUserRepository) Create(u *user.User) error {
+	if u == nil {
 		return errors.New("user cannot be nil")
 	}
-	if user.Address == "" {
+	if u.Address == "" {
 		return errors.New("user address cannot be empty")
 	}
-	if _, exists := m.users[user.Address]; exists {
+	if _, exists := m.users[u.Address]; exists {
 		return errors.New("user already exists")
 	}
-	user.ID = m.nextID
+	u.ID = m.nextID
 	m.nextID++
-	user.CreatedAt = time.Now()
-	user.UpdatedAt = time.Now()
-	m.users[user.Address] = user
+	u.CreatedAt = time.Now()
+	u.UpdatedAt = time.Now()
+	m.users[u.Address] = u
 	return nil
 }
 
-func (m *MockUserRepository) GetByAddress(address string) (*models.User, error) {
+func (m *MockUserRepository) GetByAddress(address string) (*user.User, error) {
 	if address == "" {
 		return nil, errors.New("address cannot be empty")
 	}
-	user, exists := m.users[address]
+	u, exists := m.users[address]
 	if !exists {
 		return nil, nil
 	}
-	return user, nil
+	return u, nil
 }
 
-func (m *MockUserRepository) GetByID(id uint) (*models.User, error) {
-	for _, user := range m.users {
-		if user.ID == id {
-			return user, nil
+func (m *MockUserRepository) GetByID(id uint) (*user.User, error) {
+	for _, u := range m.users {
+		if u.ID == id {
+			return u, nil
 		}
 	}
 	return nil, nil
 }
 
-func (m *MockUserRepository) Update(user *models.User) error {
-	if user == nil {
+func (m *MockUserRepository) Update(u *user.User) error {
+	if u == nil {
 		return errors.New("user cannot be nil")
 	}
-	existingUser, exists := m.users[user.Address]
+	existingUser, exists := m.users[u.Address]
 	if !exists {
 		return errors.New("user not found")
 	}
-	existingUser.Nonce = user.Nonce
-	existingUser.Roles = user.Roles
-	existingUser.IsActive = user.IsActive
+	existingUser.Nonce = u.Nonce
+	existingUser.Roles = u.Roles
+	existingUser.IsActive = u.IsActive
 	existingUser.UpdatedAt = time.Now()
 	return nil
 }
 
 func (m *MockUserRepository) Delete(id uint) error {
-	for address, user := range m.users {
-		if user.ID == id {
+	for address, u := range m.users {
+		if u.ID == id {
 			delete(m.users, address)
 			return nil
 		}
@@ -88,15 +87,15 @@ func (m *MockUserRepository) Delete(id uint) error {
 	return errors.New("user not found")
 }
 
-func (m *MockUserRepository) List(limit, offset int) ([]*models.User, error) {
-	users := make([]*models.User, 0, len(m.users))
-	for _, user := range m.users {
-		users = append(users, user)
+func (m *MockUserRepository) List(limit, offset int) ([]*user.User, error) {
+	users := make([]*user.User, 0, len(m.users))
+	for _, u := range m.users {
+		users = append(users, u)
 	}
 
 	start := offset
 	if start >= len(users) {
-		return []*models.User{}, nil
+		return []*user.User{}, nil
 	}
 
 	end := start + limit
@@ -108,20 +107,20 @@ func (m *MockUserRepository) List(limit, offset int) ([]*models.User, error) {
 }
 
 func (m *MockUserRepository) UpdateNonce(address, nonce string) error {
-	user, exists := m.users[address]
+	u, exists := m.users[address]
 	if !exists {
 		return errors.New("user not found")
 	}
-	user.Nonce = nonce
-	user.UpdatedAt = time.Now()
+	u.Nonce = nonce
+	u.UpdatedAt = time.Now()
 	return nil
 }
 
-func (m *MockUserRepository) GetActiveUsers() ([]*models.User, error) {
-	var activeUsers []*models.User
-	for _, user := range m.users {
-		if user.IsActive {
-			activeUsers = append(activeUsers, user)
+func (m *MockUserRepository) GetActiveUsers() ([]*user.User, error) {
+	var activeUsers []*user.User
+	for _, u := range m.users {
+		if u.IsActive {
+			activeUsers = append(activeUsers, u)
 		}
 	}
 	return activeUsers, nil
@@ -133,20 +132,20 @@ func (m *MockUserRepository) AddRole(address, role string) error {
 		return errors.New("address and role cannot be empty")
 	}
 
-	user, exists := m.users[address]
+	u, exists := m.users[address]
 	if !exists {
 		return errors.New("user not found")
 	}
 
 	// Check if role already exists
-	for _, existingRole := range user.Roles {
+	for _, existingRole := range u.Roles {
 		if existingRole == role {
 			return nil // Role already exists, no error
 		}
 	}
 
 	// Add role
-	user.Roles = append(user.Roles, role)
+	u.Roles = append(u.Roles, role)
 	return nil
 }
 
@@ -156,19 +155,19 @@ func (m *MockUserRepository) RemoveRole(address, role string) error {
 		return errors.New("address and role cannot be empty")
 	}
 
-	user, exists := m.users[address]
+	u, exists := m.users[address]
 	if !exists {
 		return errors.New("user not found")
 	}
 
 	// Remove role from slice
 	var newRoles []string
-	for _, existingRole := range user.Roles {
+	for _, existingRole := range u.Roles {
 		if existingRole != role {
 			newRoles = append(newRoles, existingRole)
 		}
 	}
-	user.Roles = newRoles
+	u.Roles = newRoles
 	return nil
 }
 
@@ -183,28 +182,28 @@ func (suite *MockRepositoryTestSuite) SetupTest() {
 }
 
 func (suite *MockRepositoryTestSuite) TestUserRepositoryCreate() {
-	user := &models.User{
+	u := &user.User{
 		Address:  "0x1234567890123456789012345678901234567890",
 		Nonce:    "test-nonce",
 		Roles:    []string{"user"},
 		IsActive: true,
 	}
 
-	err := suite.userRepo.Create(user)
+	err := suite.userRepo.Create(u)
 	suite.NoError(err)
-	suite.Equal(uint(1), user.ID)
-	suite.False(user.CreatedAt.IsZero())
+	suite.Equal(uint(1), u.ID)
+	suite.False(u.CreatedAt.IsZero())
 }
 
 func (suite *MockRepositoryTestSuite) TestUserRepositoryCreateDuplicate() {
-	user1 := &models.User{
+	user1 := &user.User{
 		Address:  "0x1234567890123456789012345678901234567890",
 		Nonce:    "test-nonce-1",
 		Roles:    []string{"user"},
 		IsActive: true,
 	}
 
-	user2 := &models.User{
+	user2 := &user.User{
 		Address:  "0x1234567890123456789012345678901234567890",
 		Nonce:    "test-nonce-2",
 		Roles:    []string{"admin"},
@@ -220,21 +219,21 @@ func (suite *MockRepositoryTestSuite) TestUserRepositoryCreateDuplicate() {
 }
 
 func (suite *MockRepositoryTestSuite) TestUserRepositoryGetByAddress() {
-	user := &models.User{
+	u := &user.User{
 		Address:  "0x1234567890123456789012345678901234567890",
 		Nonce:    "test-nonce",
 		Roles:    []string{"user"},
 		IsActive: true,
 	}
 
-	err := suite.userRepo.Create(user)
+	err := suite.userRepo.Create(u)
 	suite.NoError(err)
 
 	foundUser, err := suite.userRepo.GetByAddress("0x1234567890123456789012345678901234567890")
 	suite.NoError(err)
 	suite.NotNil(foundUser)
-	suite.Equal(user.Address, foundUser.Address)
-	suite.Equal(user.Nonce, foundUser.Nonce)
+	suite.Equal(u.Address, foundUser.Address)
+	suite.Equal(u.Nonce, foundUser.Nonce)
 }
 
 func (suite *MockRepositoryTestSuite) TestUserRepositoryGetByAddressNotFound() {
@@ -244,43 +243,43 @@ func (suite *MockRepositoryTestSuite) TestUserRepositoryGetByAddressNotFound() {
 }
 
 func (suite *MockRepositoryTestSuite) TestUserRepositoryUpdate() {
-	user := &models.User{
+	u := &user.User{
 		Address:  "0x1234567890123456789012345678901234567890",
 		Nonce:    "test-nonce",
 		Roles:    []string{"user"},
 		IsActive: true,
 	}
 
-	err := suite.userRepo.Create(user)
+	err := suite.userRepo.Create(u)
 	suite.NoError(err)
 
-	user.Nonce = "updated-nonce"
-	user.Roles = []string{"user", "admin"}
+	u.Nonce = "updated-nonce"
+	u.Roles = []string{"user", "admin"}
 
-	err = suite.userRepo.Update(user)
+	err = suite.userRepo.Update(u)
 	suite.NoError(err)
 
-	updatedUser, err := suite.userRepo.GetByAddress(user.Address)
+	updatedUser, err := suite.userRepo.GetByAddress(u.Address)
 	suite.NoError(err)
 	suite.Equal("updated-nonce", updatedUser.Nonce)
 	suite.Contains(updatedUser.Roles, "admin")
 }
 
 func (suite *MockRepositoryTestSuite) TestUserRepositoryDelete() {
-	user := &models.User{
+	u := &user.User{
 		Address:  "0x1234567890123456789012345678901234567890",
 		Nonce:    "test-nonce",
 		Roles:    []string{"user"},
 		IsActive: true,
 	}
 
-	err := suite.userRepo.Create(user)
+	err := suite.userRepo.Create(u)
 	suite.NoError(err)
 
-	err = suite.userRepo.Delete(user.ID)
+	err = suite.userRepo.Delete(u.ID)
 	suite.NoError(err)
 
-	foundUser, err := suite.userRepo.GetByAddress(user.Address)
+	foundUser, err := suite.userRepo.GetByAddress(u.Address)
 	suite.NoError(err)
 	suite.Nil(foundUser)
 }
@@ -288,13 +287,13 @@ func (suite *MockRepositoryTestSuite) TestUserRepositoryDelete() {
 func (suite *MockRepositoryTestSuite) TestUserRepositoryList() {
 	// Create multiple users
 	for i := 0; i < 5; i++ {
-		user := &models.User{
+		u := &user.User{
 			Address:  fmt.Sprintf("0x%040d", i),
 			Nonce:    fmt.Sprintf("nonce-%d", i),
 			Roles:    []string{"user"},
 			IsActive: true,
 		}
-		err := suite.userRepo.Create(user)
+		err := suite.userRepo.Create(u)
 		suite.NoError(err)
 	}
 
@@ -310,20 +309,20 @@ func (suite *MockRepositoryTestSuite) TestUserRepositoryList() {
 }
 
 func (suite *MockRepositoryTestSuite) TestUserRepositoryUpdateNonce() {
-	user := &models.User{
+	u := &user.User{
 		Address:  "0x1234567890123456789012345678901234567890",
 		Nonce:    "old-nonce",
 		Roles:    []string{"user"},
 		IsActive: true,
 	}
 
-	err := suite.userRepo.Create(user)
+	err := suite.userRepo.Create(u)
 	suite.NoError(err)
 
-	err = suite.userRepo.UpdateNonce(user.Address, "new-nonce")
+	err = suite.userRepo.UpdateNonce(u.Address, "new-nonce")
 	suite.NoError(err)
 
-	updatedUser, err := suite.userRepo.GetByAddress(user.Address)
+	updatedUser, err := suite.userRepo.GetByAddress(u.Address)
 	suite.NoError(err)
 	suite.Equal("new-nonce", updatedUser.Nonce)
 }
@@ -331,13 +330,13 @@ func (suite *MockRepositoryTestSuite) TestUserRepositoryUpdateNonce() {
 func (suite *MockRepositoryTestSuite) TestUserRepositoryGetActiveUsers() {
 	// Create users with different active states
 	for i := 0; i < 5; i++ {
-		user := &models.User{
+		u := &user.User{
 			Address:  fmt.Sprintf("0x%040d", i),
 			Nonce:    fmt.Sprintf("nonce-%d", i),
 			Roles:    []string{"user"},
 			IsActive: i%2 == 0, // Only even indices are active
 		}
-		err := suite.userRepo.Create(user)
+		err := suite.userRepo.Create(u)
 		suite.NoError(err)
 	}
 
@@ -345,8 +344,231 @@ func (suite *MockRepositoryTestSuite) TestUserRepositoryGetActiveUsers() {
 	suite.NoError(err)
 	suite.Len(activeUsers, 3) // 0, 2, 4 are active
 
-	for _, user := range activeUsers {
-		suite.True(user.IsActive)
+	for _, u := range activeUsers {
+		suite.True(u.IsActive)
+	}
+}
+
+// AddRole adds a role to a user
+func (m *MockUserRepository) AddRole(address, role string) error {
+	if address == "" || role == "" {
+		return errors.New("address and role cannot be empty")
+	}
+
+	u, exists := m.users[address]
+	if !exists {
+		return errors.New("user not found")
+	}
+
+	// Check if role already exists
+	for _, existingRole := range u.Roles {
+		if existingRole == role {
+			return nil // Role already exists, no error
+		}
+	}
+
+	// Add role
+	u.Roles = append(u.Roles, role)
+	return nil
+}
+
+// RemoveRole removes a role from a user
+func (m *MockUserRepository) RemoveRole(address, role string) error {
+	if address == "" || role == "" {
+		return errors.New("address and role cannot be empty")
+	}
+
+	u, exists := m.users[address]
+	if !exists {
+		return errors.New("user not found")
+	}
+
+	// Remove role from slice
+	var newRoles []string
+	for _, existingRole := range u.Roles {
+		if existingRole != role {
+			newRoles = append(newRoles, existingRole)
+		}
+	}
+	u.Roles = newRoles
+	return nil
+}
+
+// MockRepositoryTestSuite tests repository operations using mock implementations
+type MockRepositoryTestSuite struct {
+	suite.Suite
+	userRepo *MockUserRepository
+}
+
+func (suite *MockRepositoryTestSuite) SetupTest() {
+	suite.userRepo = NewMockUserRepository()
+}
+
+func (suite *MockRepositoryTestSuite) TestUserRepositoryCreate() {
+	u := &user.User{
+		Address:  "0x1234567890123456789012345678901234567890",
+		Nonce:    "test-nonce",
+		Roles:    []string{"user"},
+		IsActive: true,
+	}
+
+	err := suite.userRepo.Create(u)
+	suite.NoError(err)
+	suite.Equal(uint(1), u.ID)
+	suite.False(u.CreatedAt.IsZero())
+}
+
+func (suite *MockRepositoryTestSuite) TestUserRepositoryCreateDuplicate() {
+	user1 := &user.User{
+		Address:  "0x1234567890123456789012345678901234567890",
+		Nonce:    "test-nonce-1",
+		Roles:    []string{"user"},
+		IsActive: true,
+	}
+
+	user2 := &user.User{
+		Address:  "0x1234567890123456789012345678901234567890",
+		Nonce:    "test-nonce-2",
+		Roles:    []string{"admin"},
+		IsActive: true,
+	}
+
+	err1 := suite.userRepo.Create(user1)
+	suite.NoError(err1)
+
+	err2 := suite.userRepo.Create(user2)
+	suite.Error(err2)
+	suite.Contains(err2.Error(), "already exists")
+}
+
+func (suite *MockRepositoryTestSuite) TestUserRepositoryGetByAddress() {
+	u := &user.User{
+		Address:  "0x1234567890123456789012345678901234567890",
+		Nonce:    "test-nonce",
+		Roles:    []string{"user"},
+		IsActive: true,
+	}
+
+	err := suite.userRepo.Create(u)
+	suite.NoError(err)
+
+	foundUser, err := suite.userRepo.GetByAddress("0x1234567890123456789012345678901234567890")
+	suite.NoError(err)
+	suite.NotNil(foundUser)
+	suite.Equal(u.Address, foundUser.Address)
+	suite.Equal(u.Nonce, foundUser.Nonce)
+}
+
+func (suite *MockRepositoryTestSuite) TestUserRepositoryGetByAddressNotFound() {
+	foundUser, err := suite.userRepo.GetByAddress("0x9999999999999999999999999999999999999999")
+	suite.NoError(err)
+	suite.Nil(foundUser)
+}
+
+func (suite *MockRepositoryTestSuite) TestUserRepositoryUpdate() {
+	u := &user.User{
+		Address:  "0x1234567890123456789012345678901234567890",
+		Nonce:    "test-nonce",
+		Roles:    []string{"user"},
+		IsActive: true,
+	}
+
+	err := suite.userRepo.Create(u)
+	suite.NoError(err)
+
+	u.Nonce = "updated-nonce"
+	u.Roles = []string{"user", "admin"}
+
+	err = suite.userRepo.Update(u)
+	suite.NoError(err)
+
+	updatedUser, err := suite.userRepo.GetByAddress(u.Address)
+	suite.NoError(err)
+	suite.Equal("updated-nonce", updatedUser.Nonce)
+	suite.Contains(updatedUser.Roles, "admin")
+}
+
+func (suite *MockRepositoryTestSuite) TestUserRepositoryDelete() {
+	u := &user.User{
+		Address:  "0x1234567890123456789012345678901234567890",
+		Nonce:    "test-nonce",
+		Roles:    []string{"user"},
+		IsActive: true,
+	}
+
+	err := suite.userRepo.Create(u)
+	suite.NoError(err)
+
+	err = suite.userRepo.Delete(u.ID)
+	suite.NoError(err)
+
+	foundUser, err := suite.userRepo.GetByAddress(u.Address)
+	suite.NoError(err)
+	suite.Nil(foundUser)
+}
+
+func (suite *MockRepositoryTestSuite) TestUserRepositoryList() {
+	// Create multiple users
+	for i := 0; i < 5; i++ {
+		u := &user.User{
+			Address:  fmt.Sprintf("0x%040d", i),
+			Nonce:    fmt.Sprintf("nonce-%d", i),
+			Roles:    []string{"user"},
+			IsActive: true,
+		}
+		err := suite.userRepo.Create(u)
+		suite.NoError(err)
+	}
+
+	// Test listing with limit and offset
+	users, err := suite.userRepo.List(3, 0)
+	suite.NoError(err)
+	suite.Len(users, 3)
+
+	// Test listing with offset
+	users, err = suite.userRepo.List(3, 2)
+	suite.NoError(err)
+	suite.Len(users, 3)
+}
+
+func (suite *MockRepositoryTestSuite) TestUserRepositoryUpdateNonce() {
+	u := &user.User{
+		Address:  "0x1234567890123456789012345678901234567890",
+		Nonce:    "old-nonce",
+		Roles:    []string{"user"},
+		IsActive: true,
+	}
+
+	err := suite.userRepo.Create(u)
+	suite.NoError(err)
+
+	err = suite.userRepo.UpdateNonce(u.Address, "new-nonce")
+	suite.NoError(err)
+
+	updatedUser, err := suite.userRepo.GetByAddress(u.Address)
+	suite.NoError(err)
+	suite.Equal("new-nonce", updatedUser.Nonce)
+}
+
+func (suite *MockRepositoryTestSuite) TestUserRepositoryGetActiveUsers() {
+	// Create users with different active states
+	for i := 0; i < 5; i++ {
+		u := &user.User{
+			Address:  fmt.Sprintf("0x%040d", i),
+			Nonce:    fmt.Sprintf("nonce-%d", i),
+			Roles:    []string{"user"},
+			IsActive: i%2 == 0, // Only even indices are active
+		}
+		err := suite.userRepo.Create(u)
+		suite.NoError(err)
+	}
+
+	activeUsers, err := suite.userRepo.GetActiveUsers()
+	suite.NoError(err)
+	suite.Len(activeUsers, 3) // 0, 2, 4 are active
+
+	for _, u := range activeUsers {
+		suite.True(u.IsActive)
 	}
 }
 
@@ -358,8 +580,8 @@ func TestMockRepositoryOperations(t *testing.T) {
 // TestRepositoryInterfaceCompliance tests that mock repositories implement the interfaces
 func TestRepositoryInterfaceCompliance(t *testing.T) {
 	t.Run("MockUserRepositoryInterface", func(t *testing.T) {
-		// Test that MockUserRepository implements repository.UserRepository interface
-		var _ repository.UserRepository = (*MockUserRepository)(nil)
+		// Test that MockUserRepository implements user.UserRepository interface
+		var _ user.UserRepository = (*MockUserRepository)(nil)
 		assert.True(t, true, "MockUserRepository implements UserRepository interface")
 	})
 }

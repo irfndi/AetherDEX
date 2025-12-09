@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/irfndi/AetherDEX/apps/api/internal/models" // Added import
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/driver/sqlite"
@@ -25,7 +26,7 @@ func (suite *TokenRepositoryTestSuite) SetupSuite() {
 	suite.Require().NoError(err)
 
 	// Auto-migrate the schema
-	err = db.AutoMigrate(&Token{})
+	err = db.AutoMigrate(&models.Token{})
 	suite.Require().NoError(err)
 
 	suite.db = db
@@ -47,7 +48,7 @@ func (suite *TokenRepositoryTestSuite) TearDownSuite() {
 
 // TestCreateToken tests token creation
 func (suite *TokenRepositoryTestSuite) TestCreateToken() {
-	token := &Token{
+	token := &models.Token{
 		Address:     "0x1111111111111111111111111111111111111111",
 		Symbol:      "TEST",
 		Name:        "Test Token",
@@ -78,7 +79,7 @@ func (suite *TokenRepositoryTestSuite) TestCreateTokenNil() {
 // TestGetTokenByID tests retrieving token by ID
 func (suite *TokenRepositoryTestSuite) TestGetTokenByID() {
 	// Create test token
-	originalToken := &Token{
+	originalToken := &models.Token{
 		Address:     "0x1111111111111111111111111111111111111111",
 		Symbol:      "TEST",
 		Name:        "Test Token",
@@ -121,7 +122,7 @@ func (suite *TokenRepositoryTestSuite) TestGetTokenByIDZero() {
 // TestGetTokenByAddress tests retrieving token by address
 func (suite *TokenRepositoryTestSuite) TestGetTokenByAddress() {
 	// Create test token
-	originalToken := &Token{
+	originalToken := &models.Token{
 		Address:     "0x1111111111111111111111111111111111111111",
 		Symbol:      "TEST",
 		Name:        "Test Token",
@@ -158,7 +159,7 @@ func (suite *TokenRepositoryTestSuite) TestGetTokenByAddressEmpty() {
 // TestGetTokenBySymbol tests retrieving token by symbol
 func (suite *TokenRepositoryTestSuite) TestGetTokenBySymbol() {
 	// Create test token
-	originalToken := &Token{
+	originalToken := &models.Token{
 		Address:     "0x1111111111111111111111111111111111111111",
 		Symbol:      "TEST",
 		Name:        "Test Token",
@@ -195,7 +196,7 @@ func (suite *TokenRepositoryTestSuite) TestGetTokenBySymbolEmpty() {
 // TestUpdateToken tests updating token
 func (suite *TokenRepositoryTestSuite) TestUpdateToken() {
 	// Create test token
-	token := &Token{
+	token := &models.Token{
 		Address:     "0x1111111111111111111111111111111111111111",
 		Symbol:      "TEST",
 		Name:        "Test Token",
@@ -232,7 +233,7 @@ func (suite *TokenRepositoryTestSuite) TestUpdateTokenNil() {
 // TestDeleteToken tests deleting token
 func (suite *TokenRepositoryTestSuite) TestDeleteToken() {
 	// Create test token
-	token := &Token{
+	token := &models.Token{
 		Address:     "0x1111111111111111111111111111111111111111",
 		Symbol:      "TEST",
 		Name:        "Test Token",
@@ -264,7 +265,7 @@ func (suite *TokenRepositoryTestSuite) TestDeleteTokenZeroID() {
 func (suite *TokenRepositoryTestSuite) TestListTokens() {
 	// Create multiple test tokens
 	for i := 0; i < 5; i++ {
-		token := &Token{
+		token := &models.Token{
 			Address:     fmt.Sprintf("0x%040d", i),
 			Symbol:      fmt.Sprintf("TEST%d", i),
 			Name:        fmt.Sprintf("Test Token %d", i),
@@ -291,7 +292,7 @@ func (suite *TokenRepositoryTestSuite) TestListTokens() {
 func (suite *TokenRepositoryTestSuite) TestGetVerifiedTokens() {
 	// Create verified and unverified tokens
 	for i := 0; i < 5; i++ {
-		token := &Token{
+		token := &models.Token{
 			Address:     fmt.Sprintf("0x%040d", i),
 			Symbol:      fmt.Sprintf("TEST%d", i),
 			Name:        fmt.Sprintf("Test Token %d", i),
@@ -320,7 +321,7 @@ func (suite *TokenRepositoryTestSuite) TestGetVerifiedTokens() {
 func (suite *TokenRepositoryTestSuite) TestGetActiveTokens() {
 	// Create active and inactive tokens
 	for i := 0; i < 5; i++ {
-		token := &Token{
+		token := &models.Token{
 			Address:     fmt.Sprintf("0x%040d", i),
 			Symbol:      fmt.Sprintf("TEST%d", i),
 			Name:        fmt.Sprintf("Test Token %d", i),
@@ -348,7 +349,7 @@ func (suite *TokenRepositoryTestSuite) TestGetTokensBySymbols() {
 	// Create test tokens
 	symbols := []string{"BTC", "ETH", "USDC", "DAI", "LINK"}
 	for i, symbol := range symbols {
-		token := &Token{
+		token := &models.Token{
 			Address:     fmt.Sprintf("0x%040d", i),
 			Symbol:      symbol,
 			Name:        fmt.Sprintf("%s Token", symbol),
@@ -361,7 +362,7 @@ func (suite *TokenRepositoryTestSuite) TestGetTokensBySymbols() {
 	}
 
 	// Create inactive token
-	inactiveToken := &Token{
+	inactiveToken := &models.Token{
 		Address:     "0x9999999999999999999999999999999999999999",
 		Symbol:      "INACTIVE",
 		Name:        "Inactive Token",
@@ -399,7 +400,7 @@ func (suite *TokenRepositoryTestSuite) TestGetTokensBySymbolsEmpty() {
 // TestUpdatePrice tests updating token price
 func (suite *TokenRepositoryTestSuite) TestUpdatePrice() {
 	// Create test token
-	token := &Token{
+	token := &models.Token{
 		Address:     "0x1111111111111111111111111111111111111111",
 		Symbol:      "TEST",
 		Name:        "Test Token",
@@ -432,7 +433,7 @@ func (suite *TokenRepositoryTestSuite) TestUpdatePriceZeroID() {
 // TestUpdateMarketData tests updating token market data
 func (suite *TokenRepositoryTestSuite) TestUpdateMarketData() {
 	// Create test token
-	token := &Token{
+	token := &models.Token{
 		Address:     "0x1111111111111111111111111111111111111111",
 		Symbol:      "TEST",
 		Name:        "Test Token",
@@ -468,7 +469,7 @@ func (suite *TokenRepositoryTestSuite) TestUpdateMarketDataZeroID() {
 // TestSearchTokens tests searching tokens by name or symbol
 func (suite *TokenRepositoryTestSuite) TestSearchTokens() {
 	// Create test tokens
-	tokens := []*Token{
+	tokens := []*models.Token{
 		{
 			Address:     "0x1111111111111111111111111111111111111111",
 			Symbol:      "BTC",
@@ -541,7 +542,7 @@ func (suite *TokenRepositoryTestSuite) TestGetTopTokensByVolume() {
 	// Create tokens with different volumes
 	volumes := []int64{100000, 500000, 200000, 800000, 50000}
 	for i, volume := range volumes {
-		token := &Token{
+		token := &models.Token{
 			Address:     fmt.Sprintf("0x%040d", i),
 			Symbol:      fmt.Sprintf("TEST%d", i),
 			Name:        fmt.Sprintf("Test Token %d", i),
@@ -555,7 +556,7 @@ func (suite *TokenRepositoryTestSuite) TestGetTopTokensByVolume() {
 	}
 
 	// Create inactive token with high volume (should not be included)
-	inactiveToken := &Token{
+	inactiveToken := &models.Token{
 		Address:     "0x9999999999999999999999999999999999999999",
 		Symbol:      "INACTIVE",
 		Name:        "Inactive Token",
@@ -588,7 +589,7 @@ func (suite *TokenRepositoryTestSuite) TestGetTopTokensByMarketCap() {
 	// Create tokens with different market caps
 	marketCaps := []int64{1000000, 5000000, 2000000, 8000000, 500000}
 	for i, marketCap := range marketCaps {
-		token := &Token{
+		token := &models.Token{
 			Address:     fmt.Sprintf("0x%040d", i),
 			Symbol:      fmt.Sprintf("TEST%d", i),
 			Name:        fmt.Sprintf("Test Token %d", i),
@@ -602,7 +603,7 @@ func (suite *TokenRepositoryTestSuite) TestGetTopTokensByMarketCap() {
 	}
 
 	// Create inactive token with high market cap (should not be included)
-	inactiveToken := &Token{
+	inactiveToken := &models.Token{
 		Address:     "0x9999999999999999999999999999999999999999",
 		Symbol:      "INACTIVE",
 		Name:        "Inactive Token",

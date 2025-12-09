@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/irfndi/AetherDEX/apps/api/internal/models" // Added import
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
@@ -11,23 +12,23 @@ import (
 // TokenRepository defines the interface for token data operations
 type TokenRepository interface {
 	// Basic CRUD operations
-	Create(token *Token) error
-	GetByID(id uint) (*Token, error)
-	GetByAddress(address string) (*Token, error)
-	GetBySymbol(symbol string) (*Token, error)
-	Update(token *Token) error
+	Create(token *models.Token) error
+	GetByID(id uint) (*models.Token, error)
+	GetByAddress(address string) (*models.Token, error)
+	GetBySymbol(symbol string) (*models.Token, error)
+	Update(token *models.Token) error
 	Delete(id uint) error
-	List(limit, offset int) ([]*Token, error)
+	List(limit, offset int) ([]*models.Token, error)
 
 	// Token-specific operations
-	GetVerifiedTokens(limit, offset int) ([]*Token, error)
-	GetActiveTokens(limit, offset int) ([]*Token, error)
-	GetTokensBySymbols(symbols []string) ([]*Token, error)
+	GetVerifiedTokens(limit, offset int) ([]*models.Token, error)
+	GetActiveTokens(limit, offset int) ([]*models.Token, error)
+	GetTokensBySymbols(symbols []string) ([]*models.Token, error)
 	UpdatePrice(id uint, price decimal.Decimal) error
 	UpdateMarketData(id uint, marketCap, volume24h decimal.Decimal) error
-	SearchTokens(query string, limit, offset int) ([]*Token, error)
-	GetTopTokensByVolume(limit int) ([]*Token, error)
-	GetTopTokensByMarketCap(limit int) ([]*Token, error)
+	SearchTokens(query string, limit, offset int) ([]*models.Token, error)
+	GetTopTokensByVolume(limit int) ([]*models.Token, error)
+	GetTopTokensByMarketCap(limit int) ([]*models.Token, error)
 }
 
 // tokenRepository implements TokenRepository interface
@@ -41,7 +42,7 @@ func NewTokenRepository(db *gorm.DB) TokenRepository {
 }
 
 // Create creates a new token
-func (r *tokenRepository) Create(token *Token) error {
+func (r *tokenRepository) Create(token *models.Token) error {
 	if token == nil {
 		return errors.New("token cannot be nil")
 	}
@@ -49,12 +50,12 @@ func (r *tokenRepository) Create(token *Token) error {
 }
 
 // GetByID retrieves a token by ID
-func (r *tokenRepository) GetByID(id uint) (*Token, error) {
+func (r *tokenRepository) GetByID(id uint) (*models.Token, error) {
 	if id == 0 {
 		return nil, errors.New("id cannot be zero")
 	}
 
-	var token Token
+	var token models.Token
 	err := r.db.First(&token, id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -66,12 +67,12 @@ func (r *tokenRepository) GetByID(id uint) (*Token, error) {
 }
 
 // GetByAddress retrieves a token by address
-func (r *tokenRepository) GetByAddress(address string) (*Token, error) {
+func (r *tokenRepository) GetByAddress(address string) (*models.Token, error) {
 	if strings.TrimSpace(address) == "" {
 		return nil, errors.New("address cannot be empty")
 	}
 
-	var token Token
+	var token models.Token
 	err := r.db.Where("address = ?", address).First(&token).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -83,12 +84,12 @@ func (r *tokenRepository) GetByAddress(address string) (*Token, error) {
 }
 
 // GetBySymbol retrieves a token by symbol
-func (r *tokenRepository) GetBySymbol(symbol string) (*Token, error) {
+func (r *tokenRepository) GetBySymbol(symbol string) (*models.Token, error) {
 	if strings.TrimSpace(symbol) == "" {
 		return nil, errors.New("symbol cannot be empty")
 	}
 
-	var token Token
+	var token models.Token
 	err := r.db.Where("symbol = ?", symbol).First(&token).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -100,7 +101,7 @@ func (r *tokenRepository) GetBySymbol(symbol string) (*Token, error) {
 }
 
 // Update updates an existing token
-func (r *tokenRepository) Update(token *Token) error {
+func (r *tokenRepository) Update(token *models.Token) error {
 	if token == nil {
 		return errors.New("token cannot be nil")
 	}
@@ -112,39 +113,39 @@ func (r *tokenRepository) Delete(id uint) error {
 	if id == 0 {
 		return errors.New("id cannot be zero")
 	}
-	return r.db.Delete(&Token{}, id).Error
+	return r.db.Delete(&models.Token{}, id).Error
 }
 
 // List retrieves tokens with pagination
-func (r *tokenRepository) List(limit, offset int) ([]*Token, error) {
-	var tokens []*Token
+func (r *tokenRepository) List(limit, offset int) ([]*models.Token, error) {
+	var tokens []*models.Token
 	err := r.db.Limit(limit).Offset(offset).Find(&tokens).Error
 	return tokens, err
 }
 
 // GetVerifiedTokens retrieves verified tokens
-func (r *tokenRepository) GetVerifiedTokens(limit, offset int) ([]*Token, error) {
-	var tokens []*Token
+func (r *tokenRepository) GetVerifiedTokens(limit, offset int) ([]*models.Token, error) {
+	var tokens []*models.Token
 	err := r.db.Where("is_verified = ? AND is_active = ?", true, true).
 		Limit(limit).Offset(offset).Find(&tokens).Error
 	return tokens, err
 }
 
 // GetActiveTokens retrieves active tokens
-func (r *tokenRepository) GetActiveTokens(limit, offset int) ([]*Token, error) {
-	var tokens []*Token
+func (r *tokenRepository) GetActiveTokens(limit, offset int) ([]*models.Token, error) {
+	var tokens []*models.Token
 	err := r.db.Where("is_active = ?", true).
 		Limit(limit).Offset(offset).Find(&tokens).Error
 	return tokens, err
 }
 
 // GetTokensBySymbols retrieves tokens by multiple symbols
-func (r *tokenRepository) GetTokensBySymbols(symbols []string) ([]*Token, error) {
+func (r *tokenRepository) GetTokensBySymbols(symbols []string) ([]*models.Token, error) {
 	if len(symbols) == 0 {
-		return []*Token{}, nil
+		return []*models.Token{}, nil
 	}
 
-	var tokens []*Token
+	var tokens []*models.Token
 	err := r.db.Where("symbol IN ? AND is_active = ?", symbols, true).Find(&tokens).Error
 	return tokens, err
 }
@@ -155,7 +156,7 @@ func (r *tokenRepository) UpdatePrice(id uint, price decimal.Decimal) error {
 		return errors.New("id cannot be zero")
 	}
 
-	return r.db.Model(&Token{}).Where("id = ?", id).
+	return r.db.Model(&models.Token{}).Where("id = ?", id).
 		Update("price", price).Error
 }
 
@@ -165,7 +166,7 @@ func (r *tokenRepository) UpdateMarketData(id uint, marketCap, volume24h decimal
 		return errors.New("id cannot be zero")
 	}
 
-	return r.db.Model(&Token{}).Where("id = ?", id).
+	return r.db.Model(&models.Token{}).Where("id = ?", id).
 		Updates(map[string]interface{}{
 			"market_cap": marketCap,
 			"volume_24h": volume24h,
@@ -173,12 +174,12 @@ func (r *tokenRepository) UpdateMarketData(id uint, marketCap, volume24h decimal
 }
 
 // SearchTokens searches tokens by name or symbol
-func (r *tokenRepository) SearchTokens(query string, limit, offset int) ([]*Token, error) {
+func (r *tokenRepository) SearchTokens(query string, limit, offset int) ([]*models.Token, error) {
 	if strings.TrimSpace(query) == "" {
-		return []*Token{}, nil
+		return []*models.Token{}, nil
 	}
 
-	var tokens []*Token
+	var tokens []*models.Token
 	searchPattern := "%" + strings.ToLower(query) + "%"
 	err := r.db.Where("(LOWER(name) LIKE ? OR LOWER(symbol) LIKE ?) AND is_active = ?",
 		searchPattern, searchPattern, true).
@@ -187,8 +188,8 @@ func (r *tokenRepository) SearchTokens(query string, limit, offset int) ([]*Toke
 }
 
 // GetTopTokensByVolume retrieves top tokens by 24h volume
-func (r *tokenRepository) GetTopTokensByVolume(limit int) ([]*Token, error) {
-	var tokens []*Token
+func (r *tokenRepository) GetTopTokensByVolume(limit int) ([]*models.Token, error) {
+	var tokens []*models.Token
 	err := r.db.Where("is_active = ?", true).
 		Order("volume_24h DESC").
 		Limit(limit).Find(&tokens).Error
@@ -196,8 +197,8 @@ func (r *tokenRepository) GetTopTokensByVolume(limit int) ([]*Token, error) {
 }
 
 // GetTopTokensByMarketCap retrieves top tokens by market cap
-func (r *tokenRepository) GetTopTokensByMarketCap(limit int) ([]*Token, error) {
-	var tokens []*Token
+func (r *tokenRepository) GetTopTokensByMarketCap(limit int) ([]*models.Token, error) {
+	var tokens []*models.Token
 	err := r.db.Where("is_active = ?", true).
 		Order("market_cap DESC").
 		Limit(limit).Find(&tokens).Error

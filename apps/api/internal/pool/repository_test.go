@@ -4,8 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/irfndi/AetherDEX/apps/api/internal/liquidity"
-	"github.com/irfndi/AetherDEX/apps/api/internal/transaction"
+	"github.com/irfndi/AetherDEX/apps/api/internal/models"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/driver/sqlite"
@@ -27,7 +26,7 @@ func (suite *PoolRepositoryTestSuite) SetupSuite() {
 	suite.Require().NoError(err)
 
 	// Auto-migrate the schema
-	err = db.AutoMigrate(&Pool{}, &transaction.Transaction{}, &liquidity.LiquidityPosition{})
+	err = db.AutoMigrate(&models.Pool{}, &models.Transaction{}, &models.LiquidityPosition{})
 	suite.Require().NoError(err)
 
 	suite.db = db
@@ -49,7 +48,7 @@ func (suite *PoolRepositoryTestSuite) TearDownSuite() {
 
 // TestCreatePool tests pool creation
 func (suite *PoolRepositoryTestSuite) TestCreatePool() {
-	pool := &Pool{
+	pool := &models.Pool{
 		PoolID:    "pool-1",
 		Token0:    "0x1111111111111111111111111111111111111111",
 		Token1:    "0x2222222222222222222222222222222222222222",
@@ -77,7 +76,7 @@ func (suite *PoolRepositoryTestSuite) TestCreatePoolNil() {
 
 // TestCreatePoolSameTokens tests creating pool with same tokens
 func (suite *PoolRepositoryTestSuite) TestCreatePoolSameTokens() {
-	pool := &Pool{
+	pool := &models.Pool{
 		PoolID:    "pool-1",
 		Token0:    "0x1111111111111111111111111111111111111111",
 		Token1:    "0x1111111111111111111111111111111111111111", // Same as Token0
@@ -98,7 +97,7 @@ func (suite *PoolRepositoryTestSuite) TestCreatePoolSameTokens() {
 // TestGetPoolByID tests retrieving pool by ID
 func (suite *PoolRepositoryTestSuite) TestGetPoolByID() {
 	// Create test pool
-	originalPool := &Pool{
+	originalPool := &models.Pool{
 		PoolID:    "pool-1",
 		Token0:    "0x1111111111111111111111111111111111111111",
 		Token1:    "0x2222222222222222222222222222222222222222",
@@ -140,7 +139,7 @@ func (suite *PoolRepositoryTestSuite) TestGetPoolByIDZero() {
 // TestGetPoolByPoolID tests retrieving pool by pool ID
 func (suite *PoolRepositoryTestSuite) TestGetPoolByPoolID() {
 	// Create test pool
-	originalPool := &Pool{
+	originalPool := &models.Pool{
 		PoolID:    "pool-1",
 		Token0:    "0x1111111111111111111111111111111111111111",
 		Token1:    "0x2222222222222222222222222222222222222222",
@@ -180,7 +179,7 @@ func (suite *PoolRepositoryTestSuite) TestGetPoolByPoolIDEmpty() {
 // TestGetPoolByTokens tests retrieving pool by token addresses
 func (suite *PoolRepositoryTestSuite) TestGetPoolByTokens() {
 	// Create test pool
-	originalPool := &Pool{
+	originalPool := &models.Pool{
 		PoolID:    "pool-1",
 		Token0:    "0x1111111111111111111111111111111111111111",
 		Token1:    "0x2222222222222222222222222222222222222222",
@@ -240,7 +239,7 @@ func (suite *PoolRepositoryTestSuite) TestGetPoolByTokensEmptyParams() {
 // TestUpdatePool tests updating pool
 func (suite *PoolRepositoryTestSuite) TestUpdatePool() {
 	// Create test pool
-	pool := &Pool{
+	pool := &models.Pool{
 		PoolID:    "pool-1",
 		Token0:    "0x1111111111111111111111111111111111111111",
 		Token1:    "0x2222222222222222222222222222222222222222",
@@ -280,7 +279,7 @@ func (suite *PoolRepositoryTestSuite) TestUpdatePoolNil() {
 // TestDeletePool tests deleting pool
 func (suite *PoolRepositoryTestSuite) TestDeletePool() {
 	// Create test pool
-	pool := &Pool{
+	pool := &models.Pool{
 		PoolID:    "pool-1",
 		Token0:    "0x1111111111111111111111111111111111111111",
 		Token1:    "0x2222222222222222222222222222222222222222",
@@ -316,7 +315,7 @@ func (suite *PoolRepositoryTestSuite) TestDeletePoolZeroID() {
 func (suite *PoolRepositoryTestSuite) TestListPools() {
 	// Create multiple test pools
 	for i := 0; i < 5; i++ {
-		pool := &Pool{
+		pool := &models.Pool{
 			PoolID:    fmt.Sprintf("pool-%d", i),
 			Token0:    fmt.Sprintf("0x%040d", i),
 			Token1:    fmt.Sprintf("0x%040d", i+1000),
@@ -346,7 +345,7 @@ func (suite *PoolRepositoryTestSuite) TestListPools() {
 // TestGetActivePools tests retrieving active pools
 func (suite *PoolRepositoryTestSuite) TestGetActivePools() {
 	// Create active and inactive pools
-	activePool := &Pool{
+	activePool := &models.Pool{
 		PoolID:    "active-pool",
 		Token0:    "0x1111111111111111111111111111111111111111",
 		Token1:    "0x2222222222222222222222222222222222222222",
@@ -358,7 +357,7 @@ func (suite *PoolRepositoryTestSuite) TestGetActivePools() {
 		TVL:       decimal.NewFromInt(1000000),
 		IsActive:  true,
 	}
-	inactivePool := &Pool{
+	inactivePool := &models.Pool{
 		PoolID:    "inactive-pool",
 		Token0:    "0x3333333333333333333333333333333333333333",
 		Token1:    "0x4444444444444444444444444444444444444444",
@@ -386,7 +385,7 @@ func (suite *PoolRepositoryTestSuite) TestGetActivePools() {
 // TestUpdateLiquidity tests updating pool liquidity
 func (suite *PoolRepositoryTestSuite) TestUpdateLiquidity() {
 	// Create test pool
-	pool := &Pool{
+	pool := &models.Pool{
 		PoolID:    "pool-1",
 		Token0:    "0x1111111111111111111111111111111111111111",
 		Token1:    "0x2222222222222222222222222222222222222222",
@@ -422,7 +421,7 @@ func (suite *PoolRepositoryTestSuite) TestUpdateLiquidityEmptyPoolID() {
 // TestUpdateReserves tests updating pool reserves
 func (suite *PoolRepositoryTestSuite) TestUpdateReserves() {
 	// Create test pool
-	pool := &Pool{
+	pool := &models.Pool{
 		PoolID:    "pool-1",
 		Token0:    "0x1111111111111111111111111111111111111111",
 		Token1:    "0x2222222222222222222222222222222222222222",
@@ -460,7 +459,7 @@ func (suite *PoolRepositoryTestSuite) TestUpdateReservesEmptyPoolID() {
 // TestGetTopPoolsByTVL tests retrieving top pools by TVL
 func (suite *PoolRepositoryTestSuite) TestGetTopPoolsByTVL() {
 	// Create pools with different TVL values
-	pools := []*Pool{
+	pools := []*models.Pool{
 		{
 			PoolID:    "pool-1",
 			Token0:    "0x1111111111111111111111111111111111111111",
@@ -518,7 +517,7 @@ func (suite *PoolRepositoryTestSuite) TestGetTopPoolsByTVL() {
 func (suite *PoolRepositoryTestSuite) TestGetPoolsByToken() {
 	// Create pools with shared token
 	sharedToken := "0x1111111111111111111111111111111111111111"
-	pools := []*Pool{
+	pools := []*models.Pool{
 		{
 			PoolID:    "pool-1",
 			Token0:    sharedToken,
