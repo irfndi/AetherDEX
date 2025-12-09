@@ -5,7 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/irfndi/AetherDEX/apps/api/internal/models"
+	"github.com/irfndi/AetherDEX/apps/api/internal/liquidity"
+	"github.com/irfndi/AetherDEX/apps/api/internal/pool"
+	"github.com/irfndi/AetherDEX/apps/api/internal/token"
+	"github.com/irfndi/AetherDEX/apps/api/internal/transaction"
+	"github.com/irfndi/AetherDEX/apps/api/internal/user"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/driver/sqlite"
@@ -17,11 +21,11 @@ import (
 type ComprehensiveDatabaseTestSuite struct {
 	suite.Suite
 	db              *gorm.DB
-	userRepo        UserRepository
-	transactionRepo TransactionRepository
-	poolRepo        PoolRepository
-	tokenRepo       TokenRepository
-	liquidityRepo   LiquidityPositionRepository
+	userRepo        user.UserRepository
+	transactionRepo transaction.TransactionRepository
+	poolRepo        pool.PoolRepository
+	tokenRepo       token.TokenRepository
+	liquidityRepo   liquidity.LiquidityPositionRepository
 }
 
 // SetupSuite initializes the test suite with all repositories
@@ -32,20 +36,20 @@ func (suite *ComprehensiveDatabaseTestSuite) SetupSuite() {
 
 	// Auto-migrate all models
 	err = db.AutoMigrate(
-		&models.User{},
-		&models.Transaction{},
-		&models.Pool{},
-		&models.Token{},
-		&models.LiquidityPosition{},
+		&user.User{},
+		&transaction.Transaction{},
+		&pool.Pool{},
+		&token.Token{},
+		&liquidity.LiquidityPosition{},
 	)
 	suite.Require().NoError(err)
 
 	suite.db = db
-	suite.userRepo = NewUserRepository(db)
-	suite.transactionRepo = NewTransactionRepository(db)
-	suite.poolRepo = NewPoolRepository(db)
-	suite.tokenRepo = NewTokenRepository(db)
-	suite.liquidityRepo = NewLiquidityPositionRepository(db)
+	suite.userRepo = user.NewUserRepository(db)
+	suite.transactionRepo = transaction.NewTransactionRepository(db)
+	suite.poolRepo = pool.NewPoolRepository(db)
+	suite.tokenRepo = token.NewTokenRepository(db)
+	suite.liquidityRepo = liquidity.NewLiquidityPositionRepository(db)
 }
 
 // SetupTest runs before each test
@@ -68,43 +72,43 @@ func (suite *ComprehensiveDatabaseTestSuite) TearDownSuite() {
 // TestUserManagementOperations tests comprehensive user management
 func (suite *ComprehensiveDatabaseTestSuite) TestUserManagementOperations() {
 	// Test user creation
-	user := &models.User{
+	u := &user.User{
 		Address:  "0x1234567890123456789012345678901234567890",
 		Nonce:    "test-nonce-123",
 		Roles:    []string{"user", "trader"},
 		IsActive: true,
 	}
 
-	err := suite.userRepo.Create(user)
+	err := suite.userRepo.Create(u)
 	suite.NoError(err)
-	suite.NotZero(user.ID)
-	suite.NotZero(user.CreatedAt)
+	suite.NotZero(u.ID)
+	suite.NotZero(u.CreatedAt)
 
 	// Test user retrieval by address
-	retrievedUser, err := suite.userRepo.GetByAddress(user.Address)
+	retrievedUser, err := suite.userRepo.GetByAddress(u.Address)
 	suite.NoError(err)
 	suite.NotNil(retrievedUser)
-	suite.Equal(user.Address, retrievedUser.Address)
-	suite.Equal(user.Nonce, retrievedUser.Nonce)
+	suite.Equal(u.Address, retrievedUser.Address)
+	suite.Equal(u.Nonce, retrievedUser.Nonce)
 
 	// Test user update
-	user.Nonce = "updated-nonce-456"
-	user.Roles = []string{"user", "trader", "admin"}
-	err = suite.userRepo.Update(user)
+	u.Nonce = "updated-nonce-456"
+	u.Roles = []string{"user", "trader", "admin"}
+	err = suite.userRepo.Update(u)
 	suite.NoError(err)
 
 	// Verify update
-	updatedUser, err := suite.userRepo.GetByID(user.ID)
+	updatedUser, err := suite.userRepo.GetByID(u.ID)
 	suite.NoError(err)
 	suite.Equal("updated-nonce-456", updatedUser.Nonce)
 	suite.Contains(updatedUser.Roles, "admin")
 
 	// Test user deactivation
-	user.IsActive = false
-	err = suite.userRepo.Update(user)
+	u.IsActive = false
+	err = suite.userRepo.Update(u)
 	suite.NoError(err)
 
-	updatedUser, err = suite.userRepo.GetByID(user.ID)
+	updatedUser, err = suite.userRepo.GetByID(u.ID)
 	suite.NoError(err)
 	suite.False(updatedUser.IsActive)
 }
@@ -112,7 +116,7 @@ func (suite *ComprehensiveDatabaseTestSuite) TestUserManagementOperations() {
 // TestTokenManagementOperations tests comprehensive token management
 func (suite *ComprehensiveDatabaseTestSuite) TestTokenManagementOperations() {
 	// Create test tokens
-	token1 := &models.Token{
+	token1 := &token.Token{
 		Address:  "0x1111111111111111111111111111111111111111",
 		Symbol:   "ETH",
 		Name:     "Ethereum",
@@ -120,7 +124,7 @@ func (suite *ComprehensiveDatabaseTestSuite) TestTokenManagementOperations() {
 		IsActive: true,
 	}
 
-	token2 := &models.Token{
+	token2 := &token.Token{
 		Address:  "0x2222222222222222222222222222222222222222",
 		Symbol:   "USDC",
 		Name:     "USD Coin",
@@ -158,14 +162,14 @@ func (suite *ComprehensiveDatabaseTestSuite) TestTokenManagementOperations() {
 // TestPoolManagementOperations tests comprehensive pool management
 func (suite *ComprehensiveDatabaseTestSuite) TestPoolManagementOperations() {
 	// Create test tokens first
-	token1 := &models.Token{
+	token1 := &token.Token{
 		Address:  "0x1111111111111111111111111111111111111111",
 		Symbol:   "ETH",
 		Name:     "Ethereum",
 		Decimals: 18,
 		IsActive: true,
 	}
-	token2 := &models.Token{
+	token2 := &token.Token{
 		Address:  "0x2222222222222222222222222222222222222222",
 		Symbol:   "USDC",
 		Name:     "USD Coin",
@@ -179,7 +183,7 @@ func (suite *ComprehensiveDatabaseTestSuite) TestPoolManagementOperations() {
 	suite.NoError(err)
 
 	// Create test pool
-	pool := &models.Pool{
+	p := &pool.Pool{
 		PoolID:    "eth-usdc-pool",
 		Token0:    token1.Address,
 		Token1:    token2.Address,
@@ -190,25 +194,25 @@ func (suite *ComprehensiveDatabaseTestSuite) TestPoolManagementOperations() {
 		IsActive:  true,
 	}
 
-	err = suite.poolRepo.Create(pool)
+	err = suite.poolRepo.Create(p)
 	suite.NoError(err)
-	suite.NotZero(pool.ID)
+	suite.NotZero(p.ID)
 
 	// Test pool retrieval
-	retrievedPool, err := suite.poolRepo.GetByPoolID(pool.PoolID)
+	retrievedPool, err := suite.poolRepo.GetByPoolID(p.PoolID)
 	suite.NoError(err)
 	suite.NotNil(retrievedPool)
-	suite.Equal(pool.Token0, retrievedPool.Token0)
-	suite.Equal(pool.Token1, retrievedPool.Token1)
+	suite.Equal(p.Token0, retrievedPool.Token0)
+	suite.Equal(p.Token1, retrievedPool.Token1)
 
 	// Test pool update (liquidity change)
-	pool.Liquidity = decimal.NewFromFloat(1500000.0)
-	pool.Reserve0 = decimal.NewFromFloat(750.0)
-	pool.Reserve1 = decimal.NewFromFloat(1500000.0)
-	err = suite.poolRepo.Update(pool)
+	p.Liquidity = decimal.NewFromFloat(1500000.0)
+	p.Reserve0 = decimal.NewFromFloat(750.0)
+	p.Reserve1 = decimal.NewFromFloat(1500000.0)
+	err = suite.poolRepo.Update(p)
 	suite.NoError(err)
 
-	updatedPool, err := suite.poolRepo.GetByPoolID(pool.PoolID)
+	updatedPool, err := suite.poolRepo.GetByPoolID(p.PoolID)
 	suite.NoError(err)
 	suite.True(updatedPool.Liquidity.Equal(decimal.NewFromFloat(1500000.0)))
 
@@ -221,17 +225,17 @@ func (suite *ComprehensiveDatabaseTestSuite) TestPoolManagementOperations() {
 // TestTransactionLoggingOperations tests comprehensive transaction logging
 func (suite *ComprehensiveDatabaseTestSuite) TestTransactionLoggingOperations() {
 	// Create test user
-	user := &models.User{
+	u := &user.User{
 		Address:  "0x1234567890123456789012345678901234567890",
 		Nonce:    "test-nonce",
 		Roles:    []string{"user", "trader"},
 		IsActive: true,
 	}
-	err := suite.userRepo.Create(user)
+	err := suite.userRepo.Create(u)
 	suite.NoError(err)
 
 	// Create test pool
-	pool := &models.Pool{
+	p := &pool.Pool{
 		PoolID:    "test-pool",
 		Token0:    "0x1111111111111111111111111111111111111111",
 		Token1:    "0x2222222222222222222222222222222222222222",
@@ -241,19 +245,19 @@ func (suite *ComprehensiveDatabaseTestSuite) TestTransactionLoggingOperations() 
 		Reserve1:  decimal.NewFromFloat(1000000.0),
 		IsActive:  true,
 	}
-	err = suite.poolRepo.Create(pool)
+	err = suite.poolRepo.Create(p)
 	suite.NoError(err)
 
 	// Create multiple transactions
-	transactions := []*models.Transaction{
+	transactions := []*transaction.Transaction{
 		{
 			TxHash:      "0x1111111111111111111111111111111111111111111111111111111111111111",
-			UserAddress: user.Address,
-			PoolID:      pool.PoolID,
-			Type:        models.TransactionTypeSwap,
-			Status:      models.TransactionStatusConfirmed,
-			TokenIn:     pool.Token0,
-			TokenOut:    pool.Token1,
+			UserAddress: u.Address,
+			PoolID:      p.PoolID,
+			Type:        transaction.TransactionTypeSwap,
+			Status:      transaction.TransactionStatusConfirmed,
+			TokenIn:     p.Token0,
+			TokenOut:    p.Token1,
 			AmountIn:    decimal.NewFromFloat(1.0),
 			AmountOut:   decimal.NewFromFloat(2000.0),
 			GasUsed:     21000,
@@ -262,12 +266,12 @@ func (suite *ComprehensiveDatabaseTestSuite) TestTransactionLoggingOperations() 
 		},
 		{
 			TxHash:      "0x2222222222222222222222222222222222222222222222222222222222222222",
-			UserAddress: user.Address,
-			PoolID:      pool.PoolID,
-			Type:        models.TransactionTypeAddLiquidity,
-			Status:      models.TransactionStatusPending,
-			TokenIn:     pool.Token0,
-			TokenOut:    pool.Token1,
+			UserAddress: u.Address,
+			PoolID:      p.PoolID,
+			Type:        transaction.TransactionTypeAddLiquidity,
+			Status:      transaction.TransactionStatusPending,
+			TokenIn:     p.Token0,
+			TokenOut:    p.Token1,
 			AmountIn:    decimal.NewFromFloat(2.0),
 			AmountOut:   decimal.NewFromFloat(4000.0),
 			GasUsed:     45000,
@@ -284,39 +288,39 @@ func (suite *ComprehensiveDatabaseTestSuite) TestTransactionLoggingOperations() 
 	}
 
 	// Test getting transactions by user
-	userTransactions, err := suite.transactionRepo.GetByUserAddress(user.Address, 10, 0)
+	userTransactions, err := suite.transactionRepo.GetByUserAddress(u.Address, 10, 0)
 	suite.NoError(err)
 	suite.Len(userTransactions, 2)
 
 	// Test getting transactions by pool
-	poolTransactions, err := suite.transactionRepo.GetByPoolID(pool.PoolID, 10, 0)
+	poolTransactions, err := suite.transactionRepo.GetByPoolID(p.PoolID, 10, 0)
 	suite.NoError(err)
 	suite.Len(poolTransactions, 2)
 
 	// Test transaction status update
-	transactions[1].Status = models.TransactionStatusConfirmed
+	transactions[1].Status = transaction.TransactionStatusConfirmed
 	err = suite.transactionRepo.Update(transactions[1])
 	suite.NoError(err)
 
 	updatedTx, err := suite.transactionRepo.GetByTxHash(transactions[1].TxHash)
 	suite.NoError(err)
-	suite.Equal(models.TransactionStatusConfirmed, updatedTx.Status)
+	suite.Equal(transaction.TransactionStatusConfirmed, updatedTx.Status)
 }
 
 // TestLiquidityPositionOperations tests liquidity position management
 func (suite *ComprehensiveDatabaseTestSuite) TestLiquidityPositionOperations() {
 	// Create test user
-	user := &models.User{
+	u := &user.User{
 		Address:  "0x1234567890123456789012345678901234567890",
 		Nonce:    "test-nonce",
 		Roles:    []string{"user", "trader"},
 		IsActive: true,
 	}
-	err := suite.userRepo.Create(user)
+	err := suite.userRepo.Create(u)
 	suite.NoError(err)
 
 	// Create test pool
-	pool := &models.Pool{
+	p := &pool.Pool{
 		PoolID:    "test-pool",
 		Token0:    "0x1111111111111111111111111111111111111111",
 		Token1:    "0x2222222222222222222222222222222222222222",
@@ -326,13 +330,13 @@ func (suite *ComprehensiveDatabaseTestSuite) TestLiquidityPositionOperations() {
 		Reserve1:  decimal.NewFromFloat(1000000.0),
 		IsActive:  true,
 	}
-	err = suite.poolRepo.Create(pool)
+	err = suite.poolRepo.Create(p)
 	suite.NoError(err)
 
 	// Create liquidity position
-	position := &models.LiquidityPosition{
-		UserAddress: user.Address,
-		PoolID:      pool.PoolID,
+	position := &liquidity.LiquidityPosition{
+		UserAddress: u.Address,
+		PoolID:      p.PoolID,
 		IsActive:    true,
 	}
 
@@ -341,16 +345,16 @@ func (suite *ComprehensiveDatabaseTestSuite) TestLiquidityPositionOperations() {
 	suite.NotZero(position.ID)
 
 	// Test getting positions by user
-	userPositions, err := suite.liquidityRepo.GetByUser(user.Address, 10, 0)
+	userPositions, err := suite.liquidityRepo.GetByUser(u.Address, 10, 0)
 	suite.NoError(err)
 	suite.Len(userPositions, 1)
-	suite.Equal(pool.PoolID, userPositions[0].PoolID)
+	suite.Equal(p.PoolID, userPositions[0].PoolID)
 
 	// Test getting positions by pool
-	poolPositions, err := suite.liquidityRepo.GetByPool(pool.PoolID, 10, 0)
+	poolPositions, err := suite.liquidityRepo.GetByPool(p.PoolID, 10, 0)
 	suite.NoError(err)
 	suite.Len(poolPositions, 1)
-	suite.Equal(user.Address, poolPositions[0].UserAddress)
+	suite.Equal(u.Address, poolPositions[0].UserAddress)
 }
 
 // TestCrossRepositoryOperations tests operations across multiple repositories
@@ -358,14 +362,14 @@ func (suite *ComprehensiveDatabaseTestSuite) TestCrossRepositoryOperations() {
 	// Create a complete trading scenario
 
 	// 1. Create tokens
-	eth := &models.Token{
+	eth := &token.Token{
 		Address:  "0x1111111111111111111111111111111111111111",
 		Symbol:   "ETH",
 		Name:     "Ethereum",
 		Decimals: 18,
 		IsActive: true,
 	}
-	usdc := &models.Token{
+	usdc := &token.Token{
 		Address:  "0x2222222222222222222222222222222222222222",
 		Symbol:   "USDC",
 		Name:     "USD Coin",
@@ -379,13 +383,13 @@ func (suite *ComprehensiveDatabaseTestSuite) TestCrossRepositoryOperations() {
 	suite.NoError(err)
 
 	// 2. Create users
-	trader1 := &models.User{
+	trader1 := &user.User{
 		Address:  "0x1234567890123456789012345678901234567890",
 		Nonce:    "trader1-nonce",
 		Roles:    []string{"user", "trader"},
 		IsActive: true,
 	}
-	trader2 := &models.User{
+	trader2 := &user.User{
 		Address:  "0x9876543210987654321098765432109876543210",
 		Nonce:    "trader2-nonce",
 		Roles:    []string{"user", "trader"},
@@ -398,7 +402,7 @@ func (suite *ComprehensiveDatabaseTestSuite) TestCrossRepositoryOperations() {
 	suite.NoError(err)
 
 	// 3. Create pool
-	pool := &models.Pool{
+	p := &pool.Pool{
 		PoolID:    "eth-usdc-pool",
 		Token0:    eth.Address,
 		Token1:    usdc.Address,
@@ -409,18 +413,18 @@ func (suite *ComprehensiveDatabaseTestSuite) TestCrossRepositoryOperations() {
 		IsActive:  true,
 	}
 
-	err = suite.poolRepo.Create(pool)
+	err = suite.poolRepo.Create(p)
 	suite.NoError(err)
 
 	// 4. Create liquidity positions
-	position1 := &models.LiquidityPosition{
+	position1 := &liquidity.LiquidityPosition{
 		UserAddress: trader1.Address,
-		PoolID:      pool.PoolID,
+		PoolID:      p.PoolID,
 		IsActive:    true,
 	}
-	position2 := &models.LiquidityPosition{
+	position2 := &liquidity.LiquidityPosition{
 		UserAddress: trader2.Address,
-		PoolID:      pool.PoolID,
+		PoolID:      p.PoolID,
 		IsActive:    true,
 	}
 
@@ -430,12 +434,12 @@ func (suite *ComprehensiveDatabaseTestSuite) TestCrossRepositoryOperations() {
 	suite.NoError(err)
 
 	// 5. Create transactions
-	swapTx := &models.Transaction{
+	swapTx := &transaction.Transaction{
 		TxHash:      "0x1111111111111111111111111111111111111111111111111111111111111111",
 		UserAddress: trader1.Address,
-		PoolID:      pool.PoolID,
-		Type:        models.TransactionTypeSwap,
-		Status:      models.TransactionStatusConfirmed,
+		PoolID:      p.PoolID,
+		Type:        transaction.TransactionTypeSwap,
+		Status:      transaction.TransactionStatusConfirmed,
 		TokenIn:     eth.Address,
 		TokenOut:    usdc.Address,
 		AmountIn:    decimal.NewFromFloat(1.0),
@@ -445,12 +449,12 @@ func (suite *ComprehensiveDatabaseTestSuite) TestCrossRepositoryOperations() {
 		BlockNumber: 12345,
 	}
 
-	liquidityTx := &models.Transaction{
+	liquidityTx := &transaction.Transaction{
 		TxHash:      "0x2222222222222222222222222222222222222222222222222222222222222222",
 		UserAddress: trader2.Address,
-		PoolID:      pool.PoolID,
-		Type:        models.TransactionTypeAddLiquidity,
-		Status:      models.TransactionStatusConfirmed,
+		PoolID:      p.PoolID,
+		Type:        transaction.TransactionTypeAddLiquidity,
+		Status:      transaction.TransactionStatusConfirmed,
 		TokenIn:     eth.Address,
 		TokenOut:    usdc.Address,
 		AmountIn:    decimal.NewFromFloat(2.0),
@@ -468,12 +472,12 @@ func (suite *ComprehensiveDatabaseTestSuite) TestCrossRepositoryOperations() {
 	// 6. Verify cross-repository queries
 
 	// Get all transactions for the pool
-	poolTransactions, err := suite.transactionRepo.GetByPoolID(pool.PoolID, 10, 0)
+	poolTransactions, err := suite.transactionRepo.GetByPoolID(p.PoolID, 10, 0)
 	suite.NoError(err)
 	suite.Len(poolTransactions, 2)
 
 	// Get all positions for the pool
-	poolPositions, err := suite.liquidityRepo.GetByPool(pool.PoolID, 10, 0)
+	poolPositions, err := suite.liquidityRepo.GetByPool(p.PoolID, 10, 0)
 	suite.NoError(err)
 	suite.Len(poolPositions, 2)
 
@@ -481,13 +485,13 @@ func (suite *ComprehensiveDatabaseTestSuite) TestCrossRepositoryOperations() {
 	trader1Transactions, err := suite.transactionRepo.GetByUserAddress(trader1.Address, 10, 0)
 	suite.NoError(err)
 	suite.Len(trader1Transactions, 1)
-	suite.Equal(models.TransactionTypeSwap, trader1Transactions[0].Type)
+	suite.Equal(transaction.TransactionTypeSwap, trader1Transactions[0].Type)
 
 	// Get trader2's positions
 	trader2Positions, err := suite.liquidityRepo.GetByUser(trader2.Address, 10, 0)
 	suite.NoError(err)
 	suite.Len(trader2Positions, 1)
-	suite.Equal(pool.PoolID, trader2Positions[0].PoolID)
+	suite.Equal(p.PoolID, trader2Positions[0].PoolID)
 }
 
 // TestDatabaseErrorHandling tests error handling across repositories
@@ -536,13 +540,13 @@ func (suite *ComprehensiveDatabaseTestSuite) TestDatabasePerformance() {
 
 	// Create multiple users in bulk
 	for i := 0; i < 100; i++ {
-		user := &models.User{
+		u := &user.User{
 			Address:  fmt.Sprintf("0x%040d", i),
 			Nonce:    fmt.Sprintf("nonce-%d", i),
 			Roles:    []string{"user"},
 			IsActive: true,
 		}
-		err := suite.userRepo.Create(user)
+		err := suite.userRepo.Create(u)
 		suite.NoError(err)
 	}
 
@@ -553,9 +557,9 @@ func (suite *ComprehensiveDatabaseTestSuite) TestDatabasePerformance() {
 	start = time.Now()
 	for i := 0; i < 100; i++ {
 		address := fmt.Sprintf("0x%040d", i)
-		user, err := suite.userRepo.GetByAddress(address)
+		retrievedUser, err := suite.userRepo.GetByAddress(address)
 		suite.NoError(err)
-		suite.NotNil(user)
+		suite.NotNil(retrievedUser)
 	}
 	userRetrievalTime := time.Since(start)
 	suite.T().Logf("Retrieved 100 users in %v", userRetrievalTime)
@@ -570,16 +574,16 @@ func (suite *ComprehensiveDatabaseTestSuite) TestDatabaseTransactionIntegrity() 
 	// Test that database operations maintain referential integrity
 
 	// Create user and pool
-	user := &models.User{
+	u := &user.User{
 		Address:  "0x1234567890123456789012345678901234567890",
 		Nonce:    "test-nonce",
 		Roles:    []string{"user"},
 		IsActive: true,
 	}
-	err := suite.userRepo.Create(user)
+	err := suite.userRepo.Create(u)
 	suite.NoError(err)
 
-	pool := &models.Pool{
+	p := &pool.Pool{
 		PoolID:    "test-pool",
 		Token0:    "0x1111111111111111111111111111111111111111",
 		Token1:    "0x2222222222222222222222222222222222222222",
@@ -589,18 +593,18 @@ func (suite *ComprehensiveDatabaseTestSuite) TestDatabaseTransactionIntegrity() 
 		Reserve1:  decimal.NewFromFloat(1000000.0),
 		IsActive:  true,
 	}
-	err = suite.poolRepo.Create(pool)
+	err = suite.poolRepo.Create(p)
 	suite.NoError(err)
 
 	// Create transaction referencing user and pool
-	tx := &models.Transaction{
+	tx := &transaction.Transaction{
 		TxHash:      "0x1111111111111111111111111111111111111111111111111111111111111111",
-		UserAddress: user.Address,
-		PoolID:      pool.PoolID,
-		Type:        models.TransactionTypeSwap,
-		Status:      models.TransactionStatusConfirmed,
-		TokenIn:     pool.Token0,
-		TokenOut:    pool.Token1,
+		UserAddress: u.Address,
+		PoolID:      p.PoolID,
+		Type:        transaction.TransactionTypeSwap,
+		Status:      transaction.TransactionStatusConfirmed,
+		TokenIn:     p.Token0,
+		TokenOut:    p.Token1,
 		AmountIn:    decimal.NewFromFloat(1.0),
 		AmountOut:   decimal.NewFromFloat(2000.0),
 		GasUsed:     21000,
@@ -614,15 +618,15 @@ func (suite *ComprehensiveDatabaseTestSuite) TestDatabaseTransactionIntegrity() 
 	// Verify that transaction references are maintained
 	retrievedTx, err := suite.transactionRepo.GetByTxHash(tx.TxHash)
 	suite.NoError(err)
-	suite.Equal(user.Address, retrievedTx.UserAddress)
-	suite.Equal(pool.PoolID, retrievedTx.PoolID)
+	suite.Equal(u.Address, retrievedTx.UserAddress)
+	suite.Equal(p.PoolID, retrievedTx.PoolID)
 
 	// Verify that related data can be queried
-	userTransactions, err := suite.transactionRepo.GetByUserAddress(user.Address, 10, 0)
+	userTransactions, err := suite.transactionRepo.GetByUserAddress(u.Address, 10, 0)
 	suite.NoError(err)
 	suite.Len(userTransactions, 1)
 
-	poolTransactions, err := suite.transactionRepo.GetByPoolID(pool.PoolID, 10, 0)
+	poolTransactions, err := suite.transactionRepo.GetByPoolID(p.PoolID, 10, 0)
 	suite.NoError(err)
 	suite.Len(poolTransactions, 1)
 }

@@ -7,13 +7,17 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/irfndi/AetherDEX/apps/api/internal/models"
+	"github.com/irfndi/AetherDEX/apps/api/internal/liquidity"
+	"github.com/irfndi/AetherDEX/apps/api/internal/pool"
+	"github.com/irfndi/AetherDEX/apps/api/internal/token"
+	"github.com/irfndi/AetherDEX/apps/api/internal/transaction"
+	"github.com/irfndi/AetherDEX/apps/api/internal/user"
 )
 
 // TestUserModelValidation tests user model validation and structure
 func TestUserModelValidation(t *testing.T) {
 	t.Run("ValidUserCreation", func(t *testing.T) {
-		user := &models.User{
+		u := &user.User{
 			Address:  "0x1234567890123456789012345678901234567890",
 			Nonce:    "test-nonce",
 			Roles:    []string{"user", "trader"},
@@ -21,24 +25,24 @@ func TestUserModelValidation(t *testing.T) {
 		}
 
 		// Validate user fields
-		assert.Equal(t, "0x1234567890123456789012345678901234567890", user.Address)
-		assert.Equal(t, "test-nonce", user.Nonce)
-		assert.Contains(t, user.Roles, "user")
-		assert.Contains(t, user.Roles, "trader")
-		assert.True(t, user.IsActive)
-		assert.Len(t, user.Address, 42) // Standard Ethereum address length
+		assert.Equal(t, "0x1234567890123456789012345678901234567890", u.Address)
+		assert.Equal(t, "test-nonce", u.Nonce)
+		assert.Contains(t, u.Roles, "user")
+		assert.Contains(t, u.Roles, "trader")
+		assert.True(t, u.IsActive)
+		assert.Len(t, u.Address, 42) // Standard Ethereum address length
 	})
 
 	t.Run("UserRoleManagement", func(t *testing.T) {
-		user := &models.User{
+		u := &user.User{
 			Address: "0x1234567890123456789012345678901234567890",
 			Roles:   []string{"admin", "trader", "liquidity_provider"},
 		}
 
-		assert.Contains(t, user.Roles, "admin")
-		assert.Contains(t, user.Roles, "trader")
-		assert.Contains(t, user.Roles, "liquidity_provider")
-		assert.Len(t, user.Roles, 3)
+		assert.Contains(t, u.Roles, "admin")
+		assert.Contains(t, u.Roles, "trader")
+		assert.Contains(t, u.Roles, "liquidity_provider")
+		assert.Len(t, u.Roles, 3)
 	})
 
 	t.Run("UserAddressValidation", func(t *testing.T) {
@@ -49,8 +53,8 @@ func TestUserModelValidation(t *testing.T) {
 		}
 
 		for _, addr := range validAddresses {
-			user := &models.User{Address: addr}
-			assert.Len(t, user.Address, 42)
+			u := &user.User{Address: addr}
+			assert.Len(t, u.Address, 42)
 			assert.True(t, len(addr) == 42 && addr[:2] == "0x")
 		}
 	})
@@ -59,7 +63,7 @@ func TestUserModelValidation(t *testing.T) {
 // TestTokenModelValidation tests token model validation and structure
 func TestTokenModelValidation(t *testing.T) {
 	t.Run("ValidTokenCreation", func(t *testing.T) {
-		token := &models.Token{
+		tk := &token.Token{
 			Address:  "0x1111111111111111111111111111111111111111",
 			Symbol:   "ETH",
 			Name:     "Ethereum",
@@ -68,12 +72,12 @@ func TestTokenModelValidation(t *testing.T) {
 		}
 
 		// Validate token fields
-		assert.Equal(t, "0x1111111111111111111111111111111111111111", token.Address)
-		assert.Equal(t, "ETH", token.Symbol)
-		assert.Equal(t, "Ethereum", token.Name)
-		assert.Equal(t, uint8(18), token.Decimals)
-		assert.True(t, token.IsActive)
-		assert.Len(t, token.Address, 42)
+		assert.Equal(t, "0x1111111111111111111111111111111111111111", tk.Address)
+		assert.Equal(t, "ETH", tk.Symbol)
+		assert.Equal(t, "Ethereum", tk.Name)
+		assert.Equal(t, uint8(18), tk.Decimals)
+		assert.True(t, tk.IsActive)
+		assert.Len(t, tk.Address, 42)
 	})
 
 	t.Run("TokenDecimalValidation", func(t *testing.T) {
@@ -89,16 +93,16 @@ func TestTokenModelValidation(t *testing.T) {
 		}
 
 		for _, tokenData := range tokens {
-			token := &models.Token{
+			tk := &token.Token{
 				Name:     tokenData.name,
 				Symbol:   tokenData.symbol,
 				Decimals: tokenData.decimals,
 			}
 
-			assert.Equal(t, tokenData.name, token.Name)
-			assert.Equal(t, tokenData.symbol, token.Symbol)
-			assert.Equal(t, tokenData.decimals, token.Decimals)
-			assert.True(t, token.Decimals <= 18) // Most tokens have <= 18 decimals
+			assert.Equal(t, tokenData.name, tk.Name)
+			assert.Equal(t, tokenData.symbol, tk.Symbol)
+			assert.Equal(t, tokenData.decimals, tk.Decimals)
+			assert.True(t, tk.Decimals <= 18) // Most tokens have <= 18 decimals
 		}
 	})
 
@@ -106,8 +110,8 @@ func TestTokenModelValidation(t *testing.T) {
 		validSymbols := []string{"ETH", "BTC", "USDC", "DAI", "WETH", "UNI"}
 
 		for _, symbol := range validSymbols {
-			token := &models.Token{Symbol: symbol}
-			assert.NotEmpty(t, token.Symbol)
+			tk := &token.Token{Symbol: symbol}
+			assert.NotEmpty(t, tk.Symbol)
 			assert.True(t, len(symbol) >= 2 && len(symbol) <= 10) // Reasonable symbol length
 		}
 	})
@@ -116,7 +120,7 @@ func TestTokenModelValidation(t *testing.T) {
 // TestPoolModelValidation tests pool model validation and structure
 func TestPoolModelValidation(t *testing.T) {
 	t.Run("ValidPoolCreation", func(t *testing.T) {
-		pool := &models.Pool{
+		p := &pool.Pool{
 			PoolID:    "eth-usdc-pool",
 			Token0:    "0x1111111111111111111111111111111111111111",
 			Token1:    "0x2222222222222222222222222222222222222222",
@@ -128,45 +132,45 @@ func TestPoolModelValidation(t *testing.T) {
 		}
 
 		// Validate pool fields
-		assert.Equal(t, "eth-usdc-pool", pool.PoolID)
-		assert.Equal(t, "0x1111111111111111111111111111111111111111", pool.Token0)
-		assert.Equal(t, "0x2222222222222222222222222222222222222222", pool.Token1)
-		assert.True(t, pool.FeeRate.Equal(decimal.NewFromFloat(0.003)))
-		assert.True(t, pool.Liquidity.GreaterThan(decimal.Zero))
-		assert.True(t, pool.Reserve0.GreaterThan(decimal.Zero))
-		assert.True(t, pool.Reserve1.GreaterThan(decimal.Zero))
-		assert.True(t, pool.IsActive)
+		assert.Equal(t, "eth-usdc-pool", p.PoolID)
+		assert.Equal(t, "0x1111111111111111111111111111111111111111", p.Token0)
+		assert.Equal(t, "0x2222222222222222222222222222222222222222", p.Token1)
+		assert.True(t, p.FeeRate.Equal(decimal.NewFromFloat(0.003)))
+		assert.True(t, p.Liquidity.GreaterThan(decimal.Zero))
+		assert.True(t, p.Reserve0.GreaterThan(decimal.Zero))
+		assert.True(t, p.Reserve1.GreaterThan(decimal.Zero))
+		assert.True(t, p.IsActive)
 	})
 
 	t.Run("PoolFeeRateValidation", func(t *testing.T) {
 		feeRates := []float64{0.001, 0.003, 0.005, 0.01} // Common fee rates: 0.1%, 0.3%, 0.5%, 1%
 
 		for _, rate := range feeRates {
-			pool := &models.Pool{
+			p := &pool.Pool{
 				PoolID:  "test-pool",
 				FeeRate: decimal.NewFromFloat(rate),
 			}
 
-			assert.True(t, pool.FeeRate.Equal(decimal.NewFromFloat(rate)))
-			assert.True(t, pool.FeeRate.GreaterThan(decimal.Zero))
-			assert.True(t, pool.FeeRate.LessThan(decimal.NewFromFloat(0.1))) // Fee should be < 10%
+			assert.True(t, p.FeeRate.Equal(decimal.NewFromFloat(rate)))
+			assert.True(t, p.FeeRate.GreaterThan(decimal.Zero))
+			assert.True(t, p.FeeRate.LessThan(decimal.NewFromFloat(0.1))) // Fee should be < 10%
 		}
 	})
 
 	t.Run("PoolLiquidityCalculations", func(t *testing.T) {
-		pool := &models.Pool{
+		p := &pool.Pool{
 			Reserve0:  decimal.NewFromFloat(1000.0),
 			Reserve1:  decimal.NewFromFloat(2000.0),
 			Liquidity: decimal.NewFromFloat(1414.21), // sqrt(1000 * 2000)
 		}
 
 		// Validate reserves and liquidity relationship
-		assert.True(t, pool.Reserve0.GreaterThan(decimal.Zero))
-		assert.True(t, pool.Reserve1.GreaterThan(decimal.Zero))
-		assert.True(t, pool.Liquidity.GreaterThan(decimal.Zero))
+		assert.True(t, p.Reserve0.GreaterThan(decimal.Zero))
+		assert.True(t, p.Reserve1.GreaterThan(decimal.Zero))
+		assert.True(t, p.Liquidity.GreaterThan(decimal.Zero))
 
 		// Basic invariant check: liquidity should be reasonable relative to reserves
-		product := pool.Reserve0.Mul(pool.Reserve1)
+		product := p.Reserve0.Mul(p.Reserve1)
 		assert.True(t, product.GreaterThan(decimal.Zero))
 	})
 }
@@ -174,12 +178,12 @@ func TestPoolModelValidation(t *testing.T) {
 // TestTransactionModelValidation tests transaction model validation and structure
 func TestTransactionModelValidation(t *testing.T) {
 	t.Run("ValidTransactionCreation", func(t *testing.T) {
-		tx := &models.Transaction{
+		tx := &transaction.Transaction{
 			TxHash:      "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
 			UserAddress: "0x1234567890123456789012345678901234567890",
 			PoolID:      "eth-usdc-pool",
-			Type:        models.TransactionTypeSwap,
-			Status:      models.TransactionStatusConfirmed,
+			Type:        transaction.TransactionTypeSwap,
+			Status:      transaction.TransactionStatusConfirmed,
 			TokenIn:     "0x1111111111111111111111111111111111111111",
 			TokenOut:    "0x2222222222222222222222222222222222222222",
 			AmountIn:    decimal.NewFromFloat(100.0),
@@ -190,53 +194,53 @@ func TestTransactionModelValidation(t *testing.T) {
 		// Validate transaction fields
 		assert.Len(t, tx.TxHash, 66)      // Standard transaction hash length
 		assert.Len(t, tx.UserAddress, 42) // Standard Ethereum address length
-		assert.Equal(t, models.TransactionTypeSwap, tx.Type)
-		assert.Equal(t, models.TransactionStatusConfirmed, tx.Status)
+		assert.Equal(t, transaction.TransactionTypeSwap, tx.Type)
+		assert.Equal(t, transaction.TransactionStatusConfirmed, tx.Status)
 		assert.True(t, tx.AmountIn.GreaterThan(decimal.Zero))
 		assert.True(t, tx.AmountOut.GreaterThan(decimal.Zero))
 		assert.Greater(t, tx.BlockNumber, uint64(0))
 	})
 
 	t.Run("TransactionTypeValidation", func(t *testing.T) {
-		transactionTypes := []models.TransactionType{
-			models.TransactionTypeSwap,
-			models.TransactionTypeAddLiquidity,
-			models.TransactionTypeRemoveLiquidity,
-			models.TransactionTypeCreatePool,
+		transactionTypes := []transaction.TransactionType{
+			transaction.TransactionTypeSwap,
+			transaction.TransactionTypeAddLiquidity,
+			transaction.TransactionTypeRemoveLiquidity,
+			transaction.TransactionTypeCreatePool,
 		}
 
 		for _, txType := range transactionTypes {
-			tx := &models.Transaction{Type: txType}
+			tx := &transaction.Transaction{Type: txType}
 			assert.NotEmpty(t, tx.Type)
-			assert.Contains(t, []models.TransactionType{
-				models.TransactionTypeSwap,
-				models.TransactionTypeAddLiquidity,
-				models.TransactionTypeRemoveLiquidity,
-				models.TransactionTypeCreatePool,
+			assert.Contains(t, []transaction.TransactionType{
+				transaction.TransactionTypeSwap,
+				transaction.TransactionTypeAddLiquidity,
+				transaction.TransactionTypeRemoveLiquidity,
+				transaction.TransactionTypeCreatePool,
 			}, tx.Type)
 		}
 	})
 
 	t.Run("TransactionStatusValidation", func(t *testing.T) {
-		statuses := []models.TransactionStatus{
-			models.TransactionStatusPending,
-			models.TransactionStatusConfirmed,
-			models.TransactionStatusFailed,
+		statuses := []transaction.TransactionStatus{
+			transaction.TransactionStatusPending,
+			transaction.TransactionStatusConfirmed,
+			transaction.TransactionStatusFailed,
 		}
 
 		for _, status := range statuses {
-			tx := &models.Transaction{Status: status}
+			tx := &transaction.Transaction{Status: status}
 			assert.NotEmpty(t, tx.Status)
-			assert.Contains(t, []models.TransactionStatus{
-				models.TransactionStatusPending,
-				models.TransactionStatusConfirmed,
-				models.TransactionStatusFailed,
+			assert.Contains(t, []transaction.TransactionStatus{
+				transaction.TransactionStatusPending,
+				transaction.TransactionStatusConfirmed,
+				transaction.TransactionStatusFailed,
 			}, tx.Status)
 		}
 	})
 
 	t.Run("TransactionAmountValidation", func(t *testing.T) {
-		tx := &models.Transaction{
+		tx := &transaction.Transaction{
 			AmountIn:  decimal.NewFromFloat(100.0),
 			AmountOut: decimal.NewFromFloat(95.0),
 			GasPrice:  decimal.NewFromFloat(20.0), // 20 gwei
@@ -250,7 +254,7 @@ func TestTransactionModelValidation(t *testing.T) {
 		assert.Greater(t, tx.GasUsed, uint64(0))
 
 		// For swaps, typically AmountOut < AmountIn due to fees
-		if tx.Type == models.TransactionTypeSwap {
+		if tx.Type == transaction.TransactionTypeSwap {
 			assert.True(t, tx.AmountOut.LessThanOrEqual(tx.AmountIn))
 		}
 	})
@@ -259,7 +263,7 @@ func TestTransactionModelValidation(t *testing.T) {
 // TestLiquidityPositionModelValidation tests liquidity position model validation and structure
 func TestLiquidityPositionModelValidation(t *testing.T) {
 	t.Run("ValidLiquidityPositionCreation", func(t *testing.T) {
-		liquidityPos := &models.LiquidityPosition{
+		liquidityPos := &liquidity.LiquidityPosition{
 			UserAddress:  "0x1234567890123456789012345678901234567890",
 			PoolID:       "eth-usdc-pool",
 			Liquidity:    decimal.NewFromFloat(1000.0),
@@ -278,7 +282,7 @@ func TestLiquidityPositionModelValidation(t *testing.T) {
 	})
 
 	t.Run("LiquidityAmountValidation", func(t *testing.T) {
-		liquidityPos := &models.LiquidityPosition{
+		liquidityPos := &liquidity.LiquidityPosition{
 			Liquidity:    decimal.NewFromFloat(1000.0),
 			Token0Amount: decimal.NewFromFloat(500.0),
 			Token1Amount: decimal.NewFromFloat(500.0),
@@ -292,7 +296,7 @@ func TestLiquidityPositionModelValidation(t *testing.T) {
 
 	t.Run("LiquidityPositionStatusValidation", func(t *testing.T) {
 		// Test active position
-		activeLiquidity := &models.LiquidityPosition{
+		activeLiquidity := &liquidity.LiquidityPosition{
 			IsActive:  true,
 			Liquidity: decimal.NewFromFloat(1000.0),
 		}
@@ -300,7 +304,7 @@ func TestLiquidityPositionModelValidation(t *testing.T) {
 		assert.True(t, activeLiquidity.Liquidity.GreaterThan(decimal.Zero))
 
 		// Test inactive position (withdrawn)
-		inactiveLiquidity := &models.LiquidityPosition{
+		inactiveLiquidity := &liquidity.LiquidityPosition{
 			IsActive:  false,
 			Liquidity: decimal.Zero,
 		}

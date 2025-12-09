@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/irfndi/AetherDEX/apps/api/internal/models"
+	"github.com/irfndi/AetherDEX/apps/api/internal/liquidity"
+	"github.com/irfndi/AetherDEX/apps/api/internal/transaction"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -25,7 +26,7 @@ func (suite *UserRepositoryTestSuite) SetupSuite() {
 	suite.Require().NoError(err)
 
 	// Auto-migrate the schema
-	err = db.AutoMigrate(&models.User{}, &models.Transaction{}, &models.LiquidityPosition{})
+	err = db.AutoMigrate(&User{}, &transaction.Transaction{}, &liquidity.LiquidityPosition{})
 	suite.Require().NoError(err)
 
 	suite.db = db
@@ -47,7 +48,7 @@ func (suite *UserRepositoryTestSuite) TearDownSuite() {
 
 // TestCreateUser tests user creation
 func (suite *UserRepositoryTestSuite) TestCreateUser() {
-	user := &models.User{
+	user := &User{
 		Address:  "0x1234567890123456789012345678901234567890",
 		Nonce:    "test-nonce",
 		Roles:    []string{"user", "trader"},
@@ -70,7 +71,7 @@ func (suite *UserRepositoryTestSuite) TestCreateUserNil() {
 // TestGetUserByAddress tests retrieving user by address
 func (suite *UserRepositoryTestSuite) TestGetUserByAddress() {
 	// Create test user
-	originalUser := &models.User{
+	originalUser := &User{
 		Address:  "0x1234567890123456789012345678901234567890",
 		Nonce:    "test-nonce",
 		Roles:    []string{"user"},
@@ -105,7 +106,7 @@ func (suite *UserRepositoryTestSuite) TestGetUserByAddressEmpty() {
 // TestGetUserByID tests retrieving user by ID
 func (suite *UserRepositoryTestSuite) TestGetUserByID() {
 	// Create test user
-	originalUser := &models.User{
+	originalUser := &User{
 		Address:  "0x1234567890123456789012345678901234567890",
 		Nonce:    "test-nonce",
 		Roles:    []string{"user"},
@@ -140,7 +141,7 @@ func (suite *UserRepositoryTestSuite) TestGetUserByIDZero() {
 // TestUpdateUser tests updating user
 func (suite *UserRepositoryTestSuite) TestUpdateUser() {
 	// Create test user
-	user := &models.User{
+	user := &User{
 		Address:  "0x1234567890123456789012345678901234567890",
 		Nonce:    "test-nonce",
 		Roles:    []string{"user"},
@@ -172,7 +173,7 @@ func (suite *UserRepositoryTestSuite) TestUpdateUserNil() {
 // TestDeleteUser tests deleting user
 func (suite *UserRepositoryTestSuite) TestDeleteUser() {
 	// Create test user
-	user := &models.User{
+	user := &User{
 		Address:  "0x1234567890123456789012345678901234567890",
 		Nonce:    "test-nonce",
 		Roles:    []string{"user"},
@@ -202,7 +203,7 @@ func (suite *UserRepositoryTestSuite) TestDeleteUserZeroID() {
 func (suite *UserRepositoryTestSuite) TestListUsers() {
 	// Create multiple test users
 	for i := 0; i < 5; i++ {
-		user := &models.User{
+		user := &User{
 			Address:  fmt.Sprintf("0x%040d", i),
 			Nonce:    fmt.Sprintf("nonce-%d", i),
 			Roles:    []string{"user"},
@@ -226,7 +227,7 @@ func (suite *UserRepositoryTestSuite) TestListUsers() {
 // TestUpdateNonce tests updating user nonce
 func (suite *UserRepositoryTestSuite) TestUpdateNonce() {
 	// Create test user
-	user := &models.User{
+	user := &User{
 		Address:  "0x1234567890123456789012345678901234567890",
 		Nonce:    "old-nonce",
 		Roles:    []string{"user"},
@@ -259,13 +260,13 @@ func (suite *UserRepositoryTestSuite) TestUpdateNonceEmptyParams() {
 // TestGetActiveUsers tests retrieving active users
 func (suite *UserRepositoryTestSuite) TestGetActiveUsers() {
 	// Create active and inactive users
-	activeUser := &models.User{
+	activeUser := &User{
 		Address:  "0x1111111111111111111111111111111111111111",
 		Nonce:    "nonce1",
 		Roles:    []string{"user"},
 		IsActive: true,
 	}
-	inactiveUser := &models.User{
+	inactiveUser := &User{
 		Address:  "0x2222222222222222222222222222222222222222",
 		Nonce:    "nonce2",
 		Roles:    []string{"user"},
@@ -287,7 +288,7 @@ func (suite *UserRepositoryTestSuite) TestGetActiveUsers() {
 // TestAddRole tests adding role to user
 func (suite *UserRepositoryTestSuite) TestAddRole() {
 	// Create test user
-	user := &models.User{
+	user := &User{
 		Address:  "0x1234567890123456789012345678901234567890",
 		Nonce:    "test-nonce",
 		Roles:    []string{"user"},
@@ -310,7 +311,7 @@ func (suite *UserRepositoryTestSuite) TestAddRole() {
 // TestAddRoleAlreadyExists tests adding existing role
 func (suite *UserRepositoryTestSuite) TestAddRoleAlreadyExists() {
 	// Create test user
-	user := &models.User{
+	user := &User{
 		Address:  "0x1234567890123456789012345678901234567890",
 		Nonce:    "test-nonce",
 		Roles:    []string{"user"},
@@ -333,7 +334,7 @@ func (suite *UserRepositoryTestSuite) TestAddRoleAlreadyExists() {
 // TestRemoveRole tests removing role from user
 func (suite *UserRepositoryTestSuite) TestRemoveRole() {
 	// Create test user with multiple roles
-	user := &models.User{
+	user := &User{
 		Address:  "0x1234567890123456789012345678901234567890",
 		Nonce:    "test-nonce",
 		Roles:    []string{"user", "admin", "trader"},

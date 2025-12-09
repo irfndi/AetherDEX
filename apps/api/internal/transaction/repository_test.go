@@ -5,7 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/irfndi/AetherDEX/apps/api/internal/models"
+	"github.com/irfndi/AetherDEX/apps/api/internal/pool"
+	"github.com/irfndi/AetherDEX/apps/api/internal/user"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/driver/sqlite"
@@ -27,7 +28,7 @@ func (suite *TransactionRepositoryTestSuite) SetupSuite() {
 	suite.Require().NoError(err)
 
 	// Auto-migrate the schema
-	err = db.AutoMigrate(&models.Transaction{}, &models.User{}, &models.Pool{})
+	err = db.AutoMigrate(&Transaction{}, &user.User{}, &pool.Pool{})
 	suite.Require().NoError(err)
 
 	suite.db = db
@@ -49,12 +50,12 @@ func (suite *TransactionRepositoryTestSuite) TearDownSuite() {
 
 // TestCreateTransaction tests transaction creation
 func (suite *TransactionRepositoryTestSuite) TestCreateTransaction() {
-	tx := &models.Transaction{
+	tx := &Transaction{
 		TxHash:      "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
 		UserAddress: "0x1111111111111111111111111111111111111111",
 		PoolID:      "pool-1",
-		Type:        models.TransactionTypeSwap,
-		Status:      models.TransactionStatusPending,
+		Type:        TransactionTypeSwap,
+		Status:      TransactionStatusPending,
 		TokenIn:     "0x2222222222222222222222222222222222222222",
 		TokenOut:    "0x3333333333333333333333333333333333333333",
 		AmountIn:    decimal.NewFromInt(1000),
@@ -80,12 +81,12 @@ func (suite *TransactionRepositoryTestSuite) TestCreateTransactionNil() {
 // TestGetTransactionByID tests retrieving transaction by ID
 func (suite *TransactionRepositoryTestSuite) TestGetTransactionByID() {
 	// Create test transaction
-	originalTx := &models.Transaction{
+	originalTx := &Transaction{
 		TxHash:      "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
 		UserAddress: "0x1111111111111111111111111111111111111111",
 		PoolID:      "pool-1",
-		Type:        models.TransactionTypeSwap,
-		Status:      models.TransactionStatusPending,
+		Type:        TransactionTypeSwap,
+		Status:      TransactionStatusPending,
 		TokenIn:     "0x2222222222222222222222222222222222222222",
 		TokenOut:    "0x3333333333333333333333333333333333333333",
 		AmountIn:    decimal.NewFromInt(1000),
@@ -124,12 +125,12 @@ func (suite *TransactionRepositoryTestSuite) TestGetTransactionByIDZero() {
 // TestGetTransactionByHash tests retrieving transaction by hash
 func (suite *TransactionRepositoryTestSuite) TestGetTransactionByHash() {
 	// Create test transaction
-	originalTx := &models.Transaction{
+	originalTx := &Transaction{
 		TxHash:      "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
 		UserAddress: "0x1111111111111111111111111111111111111111",
 		PoolID:      "pool-1",
-		Type:        models.TransactionTypeSwap,
-		Status:      models.TransactionStatusPending,
+		Type:        TransactionTypeSwap,
+		Status:      TransactionStatusPending,
 		TokenIn:     "0x2222222222222222222222222222222222222222",
 		TokenOut:    "0x3333333333333333333333333333333333333333",
 		AmountIn:    decimal.NewFromInt(1000),
@@ -169,12 +170,12 @@ func (suite *TransactionRepositoryTestSuite) TestGetTransactionsByUser() {
 
 	// Create multiple transactions for the user
 	for i := 0; i < 3; i++ {
-		tx := &models.Transaction{
+		tx := &Transaction{
 			TxHash:      fmt.Sprintf("0x%064d", i),
 			UserAddress: userAddress,
 			PoolID:      fmt.Sprintf("pool-%d", i),
-			Type:        models.TransactionTypeSwap,
-			Status:      models.TransactionStatusConfirmed,
+			Type:        TransactionTypeSwap,
+			Status:      TransactionStatusConfirmed,
 			TokenIn:     "0x2222222222222222222222222222222222222222",
 			TokenOut:    "0x3333333333333333333333333333333333333333",
 			AmountIn:    decimal.NewFromInt(1000),
@@ -188,12 +189,12 @@ func (suite *TransactionRepositoryTestSuite) TestGetTransactionsByUser() {
 	}
 
 	// Create transaction for different user
-	differentUserTx := &models.Transaction{
+	differentUserTx := &Transaction{
 		TxHash:      "0x9999999999999999999999999999999999999999999999999999999999999999",
 		UserAddress: "0x4444444444444444444444444444444444444444",
 		PoolID:      "pool-different",
-		Type:        models.TransactionTypeSwap,
-		Status:      models.TransactionStatusConfirmed,
+		Type:        TransactionTypeSwap,
+		Status:      TransactionStatusConfirmed,
 		TokenIn:     "0x2222222222222222222222222222222222222222",
 		TokenOut:    "0x3333333333333333333333333333333333333333",
 		AmountIn:    decimal.NewFromInt(1000),
@@ -230,12 +231,12 @@ func (suite *TransactionRepositoryTestSuite) TestGetTransactionsByPool() {
 
 	// Create multiple transactions for the pool
 	for i := 0; i < 3; i++ {
-		tx := &models.Transaction{
+		tx := &Transaction{
 			TxHash:      fmt.Sprintf("0x%064d", i),
 			UserAddress: fmt.Sprintf("0x%040d", i),
 			PoolID:      poolID,
-			Type:        models.TransactionTypeSwap,
-			Status:      models.TransactionStatusConfirmed,
+			Type:        TransactionTypeSwap,
+			Status:      TransactionStatusConfirmed,
 			TokenIn:     "0x2222222222222222222222222222222222222222",
 			TokenOut:    "0x3333333333333333333333333333333333333333",
 			AmountIn:    decimal.NewFromInt(1000),
@@ -273,12 +274,12 @@ func (suite *TransactionRepositoryTestSuite) TestGetTransactionsByStatus() {
 	statuses := []string{"pending", "confirmed", "failed"}
 	for i, status := range statuses {
 		for j := 0; j < 2; j++ {
-			tx := &models.Transaction{
+			tx := &Transaction{
 				TxHash:      fmt.Sprintf("0x%s%062d", status, j),
 				UserAddress: fmt.Sprintf("0x%040d", i*10+j),
 				PoolID:      fmt.Sprintf("pool-%d", i),
-				Type:        models.TransactionTypeSwap,
-				Status:      models.TransactionStatus(status),
+				Type:        TransactionTypeSwap,
+				Status:      TransactionStatus(status),
 				TokenIn:     "0x2222222222222222222222222222222222222222",
 				TokenOut:    "0x3333333333333333333333333333333333333333",
 				AmountIn:    decimal.NewFromInt(1000),
@@ -314,15 +315,15 @@ func (suite *TransactionRepositoryTestSuite) TestGetTransactionsByStatusEmpty() 
 // TestGetTransactionsByType tests retrieving transactions by type
 func (suite *TransactionRepositoryTestSuite) TestGetTransactionsByType() {
 	// Create transactions with different types
-	txTypes := []models.TransactionType{models.TransactionTypeSwap, models.TransactionTypeAddLiquidity}
+	txTypes := []TransactionType{TransactionTypeSwap, TransactionTypeAddLiquidity}
 	for i, txType := range txTypes {
 		for j := 0; j < 2; j++ {
-			tx := &models.Transaction{
+			tx := &Transaction{
 				TxHash:      fmt.Sprintf("0x%s%062d", string(txType), j),
 				UserAddress: fmt.Sprintf("0x%040d", i*10+j),
 				PoolID:      fmt.Sprintf("pool-%d", i),
 				Type:        txType,
-				Status:      models.TransactionStatusConfirmed,
+				Status:      TransactionStatusConfirmed,
 				TokenIn:     "0x2222222222222222222222222222222222222222",
 				TokenOut:    "0x3333333333333333333333333333333333333333",
 				AmountIn:    decimal.NewFromInt(1000),
@@ -337,19 +338,19 @@ func (suite *TransactionRepositoryTestSuite) TestGetTransactionsByType() {
 	}
 
 	// Get transactions by type
-	swapTxs, err := suite.repo.GetByType(models.TransactionTypeSwap, 10, 0)
+	swapTxs, err := suite.repo.GetByType(TransactionTypeSwap, 10, 0)
 	suite.NoError(err)
 	suite.Len(swapTxs, 2)
 
 	// Verify all transactions have the correct type
 	for _, tx := range swapTxs {
-		suite.Equal(models.TransactionTypeSwap, tx.Type)
+		suite.Equal(TransactionTypeSwap, tx.Type)
 	}
 }
 
 // TestGetTransactionsByTypeEmpty tests retrieving transactions with empty type
 func (suite *TransactionRepositoryTestSuite) TestGetTransactionsByTypeEmpty() {
-	txs, err := suite.repo.GetByType(models.TransactionType(""), 10, 0)
+	txs, err := suite.repo.GetByType(TransactionType(""), 10, 0)
 	suite.Error(err)
 	suite.Nil(txs)
 	suite.Contains(err.Error(), "type cannot be empty")
@@ -362,12 +363,12 @@ func (suite *TransactionRepositoryTestSuite) TestGetTransactionsByDateRange() {
 	tomorrow := now.Add(24 * time.Hour)
 
 	// Create transactions with different timestamps
-	txInRange := &models.Transaction{
+	txInRange := &Transaction{
 		TxHash:      "0x1111111111111111111111111111111111111111111111111111111111111111",
 		UserAddress: "0x1111111111111111111111111111111111111111",
 		PoolID:      "pool-1",
-		Type:        models.TransactionTypeSwap,
-		Status:      models.TransactionStatusConfirmed,
+		Type:        TransactionTypeSwap,
+		Status:      TransactionStatusConfirmed,
 		TokenIn:     "0x2222222222222222222222222222222222222222",
 		TokenOut:    "0x3333333333333333333333333333333333333333",
 		AmountIn:    decimal.NewFromInt(1000),
@@ -378,12 +379,12 @@ func (suite *TransactionRepositoryTestSuite) TestGetTransactionsByDateRange() {
 		CreatedAt:   now,
 	}
 
-	txOutOfRange := &models.Transaction{
+	txOutOfRange := &Transaction{
 		TxHash:      "0x2222222222222222222222222222222222222222222222222222222222222222",
 		UserAddress: "0x2222222222222222222222222222222222222222",
 		PoolID:      "pool-2",
-		Type:        models.TransactionTypeSwap,
-		Status:      models.TransactionStatusConfirmed,
+		Type:        TransactionTypeSwap,
+		Status:      TransactionStatusConfirmed,
 		TokenIn:     "0x2222222222222222222222222222222222222222",
 		TokenOut:    "0x3333333333333333333333333333333333333333",
 		AmountIn:    decimal.NewFromInt(1000),
@@ -409,12 +410,12 @@ func (suite *TransactionRepositoryTestSuite) TestGetTransactionsByDateRange() {
 // TestUpdateTransactionStatus tests updating transaction status
 func (suite *TransactionRepositoryTestSuite) TestUpdateTransactionStatus() {
 	// Create test transaction
-	tx := &models.Transaction{
+	tx := &Transaction{
 		TxHash:      "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
 		UserAddress: "0x1111111111111111111111111111111111111111",
 		PoolID:      "pool-1",
-		Type:        models.TransactionTypeSwap,
-		Status:      models.TransactionStatusPending,
+		Type:        TransactionTypeSwap,
+		Status:      TransactionStatusPending,
 		TokenIn:     "0x2222222222222222222222222222222222222222",
 		TokenOut:    "0x3333333333333333333333333333333333333333",
 		AmountIn:    decimal.NewFromInt(1000),
@@ -427,25 +428,25 @@ func (suite *TransactionRepositoryTestSuite) TestUpdateTransactionStatus() {
 	suite.NoError(err)
 
 	// Update status
-	err = suite.repo.UpdateStatus(tx.TxHash, models.TransactionStatusConfirmed)
+	err = suite.repo.UpdateStatus(tx.TxHash, TransactionStatusConfirmed)
 	suite.NoError(err)
 
 	// Verify update
 	updatedTx, err := suite.repo.GetByID(tx.ID)
 	suite.NoError(err)
-	suite.Equal(models.TransactionStatusConfirmed, updatedTx.Status)
+	suite.Equal(TransactionStatusConfirmed, updatedTx.Status)
 }
 
 // TestUpdateTransactionStatusZeroID tests updating status with zero ID
 func (suite *TransactionRepositoryTestSuite) TestUpdateTransactionStatusZeroID() {
-	err := suite.repo.UpdateStatus("", models.TransactionStatusConfirmed)
+	err := suite.repo.UpdateStatus("", TransactionStatusConfirmed)
 	suite.Error(err)
 	suite.Contains(err.Error(), "txHash cannot be empty")
 }
 
 // TestUpdateTransactionStatusEmptyStatus tests updating with empty status
 func (suite *TransactionRepositoryTestSuite) TestUpdateTransactionStatusEmptyStatus() {
-	err := suite.repo.UpdateStatus("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", models.TransactionStatus(""))
+	err := suite.repo.UpdateStatus("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", TransactionStatus(""))
 	suite.Error(err)
 	suite.Contains(err.Error(), "status cannot be empty")
 }
@@ -453,12 +454,12 @@ func (suite *TransactionRepositoryTestSuite) TestUpdateTransactionStatusEmptySta
 // TestUpdateTransaction tests updating transaction
 func (suite *TransactionRepositoryTestSuite) TestUpdateTransaction() {
 	// Create test transaction
-	tx := &models.Transaction{
+	tx := &Transaction{
 		TxHash:      "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
 		UserAddress: "0x1111111111111111111111111111111111111111",
 		PoolID:      "pool-1",
-		Type:        models.TransactionTypeSwap,
-		Status:      models.TransactionStatusPending,
+		Type:        TransactionTypeSwap,
+		Status:      TransactionStatusPending,
 		TokenIn:     "0x2222222222222222222222222222222222222222",
 		TokenOut:    "0x3333333333333333333333333333333333333333",
 		AmountIn:    decimal.NewFromInt(1000),
@@ -471,7 +472,7 @@ func (suite *TransactionRepositoryTestSuite) TestUpdateTransaction() {
 	suite.NoError(err)
 
 	// Update transaction
-	tx.Status = models.TransactionStatusConfirmed
+	tx.Status = TransactionStatusConfirmed
 	tx.GasUsed = 25000
 	tx.BlockNumber = 12346
 	err = suite.repo.Update(tx)
@@ -480,7 +481,7 @@ func (suite *TransactionRepositoryTestSuite) TestUpdateTransaction() {
 	// Verify update
 	updatedTx, err := suite.repo.GetByID(tx.ID)
 	suite.NoError(err)
-	suite.Equal(models.TransactionStatusConfirmed, updatedTx.Status)
+	suite.Equal(TransactionStatusConfirmed, updatedTx.Status)
 	suite.Equal(uint64(25000), updatedTx.GasUsed)
 	suite.Equal(uint64(12346), updatedTx.BlockNumber)
 }
@@ -495,12 +496,12 @@ func (suite *TransactionRepositoryTestSuite) TestUpdateTransactionNil() {
 // TestDeleteTransaction tests deleting transaction
 func (suite *TransactionRepositoryTestSuite) TestDeleteTransaction() {
 	// Create test transaction
-	tx := &models.Transaction{
+	tx := &Transaction{
 		TxHash:      "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
 		UserAddress: "0x1111111111111111111111111111111111111111",
 		PoolID:      "pool-1",
-		Type:        models.TransactionTypeSwap,
-		Status:      models.TransactionStatusPending,
+		Type:        TransactionTypeSwap,
+		Status:      TransactionStatusPending,
 		TokenIn:     "0x2222222222222222222222222222222222222222",
 		TokenOut:    "0x3333333333333333333333333333333333333333",
 		AmountIn:    decimal.NewFromInt(1000),
@@ -533,12 +534,12 @@ func (suite *TransactionRepositoryTestSuite) TestDeleteTransactionZeroID() {
 func (suite *TransactionRepositoryTestSuite) TestListTransactions() {
 	// Create multiple test transactions
 	for i := 0; i < 5; i++ {
-		tx := &models.Transaction{
+		tx := &Transaction{
 			TxHash:      fmt.Sprintf("0x%064d", i),
 			UserAddress: fmt.Sprintf("0x%040d", i),
 			PoolID:      fmt.Sprintf("pool-%d", i),
-			Type:        models.TransactionTypeSwap,
-			Status:      models.TransactionStatusConfirmed,
+			Type:        TransactionTypeSwap,
+			Status:      TransactionStatusConfirmed,
 			TokenIn:     "0x2222222222222222222222222222222222222222",
 			TokenOut:    "0x3333333333333333333333333333333333333333",
 			AmountIn:    decimal.NewFromInt(1000),
@@ -567,12 +568,12 @@ func (suite *TransactionRepositoryTestSuite) TestGetUserTransactionCount() {
 	userAddress := "0x1111111111111111111111111111111111111111"
 	// Create test transactions
 	for i := 0; i < 3; i++ {
-		tx := &models.Transaction{
+		tx := &Transaction{
 			TxHash:      fmt.Sprintf("0x%064d", i),
 			UserAddress: userAddress,
 			PoolID:      "pool-1",
-			Type:        models.TransactionTypeSwap,
-			Status:      models.TransactionStatusConfirmed,
+			Type:        TransactionTypeSwap,
+			Status:      TransactionStatusConfirmed,
 			TokenIn:     "0x2222222222222222222222222222222222222222",
 			TokenOut:    "0x3333333333333333333333333333333333333333",
 			AmountIn:    decimal.NewFromInt(1000),
@@ -598,12 +599,12 @@ func (suite *TransactionRepositoryTestSuite) TestGetVolumeByPool() {
 	// Create transactions with different amounts
 	amounts := []int64{1000, 2000, 3000}
 	for i, amount := range amounts {
-		tx := &models.Transaction{
+		tx := &Transaction{
 			TxHash:      fmt.Sprintf("0x%064d", i),
 			UserAddress: fmt.Sprintf("0x%040d", i),
 			PoolID:      poolID,
-			Type:        models.TransactionTypeSwap,
-			Status:      models.TransactionStatusConfirmed,
+			Type:        TransactionTypeSwap,
+			Status:      TransactionStatusConfirmed,
 			TokenIn:     "0x2222222222222222222222222222222222222222",
 			TokenOut:    "0x3333333333333333333333333333333333333333",
 			AmountIn:    decimal.NewFromInt(amount),
