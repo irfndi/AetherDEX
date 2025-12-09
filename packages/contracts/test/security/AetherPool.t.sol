@@ -9,22 +9,22 @@ pragma solidity ^0.8.29;
 
 import {Test} from "forge-std/Test.sol";
 import {stdError} from "forge-std/StdError.sol"; // Import stdError
-import {IAetherPool} from "../src/interfaces/IAetherPool.sol"; // Correct interface import
-import {MockERC20} from "./mocks/MockERC20.sol";
-import {MockPoolManager} from "./mocks/MockPoolManager.sol";
-import {MockAetherPool} from "./mocks/MockAetherPool.sol"; // Use Solidity mock instead of Vyper
-import {AetherFactory} from "../src/primary/AetherFactory.sol";
-import {FeeRegistry} from "../src/primary/FeeRegistry.sol";
-import {IPoolManager} from "../src/interfaces/IPoolManager.sol";
-import {IHooks} from "../lib/v4-core/src/interfaces/IHooks.sol";
-import {PoolKey} from "../lib/v4-core/src/types/PoolKey.sol";
-import {BalanceDelta} from "../src/types/BalanceDelta.sol";
-import {Currency} from "../lib/v4-core/src/types/Currency.sol";
-import {Permissions} from "../src/interfaces/Permissions.sol";
+import {IAetherPool} from "../../src/interfaces/IAetherPool.sol"; // Correct interface import
+import {MockERC20} from "../mocks/MockERC20.sol";
+import {MockPoolManager} from "../mocks/MockPoolManager.sol";
+import {MockAetherPool} from "../mocks/MockAetherPool.sol"; // Use Solidity mock instead of Vyper
+import {AetherFactory} from "../../src/primary/AetherFactory.sol";
+import {FeeRegistry} from "../../src/primary/FeeRegistry.sol";
+import {IPoolManager} from "../../src/interfaces/IPoolManager.sol";
+import {IHooks} from "../../lib/v4-core/src/interfaces/IHooks.sol";
+import {PoolKey} from "../../lib/v4-core/src/types/PoolKey.sol";
+import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
+import {Currency} from "../../lib/v4-core/src/types/Currency.sol";
+import {Permissions} from "../../src/interfaces/Permissions.sol";
 import {console2} from "forge-std/console2.sol";
-import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
-import {SqrtPriceMath} from "../lib/v4-core/src/libraries/SqrtPriceMath.sol"; // Direct relative path
-import {FixedPoint} from "../src/libraries/FixedPoint.sol"; // Import FixedPoint
+import {TickMath} from "v4-core/libraries/TickMath.sol";
+import {SqrtPriceMath} from "../../lib/v4-core/src/libraries/SqrtPriceMath.sol"; // Direct relative path
+import {FixedPoint} from "../../src/libraries/FixedPoint.sol"; // Import FixedPoint
 
 /**
  * @title AetherPoolTest

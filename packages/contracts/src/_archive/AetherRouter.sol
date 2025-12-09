@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {IPoolManager} from "./interfaces/IPoolManager.sol";
-import {PoolKey} from "./types/PoolKey.sol";
+import {IPoolManager} from "../interfaces/IPoolManager.sol";
+import {PoolKey} from "../types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
-import {BalanceDelta} from "./types/BalanceDelta.sol";
+import {BalanceDelta} from "../types/BalanceDelta.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";

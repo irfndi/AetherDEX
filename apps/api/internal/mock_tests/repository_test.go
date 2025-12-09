@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/irfndi/AetherDEX/backend/internal/models"
-	"github.com/irfndi/AetherDEX/backend/internal/repository"
+	"github.com/irfndi/AetherDEX/apps/api/internal/models"
+	"github.com/irfndi/AetherDEX/apps/api/internal/repository"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )

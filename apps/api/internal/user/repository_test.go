@@ -1,10 +1,10 @@
-package repository
+package user
 
 import (
 	"fmt"
 	"testing"
 
-	"github.com/irfndi/AetherDEX/backend/internal/models"
+	"github.com/irfndi/AetherDEX/apps/api/internal/models"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

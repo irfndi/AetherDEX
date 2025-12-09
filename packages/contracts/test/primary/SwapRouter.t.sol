@@ -10,15 +10,15 @@ pragma solidity ^0.8.29;
 import "forge-std/console2.sol";
 
 import "forge-std/Test.sol";
-import "../src/primary/AetherFactory.sol";
-import "../src/primary/FeeRegistry.sol"; // Added FeeRegistry import
-import {AetherRouter} from "../src/primary/AetherRouter.sol";
-import {IAetherPool} from "../src/interfaces/IAetherPool.sol";
-import {PoolKey} from "../lib/v4-core/src/types/PoolKey.sol"; // Specifically import PoolKey struct
+import "../../src/primary/AetherFactory.sol";
+import "../../src/primary/FeeRegistry.sol"; // Added FeeRegistry import
+import {AetherRouter} from "../../src/primary/AetherRouter.sol";
+import {IAetherPool} from "../../src/interfaces/IAetherPool.sol";
+import {PoolKey} from "../../lib/v4-core/src/types/PoolKey.sol"; // Specifically import PoolKey struct
 import {Currency} from "v4-core/types/Currency.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
-import {IPoolManager} from "../src/interfaces/IPoolManager.sol";
-import "../src/libraries/TransferHelper.sol"; // Import TransferHelper for safeTransfer
+import {IPoolManager} from "../../src/interfaces/IPoolManager.sol";
+import "../../src/libraries/TransferHelper.sol"; // Import TransferHelper for safeTransfer
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol"; // Import IERC20
 
 // Simple MockToken contract for testing

@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/irfndi/AetherDEX/backend/internal/models"
+	"github.com/irfndi/AetherDEX/apps/api/internal/models"
 )
 
 // TestUserModelValidation tests user model validation and structure

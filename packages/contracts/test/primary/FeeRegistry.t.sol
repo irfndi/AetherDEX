@@ -8,13 +8,13 @@ Email: join.mantap@gmail.com
 pragma solidity ^0.8.29;
 
 import {Test, console2} from "forge-std/Test.sol";
-import {FeeRegistry} from "../src/primary/FeeRegistry.sol";
-import {IFeeRegistry} from "../src/interfaces/IFeeRegistry.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol"; // Import OpenZeppelin's Ownable to match FeeRegistry
-import {PoolKey} from "../lib/v4-core/src/types/PoolKey.sol";
-import {Currency} from "v4-core/types/Currency.sol";
-import {IHooks} from "v4-core/interfaces/IHooks.sol";
-import {MockERC20} from "./mocks/MockERC20.sol";
+import {FeeRegistry} from "../../src/primary/FeeRegistry.sol";
+import {IFeeRegistry} from "../../src/interfaces/IFeeRegistry.sol";
+import {MockERC20} from "../mocks/MockERC20.sol";
+import {PoolKey} from "../../lib/v4-core/src/types/PoolKey.sol";
+import {Currency} from "../../lib/v4-core/src/types/Currency.sol";
+import {IHooks} from "../../lib/v4-core/src/interfaces/IHooks.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 contract FeeRegistryTest is Test {
     FeeRegistry public registry;

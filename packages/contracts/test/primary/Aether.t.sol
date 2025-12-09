@@ -12,7 +12,7 @@ import {console} from "forge-std/console.sol"; // Add import for console.sol
 import {AetherRouter} from "src/primary/AetherRouter.sol";
 import {IAetherPool} from "src/interfaces/IAetherPool.sol"; // Correct interface import
 import {IPoolManager} from "src/interfaces/IPoolManager.sol"; // Keep this standard import
-import {MockPoolManager} from "./mocks/MockPoolManager.sol"; // Import MockPoolManager
+import {MockPoolManager} from "../mocks/MockPoolManager.sol"; // Import MockPoolManager
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol"; // Import Ownable for error
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol"; // Import Pausable for error
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol"; // Import ReentrancyGuard for the error

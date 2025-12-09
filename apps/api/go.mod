@@ -1,4 +1,4 @@
-module github.com/irfndi/AetherDEX/backend
+module github.com/irfndi/AetherDEX/apps/api
 
 go 1.25
 

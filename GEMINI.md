@@ -4,7 +4,7 @@
 
 **AetherDEX** is a comprehensive decentralized exchange (DEX) platform built as a monorepo. It features a modern web interface, a robust Go backend, and smart contracts for the Ethereum ecosystem.
 
-*   **Architecture:** Monorepo managed by `pnpm` and `turbo`.
+*   **Architecture:** Monorepo managed by `bun` and `turbo`.
 *   **Core Components:**
     *   **Frontend:** Next.js 15, React 19, Tailwind CSS (located in `apps/web`).
     *   **Backend:** Go (Golang) REST API and worker services (located in `apps/api`).
@@ -16,7 +16,7 @@
 *   **`apps/api/`**: The Go backend services, API, and workers.
     *   `api/`: REST API definitions.
     *   `cmd/`: Entry points for services.
-    *   `internal/`: Private application logic.
+    *   `internal/`: Private application logic, organized by domain (`liquidity`, `pool`, `token`, `transaction`, `user`).
 *   **`packages/contracts/`**: Foundry project for Solidity/Vyper contracts.
     *   `src/primary/`: Main Solidity contracts (Routers, Factories).
     *   `src/security/`: Critical Vyper contracts (Pools).
@@ -27,16 +27,15 @@
 ## Building and Running
 
 ### Prerequisites
-*   Node.js (v24+) & pnpm
+*   Node.js (v24+) & Bun (v1.2+)
 *   Go (v1.25+)
 *   Foundry (forge, cast, anvil)
-*   Bun (v1.2+)
 
 ### Common Commands
 
 **Root Workspace:**
-*   **Install Dependencies:** `bun install` (or `pnpm install`)
-*   **Start Development (Frontend):** `bun dev` (or `pnpm dev --filter web`)
+*   **Install Dependencies:** `bun install`
+*   **Start Development (Frontend):** `bun dev` (or `bun dev --filter web`)
 *   **Build All:** `turbo run build`
 *   **Lint:** `turbo run lint`
 *   **Test:** `turbo run test`
@@ -49,7 +48,7 @@
 
 **Backend (`apps/api/`):**
 *   **Install Deps:** `go mod download`
-*   **Run API:** `go run cmd/api/main.go` (verify entry point in `cmd/`)
+*   **Run API:** `go run cmd/api/main.go`
 *   **Test:** `go test ./...`
 
 ## Development Conventions
@@ -66,7 +65,7 @@
 *   **Security:** Regular static analysis (Slither) and pre-commit checks are encouraged.
 
 ## Important Files
-*   `package.json`: Defines the workspace structure (migrated to bun/turbo).
+*   `package.json`: Defines the workspace structure (bun/turbo).
 *   `turbo.json`: Configures the task pipeline.
 *   `docs/development-guide.md`: Detailed workflow for smart contracts.
 *   `packages/contracts/foundry.toml`: Foundry configuration.

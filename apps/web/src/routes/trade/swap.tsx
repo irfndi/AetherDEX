@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ArrowDown, Settings, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
+import { useAccount, useConnect, useDisconnect } from 'wagmi'
 
 export const Route = createFileRoute('/trade/swap')({
     component: SwapPage,
@@ -9,6 +10,16 @@ export const Route = createFileRoute('/trade/swap')({
 function SwapPage() {
     const [sellAmount, setSellAmount] = useState('')
     const [buyAmount, setBuyAmount] = useState('')
+    const { address, isConnected } = useAccount()
+    const { connectors, connect } = useConnect()
+    const { disconnect } = useDisconnect()
+
+    const handleConnect = () => {
+        const connector = connectors[0]
+        if (connector) {
+            connect({ connector })
+        }
+    }
 
     return (
         <div className="min-h-screen">
@@ -25,11 +36,24 @@ function SwapPage() {
                         <Link to="/trade/send" className="text-gray-400 hover:text-white transition">Send</Link>
                     </nav>
 
-                    <button className="px-6 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-xl font-semibold hover:opacity-90 transition-all">
-                        Connect Wallet
-                    </button>
+                    {isConnected ? (
+                        <button 
+                            onClick={() => disconnect()}
+                            className="px-6 py-2.5 bg-slate-800 rounded-xl font-semibold hover:bg-slate-700 transition-all border border-slate-700"
+                        >
+                            {address?.slice(0, 6)}...{address?.slice(-4)}
+                        </button>
+                    ) : (
+                        <button 
+                            onClick={handleConnect}
+                            className="px-6 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-xl font-semibold hover:opacity-90 transition-all"
+                        >
+                            Connect Wallet
+                        </button>
+                    )}
                 </div>
             </header>
+
 
             {/* Swap Interface */}
             <main className="container mx-auto px-6 py-12 flex items-center justify-center">
@@ -94,9 +118,18 @@ function SwapPage() {
                         </div>
 
                         {/* Swap Button */}
-                        <button className="w-full mt-6 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-2xl font-semibold text-lg hover:opacity-90 transition-all glow-aether">
-                            Connect Wallet to Swap
-                        </button>
+                        {isConnected ? (
+                            <button className="w-full mt-6 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-2xl font-semibold text-lg hover:opacity-90 transition-all glow-aether">
+                                Swap
+                            </button>
+                        ) : (
+                            <button 
+                                onClick={handleConnect}
+                                className="w-full mt-6 py-4 bg-slate-700 text-gray-300 rounded-2xl font-semibold text-lg hover:bg-slate-600 transition-all"
+                            >
+                                Connect Wallet to Swap
+                            </button>
+                        )}
                     </div>
                 </div>
             </main>

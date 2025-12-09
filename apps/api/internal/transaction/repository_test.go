@@ -1,11 +1,11 @@
-package repository
+package transaction
 
 import (
 	"fmt"
 	"testing"
 	"time"
 
-	"github.com/irfndi/AetherDEX/backend/internal/models"
+	"github.com/irfndi/AetherDEX/apps/api/internal/models"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/driver/sqlite"

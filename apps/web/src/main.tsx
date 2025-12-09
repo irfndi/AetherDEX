@@ -2,6 +2,8 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { WagmiProvider } from 'wagmi'
+import { config } from './wagmi'
 import { routeTree } from './routeTree.gen'
 import './index.css'
 
@@ -31,9 +33,11 @@ if (!rootElement.innerHTML) {
     const root = ReactDOM.createRoot(rootElement)
     root.render(
         <React.StrictMode>
-            <QueryClientProvider client={queryClient}>
-                <RouterProvider router={router} />
-            </QueryClientProvider>
+            <WagmiProvider config={config}>
+                <QueryClientProvider client={queryClient}>
+                    <RouterProvider router={router} />
+                </QueryClientProvider>
+            </WagmiProvider>
         </React.StrictMode>
     )
 }

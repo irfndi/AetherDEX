@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/irfndi/AetherDEX/apps/api/internal/pool"
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
@@ -74,6 +75,12 @@ func main() {
 		v1.GET("/ping", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"message": "pong"})
 		})
+
+		// Pool module initialization
+		poolRepo := pool.NewPoolRepository(db)
+		poolService := pool.NewService(poolRepo)
+		poolHandler := pool.NewHandler(poolService)
+		poolHandler.RegisterRoutes(v1)
 	}
 
 	// Server configuration

@@ -3,7 +3,7 @@ package repository
 import (
 	"testing"
 
-	"github.com/irfndi/AetherDEX/backend/internal/models"
+	"github.com/irfndi/AetherDEX/apps/api/internal/models"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 )
