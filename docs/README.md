@@ -164,7 +164,7 @@ make test-integration
 
 ### Test Improvement Plan
 
-See [Test Coverage Report](./test-coverage-report.md) for detailed coverage status and [Test Coverage Improvement Plan](../.trae/documents/test_coverage_improvement_plan.md) for the 4-week improvement strategy to achieve 80%+ coverage.
+See [Test Coverage Report](./reports/test-coverage-report.md) for detailed coverage status and [Test Coverage Improvement Plan](../.trae/documents/test_coverage_improvement_plan.md) for the 4-week improvement strategy to achieve 80%+ coverage.
 
 ## 🤝 Contributing
 
@@ -240,17 +240,17 @@ AetherDEX is a next-generation decentralized exchange focused on providing fast,
     - [Wallets and Security](./user-guide/wallets-security.md)
     - [Liquidity Provision](./user-guide/providing-liquidity.md)
     - [Frequently Asked Questions](./user-guide/faq.md)
-- [**Architecture**](./architecture/README.md)
+- [**Smart Contracts**](./smart-contracts/workflow.md)
+    - [Development Workflow](./smart-contracts/workflow.md)
+    - [Router Contract](./smart-contracts/router.md)
+    - [Language Selection](./smart-contracts/language-selection.md)
+- [**Architecture & Technical**](./architecture/README.md)
     - [Foundational Principles](./architecture/principles.md)
     - [System Overview](./architecture/overview.md)
-    - [Multi-Provider Strategy](./architecture/multi-provider.md)
+    - [Technical Deep Dive](./architecture/technical-deep-dive.md)
+    - [Interoperability](./architecture/interoperability.md)
     - [Liquidity Access](./architecture/liquidity-access.md)
-    - [Security Design](./architecture/security.md)
-- [**Technical Deep Dive**](./technical/README.md) <!-- Renamed section -->
-    - [Overview](./technical/deep-dive.md#aetherrouter-contract) <!-- Link to specific section -->
-    - [AetherRouter Contract](./technical/router-contract.md) <!-- Keep specific file if exists -->
-    - [Interoperability Architecture](./technical/interoperability.md) <!-- Keep specific file if exists -->
-    - [Liquidity Sources & Aggregation](./technical/deep-dive.md#liquidity-sources-and-aggregation) <!-- Link to specific section -->
+    - [Security](./architecture/security.md)
 - [**API Reference**](./api/README.md)
     - [REST API](./api/rest.md)
     - [WebSocket API](./api/websocket.md)
@@ -268,3 +268,8 @@ If you encounter issues or have questions, please visit our [Support Portal](htt
 ## Contributing
 
 We welcome contributions to improve AetherDEX and its documentation. Please see our [Contribution Guidelines](./contributing/README.md) for more information.
+
+## Reports
+
+- [Test Coverage Report](./reports/test-coverage-report.md)
+- [Security Analysis Log](./reports/security-analysis-log.md)

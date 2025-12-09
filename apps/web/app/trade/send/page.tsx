@@ -1,12 +1,12 @@
 "use client";
 
-import { BackgroundTokens } from "@/components/BackgroundTokens";
-import { Header } from "@/components/Header";
+import { BackgroundTokens } from "@/components/features/common/BackgroundTokens";
+import { Header } from "@/components/features/common/Header";
 
 export default function SendPage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <Header onWalletConnect={() => {}} />
+      <Header onWalletConnect={() => { }} />
       <BackgroundTokens />
       <main className="pt-32 px-4">
         <div className="max-w-[480px] mx-auto text-center mb-8">

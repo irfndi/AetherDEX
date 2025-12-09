@@ -74,3 +74,4 @@ node_modules/**
 .git/logs/
 
 .pnpm-home
+.tanstack

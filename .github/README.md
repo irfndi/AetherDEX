@@ -89,5 +89,5 @@ For enhanced functionality, you can optionally add these secrets in your GitHub 
 
 3. **Ensure frontend builds correctly**:
    ```bash
-   cd interface/web && bun run build
+   cd apps/web && bun run build
    ```

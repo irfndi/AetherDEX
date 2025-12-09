@@ -2,10 +2,10 @@
 
 import { ArrowDown } from "lucide-react";
 import { useState } from "react";
-import { BackgroundTokens } from "@/components/BackgroundTokens";
-import { Header } from "@/components/Header";
-import type { Token } from "@/components/TokenSelector";
-import { TokenSelector } from "@/components/TokenSelector";
+import { BackgroundTokens } from "@/components/features/common/BackgroundTokens";
+import { Header } from "@/components/features/common/Header";
+import type { Token } from "@/components/features/trade/TokenSelector";
+import { TokenSelector } from "@/components/features/trade/TokenSelector";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 

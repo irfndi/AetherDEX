@@ -1,17 +1,17 @@
 {
   "name": "aetherdex-monorepo",
   "private": true,
-  "packageManager": "pnpm@9.12.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "tooling/*"
+  ],
   "scripts": {
-    "dev": "pnpm --filter aether-dex dev",
-    "web:dev": "pnpm --filter aether-dex dev",
-    "lint": "turbo run lint",
-    "test": "turbo run test",
-    "typecheck": "turbo run typecheck",
-    "build": "turbo run build",
-    "format": "turbo run format"
-  },
-  "devDependencies": {
-    "turbo": "^2.1.1"
+    "dev": "bun --filter aether-dex dev",
+    "web:dev": "bun --filter aether-dex dev",
+    "lint": "bun --filter '*' lint",
+    "test": "bun --filter '*' test",
+    "typecheck": "bun --filter '*' typecheck",
+    "build": "bun --filter '*' build"
   }
 }

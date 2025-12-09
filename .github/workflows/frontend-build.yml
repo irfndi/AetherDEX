@@ -19,37 +19,34 @@ on:
       - "apps/web/**"
       - ".github/workflows/frontend-build.yml"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
+    name: Build & Test
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 # v4.0.0
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@4bc047ad259df6fc24a6c9b0f9a0cb08cf17fbe5 # v2.0.1
         with:
-          version: 9.12.0
-
-      - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: "18"
-          cache: "pnpm"
-          cache-dependency-path: "pnpm-lock.yaml"
+          bun-version: latest
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: bun install --frozen-lockfile
 
       - name: Lint
-        run: pnpm --filter aether-dex run lint
-        continue-on-error: true
+        run: bun run --filter aether-dex lint
 
       - name: Type check
-        run: pnpm --filter aether-dex run typecheck
-        continue-on-error: true
+        run: bun run --filter aether-dex typecheck
 
       - name: Build project
-        run: pnpm --filter aether-dex run build
+        run: bun run --filter aether-dex build
 
       - name: Archive build artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

@@ -5,13 +5,13 @@ This file configures the GitHub Copilot coding agent environment for the AetherD
 ## Project Overview
 
 AetherDEX is a decentralized exchange (DEX) project with:
-- **Frontend**: Next.js application in `interface/web/`
+- **Frontend**: Next.js application in `apps/web/`
 - **Smart Contracts**: Solidity contracts using Foundry in `backend/smart-contract/`
 - **Backend Services**: Go backend in `backend/`
 
 ## Development Guidelines
 
-### Frontend (interface/web/)
+### Frontend (apps/web/)
 - Use Bun as the package manager
 - Follow TypeScript best practices
 - Use Biome for linting and formatting

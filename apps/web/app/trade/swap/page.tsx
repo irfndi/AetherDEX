@@ -2,10 +2,10 @@
 
 import { ArrowDown } from "lucide-react";
 import { useState } from "react";
-import { BackgroundTokens } from "@/components/BackgroundTokens";
-import { Header } from "@/components/Header";
-import type { Token } from "@/components/TokenSelector"; // Updated import path for Token
-import { TokenSelector } from "@/components/TokenSelector";
+import { BackgroundTokens } from "@/components/features/common/BackgroundTokens";
+import { Header } from "@/components/features/common/Header";
+import type { Token } from "@/components/features/trade/TokenSelector"; // Updated import path for Token
+import { TokenSelector } from "@/components/features/trade/TokenSelector";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -95,9 +95,9 @@ export default function SwapPage() {
                 $
                 {fromToken && fromAmount
                   ? (Number.parseFloat(fromAmount) * (fromToken.price ?? 0)).toFixed(
-                      // Use optional chaining and default value
-                      2,
-                    )
+                    // Use optional chaining and default value
+                    2,
+                  )
                   : "0.00"}
               </div>
             </div>

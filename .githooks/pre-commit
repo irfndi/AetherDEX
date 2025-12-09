@@ -1,6 +1,0 @@
-#!/bin/sh
-# Warn if TODOs present in ./docs before commit
-if grep -r '\[TODO\]' ./docs; then
-  echo "[WARN] There are unresolved TODOs in ./docs. Please address before committing."
-fi
-# (Optional) Add more checks for 'Last Reviewed' freshness or other doc signals.

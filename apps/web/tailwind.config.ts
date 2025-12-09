@@ -3,10 +3,16 @@ import type { Config } from 'tailwindcss'
 const config: Config = {
   darkMode: 'class',
   content: [
-    "./**/*.{js,ts,jsx,tsx,mdx}",
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      colors: {
+        aether: 'hsl(200 100% 50%)',
+        'aether-foreground': 'hsl(0 0% 100%)',
+      },
+    },
   },
   plugins: [require("tailwindcss-animate")],
 }

@@ -21,6 +21,7 @@ jobs:
   test:
     name: Foundry Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: backend/smart-contract
@@ -120,6 +121,7 @@ jobs:
   static-analysis:
     name: Static Analysis
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     defaults:
