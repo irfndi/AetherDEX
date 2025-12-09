@@ -30,12 +30,11 @@ out/
 .next/
 
 # Smart Contract specific
-backend/smart-contract/cache/
-backend/smart-contract/artifacts/
-backend/smart-contract/forge-cache/
-backend/smart-contract/broadcast/
-backend/smart-contract/cache/
-backend/smart-contract/out/
+packages/contracts/cache/
+packages/contracts/artifacts/
+packages/contracts/forge-cache/
+packages/contracts/broadcast/
+packages/contracts/out/
 
 # Environment files
 .env
