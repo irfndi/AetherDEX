@@ -1,4 +1,4 @@
-package models
+package pool
 
 import (
 	"github.com/shopspring/decimal"
@@ -24,8 +24,8 @@ type Pool struct {
 	DeletedAt gorm.DeletedAt  `json:"deleted_at" gorm:"index"`
 
 	// Relationships
-	Transactions       []Transaction       `json:"transactions" gorm:"foreignKey:PoolID;references:PoolID"`
-	LiquidityPositions []LiquidityPosition `json:"liquidity_positions" gorm:"foreignKey:PoolID;references:PoolID"`
+	// Transactions       []Transaction       `json:"transactions" gorm:"foreignKey:PoolID;references:PoolID"`
+	// LiquidityPositions []LiquidityPosition `json:"liquidity_positions" gorm:"foreignKey:PoolID;references:PoolID"`
 }
 
 // TableName returns the table name for Pool model
