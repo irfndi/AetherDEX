@@ -307,6 +307,10 @@ contract SwapRouterTest is
         uint256 amountBMin = 0;
         uint256 deadline = block.timestamp + 60; // Set deadline
 
+        // Fund the test sender so the router can pull liquidity without underflowing balances
+        tokenA.mint(address(this), amountADesired);
+        tokenB.mint(address(this), amountBDesired);
+
         // Approve the ROUTER to spend tokens
         tokenA.approve(address(router), type(uint256).max);
         tokenB.approve(address(router), type(uint256).max);

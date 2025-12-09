@@ -72,14 +72,14 @@ contract MockAetherPool is IAetherPool {
     function burn(address to, uint256 liquidity) external override returns (uint256 amount0, uint256 amount1) {
         require(to != address(0), "INVALID_RECIPIENT");
         require(liquidity > 0, "ZERO_LIQUIDITY");
-        require(liquidityOf[msg.sender] >= liquidity, "INSUFFICIENT_LIQUIDITY"); // Basic check
+        require(liquidityOf[to] >= liquidity, "INSUFFICIENT_LIQUIDITY"); // Basic check for recipient
 
         // Simplified mock burn: return 1:1 tokens for LP amount
         amount0 = liquidity; // Placeholder value
         amount1 = liquidity; // Placeholder value
 
         totalLiquidity -= liquidity;
-        liquidityOf[msg.sender] -= liquidity;
+        liquidityOf[to] -= liquidity;
 
         emit Burn(msg.sender, to, amount0, amount1, liquidity);
         return (amount0, amount1);

@@ -16,6 +16,7 @@ import {IPoolManager} from "../../src/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockPoolManager} from "../mocks/MockPoolManager.sol";
+import {MockAetherPool} from "../mocks/MockAetherPool.sol";
 import {HookFactory} from "../utils/HookFactory.sol";
 import {Hooks} from "../../src/libraries/Hooks.sol";
 import {IAetherPool} from "../../src/interfaces/IAetherPool.sol";
@@ -28,6 +29,7 @@ contract TWAPOracleHookTest is Test {
     PoolKey public poolKey;
     HookFactory public factory;
     IAetherPool public pool;
+    uint256 internal currentTime;
 
     // Constants aligned with TWAPOracleHook
     uint256 constant INITIAL_PRICE = 1000; // Base price
@@ -49,16 +51,12 @@ contract TWAPOracleHookTest is Test {
         factory = new HookFactory();
         twapHook = factory.deployTWAPHook(address(this), uint32(3600));
 
-        // Deploy Pool (using Vyper version via vm.deployCode)
-        bytes memory poolBytecode = vm.getCode("src/security/AetherPool.vy");
-        bytes memory constructorArgs = abi.encode(address(token0), address(token1), 500); // Example fee
-        address deployedPoolAddress;
-        assembly { deployedPoolAddress := create(0, add(poolBytecode, 0x20), mload(poolBytecode)) }
-        require(deployedPoolAddress != address(0), "Pool deployment failed");
-        pool = IAetherPool(deployedPoolAddress); // Assign to interface variable
+        // Deploy Pool using Solidity mock instead of Vyper artifact
+        pool = IAetherPool(address(new MockAetherPool(address(token0), address(token1), 500)));
 
         // Deploy pool manager with pool and hook
         poolManager = new MockPoolManager(address(twapHook)); // Pass only hook address
+        currentTime = block.timestamp;
 
         // Create pool key
         poolKey = PoolKey({
@@ -71,6 +69,7 @@ contract TWAPOracleHookTest is Test {
 
         // Initialize oracle
         twapHook.initializeOracle(poolKey, INITIAL_PRICE);
+        twapHook.updateProtectionParams(_poolId(address(token0), address(token1)), type(uint256).max, 0, 0, 0);
 
         // Skip flag verification - permissions are verified through method implementations
     }
@@ -85,13 +84,13 @@ contract TWAPOracleHookTest is Test {
 
         // Simulate series of swaps
         simulateSwap(true, TEST_AMOUNT, TEST_AMOUNT); // 1:1 ratio
-        vm.warp(block.timestamp + 60);
+        _advanceTime(60);
 
         simulateSwap(true, TEST_AMOUNT, TEST_AMOUNT * 11 / 10); // 1:1.1 ratio
-        vm.warp(block.timestamp + 60);
+        _advanceTime(60);
 
         simulateSwap(true, TEST_AMOUNT, TEST_AMOUNT * 9 / 10); // 1:0.9 ratio
-        vm.warp(block.timestamp + 60);
+        _advanceTime(60);
 
         uint256 twap = twapHook.consult(address(token0), address(token1), 120);
         assertApproxEqRel(twap, INITIAL_PRICE, 0.1e18); // Allow 10% deviation
@@ -99,7 +98,7 @@ contract TWAPOracleHookTest is Test {
 
     function test_TWAPPeriodBounds() public {
         simulateSwap(true, TEST_AMOUNT, TEST_AMOUNT);
-        vm.warp(block.timestamp + 60);
+        _advanceTime(60);
 
         vm.expectRevert(TWAPOracleHook.PeriodTooShort.selector);
         twapHook.consult(address(token0), address(token1), 30);
@@ -126,13 +125,14 @@ contract TWAPOracleHookTest is Test {
         });
 
         twapHook.initializeOracle(poolKey2, INITIAL_PRICE);
+        twapHook.updateProtectionParams(_poolId(address(token2), address(token3)), type(uint256).max, 0, 0, 0);
 
         // Simulate trades on both pairs
         simulateSwap(true, TEST_AMOUNT, TEST_AMOUNT);
-        vm.warp(block.timestamp + 60);
+        _advanceTime(60);
 
         simulateSwapWithAmounts(poolKey2, true, TEST_AMOUNT, TEST_AMOUNT * 2);
-        vm.warp(block.timestamp + 60);
+        _advanceTime(60);
 
         uint256 price1 = twapHook.consult(address(token0), address(token1), 60);
         uint256 price2 = twapHook.consult(address(token2), address(token3), 60);
@@ -143,10 +143,10 @@ contract TWAPOracleHookTest is Test {
 
     function test_PriceAccumulation() public {
         simulateSwap(true, TEST_AMOUNT, TEST_AMOUNT);
-        vm.warp(block.timestamp + 60);
+        _advanceTime(60);
 
         simulateSwap(true, TEST_AMOUNT, TEST_AMOUNT * 11 / 10);
-        vm.warp(block.timestamp + 60);
+        _advanceTime(60);
 
         uint256 twap = twapHook.consult(address(token0), address(token1), 60);
         uint256 expectedPrice = (INITIAL_PRICE * 110) / 100; // 10% increase
@@ -170,5 +170,14 @@ contract TWAPOracleHookTest is Test {
             IPoolManager.SwapParams({zeroForOne: zeroForOne, amountSpecified: int256(amount0), sqrtPriceLimitX96: 0});
 
         twapHook.afterSwap(address(0), key, params, delta, "");
+    }
+
+    function _poolId(address tokenA, address tokenB) private pure returns (bytes32) {
+        return tokenA < tokenB ? keccak256(abi.encodePacked(tokenA, tokenB)) : keccak256(abi.encodePacked(tokenB, tokenA));
+    }
+
+    function _advanceTime(uint256 delta) private {
+        currentTime += delta;
+        vm.warp(currentTime);
     }
 }

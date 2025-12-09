@@ -7,31 +7,26 @@ solc_version = '0.8.29'
 optimizer = true
 optimizer_runs = 1000
 via_ir = true
-ffi = true # General ffi for default profile
-# Security settings
-strict = true
+ffi = true
 revert_strings = 'strip'
+remappings = [
+    'forge-std/=lib/forge-std/src/',
+    '@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/',
+    'v4-core/=lib/v4-core/src/',
+]
 
-    [profile.default.vyper]
-    version = "0.3.10"
-    # Let Foundry find Vyper in PATH instead of using a hardcoded path that won't work in CI
-
-[profile.remappings]
-'forge-std' = 'lib/forge-std/src/'
-'@openzeppelin/contracts/' = 'lib/openzeppelin-contracts/contracts/' # Revert to standard
-'v4-core/' = 'lib/v4-core/src/' # Use v4-core key
-'v4-core/interfaces/' = 'lib/v4-core/src/interfaces/' # Use v4-core key
-
-# [profile.compiler] section removed as its contents are merged into profile.default
+[profile.default.vyper]
+version = "0.3.10"
 
 [profile.test]
-# ffi = true # Assuming default ffi=true is sufficient, or can be re-added if test needs specific
-fuzz_runs = 500
+ffi = true
 
-# [rpc_endpoints]
-# RPC endpoints should be configured via environment variables:
-# polygonzkevm = "${POLYGON_ZKEVM_RPC_URL}"
-# Example: export POLYGON_ZKEVM_RPC_URL="https://polygonzkevm-cardona.g.alchemy.com/v2/YOUR_API_KEY"
+[profile.test.fuzz]
+runs = 500
+
+[profile.ci]
+ffi = false
+no_match_test = "(Integration|Fork)"
 
 [fmt]
 line_length = 120
@@ -40,8 +35,3 @@ line_length = 120
 dictionary_weight = 80
 include_storage = true
 include_push_bytes = true
-
-[profile.ci]
-ffi = false
-no_match_test = "(Integration|Fork)"
-rpc_endpoints = {}
