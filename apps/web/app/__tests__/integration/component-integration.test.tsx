@@ -355,7 +355,6 @@ const MockApp = () => {
 describe("Component Integration Tests", () => {
   let user: any;
 
-
   beforeEach(() => {
     user = userEvent.setup();
     vi.clearAllMocks();

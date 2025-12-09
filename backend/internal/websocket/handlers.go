@@ -1,13 +1,13 @@
 package websocket
 
 import (
-	"log"
-	"net/http"
-	"sync"
-	"time"
-	"strings"
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
+	"log"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
 )
 
 // WebSocketHandler provides HTTP handlers for WebSocket endpoints
