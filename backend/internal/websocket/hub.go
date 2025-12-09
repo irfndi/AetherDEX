@@ -3,6 +3,7 @@ package websocket
 import (
 	"encoding/json"
 	"log"
+	"strings"
 	"sync"
 	"time"
 )
@@ -145,7 +146,9 @@ func (h *Hub) subscribeClient(subscription *Subscription) {
 		h.Stats.TotalSubscriptions++
 		h.Stats.LastUpdate = time.Now()
 
-		log.Printf("Client %s subscribed to topic %s", subscription.Client.ID, subscription.Topic)
+		safeTopic := strings.ReplaceAll(subscription.Topic, "\n", "")
+		safeTopic = strings.ReplaceAll(safeTopic, "\r", "")
+		log.Printf("Client %s subscribed to topic %s", subscription.Client.ID, safeTopic)
 	}
 }
 
@@ -165,7 +168,9 @@ func (h *Hub) unsubscribeClient(subscription *Subscription) {
 				delete(h.Subscriptions, subscription.Topic)
 			}
 
-			log.Printf("Client %s unsubscribed from topic %s", subscription.Client.ID, subscription.Topic)
+			safeTopic := strings.ReplaceAll(subscription.Topic, "\n", "")
+			safeTopic = strings.ReplaceAll(safeTopic, "\r", "")
+			log.Printf("Client %s unsubscribed from topic %s", subscription.Client.ID, safeTopic)
 		}
 	}
 }
