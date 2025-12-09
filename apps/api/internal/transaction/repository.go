@@ -1,27 +1,26 @@
-package repository
+package transaction
 
 import (
 	"errors"
-	"github.com/irfndi/AetherDEX/backend/internal/models"
 	"gorm.io/gorm"
 	"time"
 )
 
 // TransactionRepository interface defines transaction database operations
 type TransactionRepository interface {
-	Create(transaction *models.Transaction) error
-	GetByID(id uint) (*models.Transaction, error)
-	GetByTxHash(txHash string) (*models.Transaction, error)
-	GetByUserAddress(userAddress string, limit, offset int) ([]*models.Transaction, error)
-	GetByPoolID(poolID string, limit, offset int) ([]*models.Transaction, error)
-	Update(transaction *models.Transaction) error
+	Create(transaction *Transaction) error
+	GetByID(id uint) (*Transaction, error)
+	GetByTxHash(txHash string) (*Transaction, error)
+	GetByUserAddress(userAddress string, limit, offset int) ([]*Transaction, error)
+	GetByPoolID(poolID string, limit, offset int) ([]*Transaction, error)
+	Update(transaction *Transaction) error
 	Delete(id uint) error
-	List(limit, offset int) ([]*models.Transaction, error)
-	GetByStatus(status models.TransactionStatus, limit, offset int) ([]*models.Transaction, error)
-	GetByType(txType models.TransactionType, limit, offset int) ([]*models.Transaction, error)
-	GetRecentTransactions(limit int) ([]*models.Transaction, error)
-	GetTransactionsByDateRange(start, end time.Time) ([]*models.Transaction, error)
-	UpdateStatus(txHash string, status models.TransactionStatus) error
+	List(limit, offset int) ([]*Transaction, error)
+	GetByStatus(status TransactionStatus, limit, offset int) ([]*Transaction, error)
+	GetByType(txType TransactionType, limit, offset int) ([]*Transaction, error)
+	GetRecentTransactions(limit int) ([]*Transaction, error)
+	GetTransactionsByDateRange(start, end time.Time) ([]*Transaction, error)
+	UpdateStatus(txHash string, status TransactionStatus) error
 	GetUserTransactionCount(userAddress string) (int64, error)
 	GetPoolTransactionVolume(poolID string, since time.Time) (string, error)
 }
@@ -37,7 +36,7 @@ func NewTransactionRepository(db *gorm.DB) TransactionRepository {
 }
 
 // Create creates a new transaction
-func (r *transactionRepository) Create(transaction *models.Transaction) error {
+func (r *transactionRepository) Create(transaction *Transaction) error {
 	if transaction == nil {
 		return errors.New("transaction cannot be nil")
 	}
@@ -45,12 +44,12 @@ func (r *transactionRepository) Create(transaction *models.Transaction) error {
 }
 
 // GetByID retrieves a transaction by its ID
-func (r *transactionRepository) GetByID(id uint) (*models.Transaction, error) {
+func (r *transactionRepository) GetByID(id uint) (*Transaction, error) {
 	if id == 0 {
 		return nil, errors.New("id cannot be zero")
 	}
 
-	var transaction models.Transaction
+	var transaction Transaction
 	err := r.db.Preload("User").Preload("Pool").First(&transaction, id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -62,12 +61,12 @@ func (r *transactionRepository) GetByID(id uint) (*models.Transaction, error) {
 }
 
 // GetByTxHash retrieves a transaction by its transaction hash
-func (r *transactionRepository) GetByTxHash(txHash string) (*models.Transaction, error) {
+func (r *transactionRepository) GetByTxHash(txHash string) (*Transaction, error) {
 	if txHash == "" {
 		return nil, errors.New("txHash cannot be empty")
 	}
 
-	var transaction models.Transaction
+	var transaction Transaction
 	err := r.db.Preload("User").Preload("Pool").Where("tx_hash = ?", txHash).First(&transaction).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -79,31 +78,31 @@ func (r *transactionRepository) GetByTxHash(txHash string) (*models.Transaction,
 }
 
 // GetByUserAddress retrieves transactions by user address with pagination
-func (r *transactionRepository) GetByUserAddress(userAddress string, limit, offset int) ([]*models.Transaction, error) {
+func (r *transactionRepository) GetByUserAddress(userAddress string, limit, offset int) ([]*Transaction, error) {
 	if userAddress == "" {
 		return nil, errors.New("userAddress cannot be empty")
 	}
 
-	var transactions []*models.Transaction
+	var transactions []*Transaction
 	err := r.db.Preload("Pool").Where("user_address = ?", userAddress).
 		Order("created_at DESC").Limit(limit).Offset(offset).Find(&transactions).Error
 	return transactions, err
 }
 
 // GetByPoolID retrieves transactions by pool ID with pagination
-func (r *transactionRepository) GetByPoolID(poolID string, limit, offset int) ([]*models.Transaction, error) {
+func (r *transactionRepository) GetByPoolID(poolID string, limit, offset int) ([]*Transaction, error) {
 	if poolID == "" {
 		return nil, errors.New("poolID cannot be empty")
 	}
 
-	var transactions []*models.Transaction
+	var transactions []*Transaction
 	err := r.db.Preload("User").Where("pool_id = ?", poolID).
 		Order("created_at DESC").Limit(limit).Offset(offset).Find(&transactions).Error
 	return transactions, err
 }
 
 // Update updates an existing transaction
-func (r *transactionRepository) Update(transaction *models.Transaction) error {
+func (r *transactionRepository) Update(transaction *Transaction) error {
 	if transaction == nil {
 		return errors.New("transaction cannot be nil")
 	}
@@ -115,44 +114,44 @@ func (r *transactionRepository) Delete(id uint) error {
 	if id == 0 {
 		return errors.New("id cannot be zero")
 	}
-	return r.db.Delete(&models.Transaction{}, id).Error
+	return r.db.Delete(&Transaction{}, id).Error
 }
 
 // List retrieves transactions with pagination
-func (r *transactionRepository) List(limit, offset int) ([]*models.Transaction, error) {
-	var transactions []*models.Transaction
+func (r *transactionRepository) List(limit, offset int) ([]*Transaction, error) {
+	var transactions []*Transaction
 	err := r.db.Preload("User").Preload("Pool").Order("created_at DESC").
 		Limit(limit).Offset(offset).Find(&transactions).Error
 	return transactions, err
 }
 
 // GetByStatus retrieves transactions by status with pagination
-func (r *transactionRepository) GetByStatus(status models.TransactionStatus, limit, offset int) ([]*models.Transaction, error) {
-	var transactions []*models.Transaction
+func (r *transactionRepository) GetByStatus(status TransactionStatus, limit, offset int) ([]*Transaction, error) {
+	var transactions []*Transaction
 	err := r.db.Preload("User").Preload("Pool").Where("status = ?", status).
 		Order("created_at DESC").Limit(limit).Offset(offset).Find(&transactions).Error
 	return transactions, err
 }
 
 // GetByType retrieves transactions by type with pagination
-func (r *transactionRepository) GetByType(txType models.TransactionType, limit, offset int) ([]*models.Transaction, error) {
-	var transactions []*models.Transaction
+func (r *transactionRepository) GetByType(txType TransactionType, limit, offset int) ([]*Transaction, error) {
+	var transactions []*Transaction
 	err := r.db.Preload("User").Preload("Pool").Where("type = ?", txType).
 		Order("created_at DESC").Limit(limit).Offset(offset).Find(&transactions).Error
 	return transactions, err
 }
 
 // GetRecentTransactions retrieves recent transactions
-func (r *transactionRepository) GetRecentTransactions(limit int) ([]*models.Transaction, error) {
-	var transactions []*models.Transaction
+func (r *transactionRepository) GetRecentTransactions(limit int) ([]*Transaction, error) {
+	var transactions []*Transaction
 	err := r.db.Preload("User").Preload("Pool").Order("created_at DESC").
 		Limit(limit).Find(&transactions).Error
 	return transactions, err
 }
 
 // GetTransactionsByDateRange retrieves transactions within a date range
-func (r *transactionRepository) GetTransactionsByDateRange(start, end time.Time) ([]*models.Transaction, error) {
-	var transactions []*models.Transaction
+func (r *transactionRepository) GetTransactionsByDateRange(start, end time.Time) ([]*Transaction, error) {
+	var transactions []*Transaction
 	err := r.db.Preload("User").Preload("Pool").
 		Where("created_at BETWEEN ? AND ?", start, end).
 		Order("created_at DESC").Find(&transactions).Error
@@ -160,11 +159,11 @@ func (r *transactionRepository) GetTransactionsByDateRange(start, end time.Time)
 }
 
 // UpdateStatus updates a transaction's status
-func (r *transactionRepository) UpdateStatus(txHash string, status models.TransactionStatus) error {
+func (r *transactionRepository) UpdateStatus(txHash string, status TransactionStatus) error {
 	if txHash == "" {
 		return errors.New("txHash cannot be empty")
 	}
-	return r.db.Model(&models.Transaction{}).Where("tx_hash = ?", txHash).Update("status", status).Error
+	return r.db.Model(&Transaction{}).Where("tx_hash = ?", txHash).Update("status", status).Error
 }
 
 // GetUserTransactionCount gets the total number of transactions for a user
@@ -174,7 +173,7 @@ func (r *transactionRepository) GetUserTransactionCount(userAddress string) (int
 	}
 
 	var count int64
-	err := r.db.Model(&models.Transaction{}).Where("user_address = ?", userAddress).Count(&count).Error
+	err := r.db.Model(&Transaction{}).Where("user_address = ?", userAddress).Count(&count).Error
 	return count, err
 }
 
@@ -188,9 +187,9 @@ func (r *transactionRepository) GetPoolTransactionVolume(poolID string, since ti
 		TotalVolume string
 	}
 
-	err := r.db.Model(&models.Transaction{}).
+	err := r.db.Model(&Transaction{}).
 		Select("COALESCE(SUM(CAST(amount_in AS DECIMAL)), 0) as total_volume").
-		Where("pool_id = ? AND created_at >= ? AND status = ?", poolID, since, models.TransactionStatusConfirmed).
+		Where("pool_id = ? AND created_at >= ? AND status = ?", poolID, since, TransactionStatusConfirmed).
 		Scan(&result).Error
 
 	if err != nil {

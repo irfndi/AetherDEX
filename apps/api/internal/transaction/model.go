@@ -1,6 +1,8 @@
-package models
+package transaction
 
 import (
+	"github.com/irfndi/AetherDEX/apps/api/internal/pool"
+	"github.com/irfndi/AetherDEX/apps/api/internal/user"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 	"time"
@@ -46,8 +48,8 @@ type Transaction struct {
 	DeletedAt   gorm.DeletedAt    `json:"deleted_at" gorm:"index"`
 
 	// Relationships
-	User *User `json:"user,omitempty" gorm:"foreignKey:UserAddress;references:Address"`
-	Pool *Pool `json:"pool,omitempty" gorm:"foreignKey:PoolID;references:PoolID"`
+	User *user.User `json:"user,omitempty" gorm:"foreignKey:UserAddress;references:Address"`
+	Pool *pool.Pool `json:"pool,omitempty" gorm:"foreignKey:PoolID;references:PoolID"`
 }
 
 // TableName returns the table name for Transaction model

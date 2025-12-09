@@ -1,9 +1,8 @@
-package repository
+package liquidity
 
 import (
 	"errors"
 
-	"github.com/irfndi/AetherDEX/backend/internal/models"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
@@ -11,18 +10,18 @@ import (
 // LiquidityPositionRepository defines the interface for liquidity position operations
 type LiquidityPositionRepository interface {
 	// CRUD operations
-	Create(position *models.LiquidityPosition) error
-	GetByID(id uint) (*models.LiquidityPosition, error)
-	GetByUserAndPool(userAddress, poolID string) (*models.LiquidityPosition, error)
-	Update(position *models.LiquidityPosition) error
+	Create(position *LiquidityPosition) error
+	GetByID(id uint) (*LiquidityPosition, error)
+	GetByUserAndPool(userAddress, poolID string) (*LiquidityPosition, error)
+	Update(position *LiquidityPosition) error
 	Delete(id uint) error
-	List(limit, offset int) ([]*models.LiquidityPosition, error)
+	List(limit, offset int) ([]*LiquidityPosition, error)
 
 	// Specific operations
-	GetByUser(userAddress string, limit, offset int) ([]*models.LiquidityPosition, error)
-	GetByPool(poolID string, limit, offset int) ([]*models.LiquidityPosition, error)
-	GetActivePositions(limit, offset int) ([]*models.LiquidityPosition, error)
-	GetUserActivePositions(userAddress string, limit, offset int) ([]*models.LiquidityPosition, error)
+	GetByUser(userAddress string, limit, offset int) ([]*LiquidityPosition, error)
+	GetByPool(poolID string, limit, offset int) ([]*LiquidityPosition, error)
+	GetActivePositions(limit, offset int) ([]*LiquidityPosition, error)
+	GetUserActivePositions(userAddress string, limit, offset int) ([]*LiquidityPosition, error)
 	UpdateLiquidity(id uint, liquidity decimal.Decimal) error
 	UpdateAmounts(id uint, token0Amount, token1Amount decimal.Decimal) error
 	GetTotalLiquidityByPool(poolID string) (decimal.Decimal, error)
@@ -40,7 +39,7 @@ func NewLiquidityPositionRepository(db *gorm.DB) LiquidityPositionRepository {
 }
 
 // Create creates a new liquidity position
-func (r *liquidityPositionRepository) Create(position *models.LiquidityPosition) error {
+func (r *liquidityPositionRepository) Create(position *LiquidityPosition) error {
 	if position == nil {
 		return errors.New("liquidity position cannot be nil")
 	}
@@ -48,12 +47,12 @@ func (r *liquidityPositionRepository) Create(position *models.LiquidityPosition)
 }
 
 // GetByID retrieves a liquidity position by ID
-func (r *liquidityPositionRepository) GetByID(id uint) (*models.LiquidityPosition, error) {
+func (r *liquidityPositionRepository) GetByID(id uint) (*LiquidityPosition, error) {
 	if id == 0 {
 		return nil, errors.New("id cannot be zero")
 	}
 
-	var position models.LiquidityPosition
+	var position LiquidityPosition
 	err := r.db.Preload("User").Preload("Pool").First(&position, id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -65,7 +64,7 @@ func (r *liquidityPositionRepository) GetByID(id uint) (*models.LiquidityPositio
 }
 
 // GetByUserAndPool retrieves a liquidity position by user address and pool ID
-func (r *liquidityPositionRepository) GetByUserAndPool(userAddress, poolID string) (*models.LiquidityPosition, error) {
+func (r *liquidityPositionRepository) GetByUserAndPool(userAddress, poolID string) (*LiquidityPosition, error) {
 	if userAddress == "" {
 		return nil, errors.New("user address cannot be empty")
 	}
@@ -73,7 +72,7 @@ func (r *liquidityPositionRepository) GetByUserAndPool(userAddress, poolID strin
 		return nil, errors.New("pool ID cannot be empty")
 	}
 
-	var position models.LiquidityPosition
+	var position LiquidityPosition
 	err := r.db.Preload("User").Preload("Pool").
 		Where("user_address = ? AND pool_id = ?", userAddress, poolID).
 		First(&position).Error
@@ -87,7 +86,7 @@ func (r *liquidityPositionRepository) GetByUserAndPool(userAddress, poolID strin
 }
 
 // Update updates a liquidity position
-func (r *liquidityPositionRepository) Update(position *models.LiquidityPosition) error {
+func (r *liquidityPositionRepository) Update(position *LiquidityPosition) error {
 	if position == nil {
 		return errors.New("liquidity position cannot be nil")
 	}
@@ -99,12 +98,12 @@ func (r *liquidityPositionRepository) Delete(id uint) error {
 	if id == 0 {
 		return errors.New("id cannot be zero")
 	}
-	return r.db.Delete(&models.LiquidityPosition{}, id).Error
+	return r.db.Delete(&LiquidityPosition{}, id).Error
 }
 
 // List retrieves liquidity positions with pagination
-func (r *liquidityPositionRepository) List(limit, offset int) ([]*models.LiquidityPosition, error) {
-	var positions []*models.LiquidityPosition
+func (r *liquidityPositionRepository) List(limit, offset int) ([]*LiquidityPosition, error) {
+	var positions []*LiquidityPosition
 	err := r.db.Preload("User").Preload("Pool").
 		Order("created_at DESC").
 		Limit(limit).Offset(offset).
@@ -113,12 +112,12 @@ func (r *liquidityPositionRepository) List(limit, offset int) ([]*models.Liquidi
 }
 
 // GetByUser retrieves liquidity positions by user address
-func (r *liquidityPositionRepository) GetByUser(userAddress string, limit, offset int) ([]*models.LiquidityPosition, error) {
+func (r *liquidityPositionRepository) GetByUser(userAddress string, limit, offset int) ([]*LiquidityPosition, error) {
 	if userAddress == "" {
 		return nil, errors.New("user address cannot be empty")
 	}
 
-	var positions []*models.LiquidityPosition
+	var positions []*LiquidityPosition
 	err := r.db.Preload("User").Preload("Pool").
 		Where("user_address = ?", userAddress).
 		Order("created_at DESC").
@@ -128,12 +127,12 @@ func (r *liquidityPositionRepository) GetByUser(userAddress string, limit, offse
 }
 
 // GetByPool retrieves liquidity positions by pool ID
-func (r *liquidityPositionRepository) GetByPool(poolID string, limit, offset int) ([]*models.LiquidityPosition, error) {
+func (r *liquidityPositionRepository) GetByPool(poolID string, limit, offset int) ([]*LiquidityPosition, error) {
 	if poolID == "" {
 		return nil, errors.New("pool ID cannot be empty")
 	}
 
-	var positions []*models.LiquidityPosition
+	var positions []*LiquidityPosition
 	err := r.db.Preload("User").Preload("Pool").
 		Where("pool_id = ?", poolID).
 		Order("created_at DESC").
@@ -143,8 +142,8 @@ func (r *liquidityPositionRepository) GetByPool(poolID string, limit, offset int
 }
 
 // GetActivePositions retrieves active liquidity positions
-func (r *liquidityPositionRepository) GetActivePositions(limit, offset int) ([]*models.LiquidityPosition, error) {
-	var positions []*models.LiquidityPosition
+func (r *liquidityPositionRepository) GetActivePositions(limit, offset int) ([]*LiquidityPosition, error) {
+	var positions []*LiquidityPosition
 	err := r.db.Preload("User").Preload("Pool").
 		Where("is_active = ?", true).
 		Order("created_at DESC").
@@ -154,12 +153,12 @@ func (r *liquidityPositionRepository) GetActivePositions(limit, offset int) ([]*
 }
 
 // GetUserActivePositions retrieves active liquidity positions for a user
-func (r *liquidityPositionRepository) GetUserActivePositions(userAddress string, limit, offset int) ([]*models.LiquidityPosition, error) {
+func (r *liquidityPositionRepository) GetUserActivePositions(userAddress string, limit, offset int) ([]*LiquidityPosition, error) {
 	if userAddress == "" {
 		return nil, errors.New("user address cannot be empty")
 	}
 
-	var positions []*models.LiquidityPosition
+	var positions []*LiquidityPosition
 	err := r.db.Preload("User").Preload("Pool").
 		Where("user_address = ? AND is_active = ?", userAddress, true).
 		Order("created_at DESC").
@@ -174,7 +173,7 @@ func (r *liquidityPositionRepository) UpdateLiquidity(id uint, liquidity decimal
 		return errors.New("id cannot be zero")
 	}
 
-	return r.db.Model(&models.LiquidityPosition{}).
+	return r.db.Model(&LiquidityPosition{}).
 		Where("id = ?", id).
 		Update("liquidity", liquidity).Error
 }
@@ -185,7 +184,7 @@ func (r *liquidityPositionRepository) UpdateAmounts(id uint, token0Amount, token
 		return errors.New("id cannot be zero")
 	}
 
-	return r.db.Model(&models.LiquidityPosition{}).
+	return r.db.Model(&LiquidityPosition{}).
 		Where("id = ?", id).
 		Updates(map[string]interface{}{
 			"token0_amount": token0Amount,
@@ -203,7 +202,7 @@ func (r *liquidityPositionRepository) GetTotalLiquidityByPool(poolID string) (de
 		TotalLiquidity decimal.Decimal
 	}
 
-	err := r.db.Model(&models.LiquidityPosition{}).
+	err := r.db.Model(&LiquidityPosition{}).
 		Select("COALESCE(SUM(liquidity), 0) as total_liquidity").
 		Where("pool_id = ? AND is_active = ?", poolID, true).
 		Scan(&result).Error
@@ -225,7 +224,7 @@ func (r *liquidityPositionRepository) GetUserTotalLiquidity(userAddress string) 
 		TotalLiquidity decimal.Decimal
 	}
 
-	err := r.db.Model(&models.LiquidityPosition{}).
+	err := r.db.Model(&LiquidityPosition{}).
 		Select("COALESCE(SUM(liquidity), 0) as total_liquidity").
 		Where("user_address = ? AND is_active = ?", userAddress, true).
 		Scan(&result).Error
