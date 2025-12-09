@@ -174,7 +174,9 @@ func WebSocketMiddleware() gin.HandlerFunc {
 		// Log WebSocket connection attempts
 		safeClientIP := strings.ReplaceAll(c.ClientIP(), "\n", "")
 		safeClientIP = strings.ReplaceAll(safeClientIP, "\r", "")
-		log.Printf("WebSocket connection attempt from %s to %s", safeClientIP, c.Request.URL.Path)
+		safePath := strings.ReplaceAll(c.Request.URL.Path, "\n", "")
+		safePath = strings.ReplaceAll(safePath, "\r", "")
+		log.Printf("WebSocket connection attempt from %s to %s", safeClientIP, safePath)
 
 		c.Next()
 	}
