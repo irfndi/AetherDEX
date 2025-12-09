@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"sync"
 	"time"
-
+	"strings"
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
 )
@@ -172,7 +172,9 @@ func WebSocketMiddleware() gin.HandlerFunc {
 		}
 
 		// Log WebSocket connection attempts
-		log.Printf("WebSocket connection attempt from %s to %s", c.ClientIP(), c.Request.URL.Path)
+		safeClientIP := strings.ReplaceAll(c.ClientIP(), "\n", "")
+		safeClientIP = strings.ReplaceAll(safeClientIP, "\r", "")
+		log.Printf("WebSocket connection attempt from %s to %s", safeClientIP, c.Request.URL.Path)
 
 		c.Next()
 	}
