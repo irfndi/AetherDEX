@@ -354,7 +354,7 @@ const MockApp = () => {
 
 describe("Component Integration Tests", () => {
   let user: any;
-  let stateSetters: any;
+
 
   beforeEach(() => {
     user = userEvent.setup();
