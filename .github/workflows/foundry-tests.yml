@@ -126,7 +126,7 @@ jobs:
       contents: read
     defaults:
       run:
-        working-directory: backend/smart-contract
+        working-directory: packages/contracts
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -154,11 +154,11 @@ jobs:
             ~/.cargo/bin
             ~/.cargo/registry
             ~/.cargo/git
-            backend/smart-contract/lib
-            backend/smart-contract/cache
-            backend/smart-contract/out
+            packages/contracts/lib
+            packages/contracts/cache
+            packages/contracts/out
             ~/.solc-select
-          key: ${{ runner.os }}-foundry-static-${{ hashFiles('backend/smart-contract/foundry.toml', 'backend/smart-contract/lib/*/') }}
+          key: ${{ runner.os }}-foundry-static-${{ hashFiles('packages/contracts/foundry.toml', 'packages/contracts/lib/*/') }}
           restore-keys: |
             ${{ runner.os }}-foundry-static-
             ${{ runner.os }}-foundry-
@@ -248,6 +248,6 @@ jobs:
         with:
           name: slither-results
           path: |
-            backend/smart-contract/slither-report.json
-            backend/smart-contract/slither-results.sarif
+            packages/contracts/slither-report.json
+            packages/contracts/slither-results.sarif
           retention-days: 5
