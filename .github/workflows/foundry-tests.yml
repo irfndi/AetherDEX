@@ -4,12 +4,12 @@ on:
   push:
     branches: [main, master, develop]
     paths:
-      - "backend/smart-contract/**"
+      - "packages/contracts/**"
       - ".github/workflows/foundry-tests.yml"
   pull_request:
     branches: [main, master, develop]
     paths:
-      - "backend/smart-contract/**"
+      - "packages/contracts/**"
       - ".github/workflows/foundry-tests.yml"
 
 # Add concurrency to prevent multiple workflows from running simultaneously
@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 20
     defaults:
       run:
-        working-directory: backend/smart-contract
+        working-directory: packages/contracts
 
     steps:
       - name: Checkout code
@@ -47,11 +47,11 @@ jobs:
             ~/.cargo/bin
             ~/.cargo/registry
             ~/.cargo/git
-            backend/smart-contract/lib
-            backend/smart-contract/cache
-            backend/smart-contract/out
+            packages/contracts/lib
+            packages/contracts/cache
+            packages/contracts/out
             ~/.solc-select
-          key: ${{ runner.os }}-foundry-${{ hashFiles('backend/smart-contract/foundry.toml', 'backend/smart-contract/lib/*/') }}
+          key: ${{ runner.os }}-foundry-${{ hashFiles('packages/contracts/foundry.toml', 'packages/contracts/lib/*/') }}
           restore-keys: |
             ${{ runner.os }}-foundry-
 

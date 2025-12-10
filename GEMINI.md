@@ -4,15 +4,15 @@
 
 **AetherDEX** is a comprehensive decentralized exchange (DEX) platform built as a monorepo. It features a modern web interface, a robust Go backend, and smart contracts for the Ethereum ecosystem.
 
-*   **Architecture:** Monorepo managed by `bun` and `turbo`.
+*   **Architecture:** Monorepo managed by `bun`.
 *   **Core Components:**
-    *   **Frontend:** Next.js 15, React 19, Tailwind CSS (located in `apps/web`).
+    *   **Frontend:** Vite, React 19, TanStack Router, Tailwind CSS (located in `apps/web`).
     *   **Backend:** Go (Golang) REST API and worker services (located in `apps/api`).
     *   **Smart Contracts:** Solidity and Vyper, managed with Foundry (located in `packages/contracts`).
 
 ## Key Directories
 
-*   **`apps/web/`**: The Next.js frontend application.
+*   **`apps/web/`**: The Vite frontend application.
 *   **`apps/api/`**: The Go backend services, API, and workers.
     *   `api/`: REST API definitions.
     *   `cmd/`: Entry points for services.
@@ -35,10 +35,10 @@
 
 **Root Workspace:**
 *   **Install Dependencies:** `bun install`
-*   **Start Development (Frontend):** `bun dev` (or `bun dev --filter web`)
-*   **Build All:** `turbo run build`
-*   **Lint:** `turbo run lint`
-*   **Test:** `turbo run test`
+*   **Start Development (Frontend):** `bun dev` (or `bun --filter aether-dex dev`)
+*   **Build All:** `bun run build`
+*   **Lint:** `bun run lint`
+*   **Test:** `bun run test`
 
 **Smart Contracts (`packages/contracts/`):**
 *   **Test:** `forge test` (or `forge test -vvv` for verbosity)
@@ -65,7 +65,6 @@
 *   **Security:** Regular static analysis (Slither) and pre-commit checks are encouraged.
 
 ## Important Files
-*   `package.json`: Defines the workspace structure (bun/turbo).
-*   `turbo.json`: Configures the task pipeline.
+*   `package.json`: Defines the workspace structure (bun).
 *   `docs/development-guide.md`: Detailed workflow for smart contracts.
 *   `packages/contracts/foundry.toml`: Foundry configuration.

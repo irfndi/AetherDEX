@@ -52,15 +52,15 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: frontend-build
-          path: apps/web/.next
+          path: apps/web/dist
           retention-days: 7
 
       - name: Check bundle size
         run: |
           echo "Analyzing bundle size..."
           cd apps/web
-          if [ -d ".next/static" ]; then
-            find .next/static -type f -name "*.js" | xargs du -h | sort -hr | head -20
+          if [ -d "dist/assets" ]; then
+            find dist/assets -type f -name "*.js" | xargs du -h | sort -hr | head -20
           else
             echo "Build output not found"
           fi
