@@ -1,6 +1,8 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { Send as SendIcon, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
+import { useAccount, useConnect, useDisconnect, useSendTransaction } from 'wagmi'
+import { parseEther } from 'viem'
 
 export const Route = createFileRoute('/trade/send')({
     component: SendPage,
@@ -9,6 +11,26 @@ export const Route = createFileRoute('/trade/send')({
 function SendPage() {
     const [amount, setAmount] = useState('')
     const [recipient, setRecipient] = useState('')
+    const { address, isConnected } = useAccount()
+    const { connectors, connect } = useConnect()
+    const { disconnect } = useDisconnect()
+    const { sendTransaction, isPending } = useSendTransaction()
+
+    const handleConnect = () => {
+        const connector = connectors[0]
+        if (connector) {
+            connect({ connector })
+        }
+    }
+
+    const handleSend = () => {
+        if (!amount || !recipient) return
+
+        sendTransaction({
+            to: recipient as `0x${string}`,
+            value: parseEther(amount),
+        })
+    }
 
     return (
         <div className="min-h-screen">
@@ -25,9 +47,21 @@ function SendPage() {
                         <Link to="/trade/send" className="text-cyan-400 font-medium">Send</Link>
                     </nav>
 
-                    <button className="px-6 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-xl font-semibold hover:opacity-90 transition-all">
-                        Connect Wallet
-                    </button>
+                    {isConnected ? (
+                        <button
+                            onClick={() => disconnect()}
+                            className="px-6 py-2.5 bg-slate-800 rounded-xl font-semibold hover:bg-slate-700 transition-all border border-slate-700"
+                        >
+                            {address?.slice(0, 6)}...{address?.slice(-4)}
+                        </button>
+                    ) : (
+                        <button
+                            onClick={handleConnect}
+                            className="px-6 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-xl font-semibold hover:opacity-90 transition-all"
+                        >
+                            Connect Wallet
+                        </button>
+                    )}
                 </div>
             </header>
 
@@ -74,9 +108,22 @@ function SendPage() {
                             </div>
                         </div>
 
-                        <button className="w-full py-4 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-2xl font-semibold text-lg hover:opacity-90 transition-all">
-                            Connect Wallet
-                        </button>
+                        {isConnected ? (
+                            <button
+                                onClick={handleSend}
+                                disabled={isPending}
+                                className="w-full py-4 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-2xl font-semibold text-lg hover:opacity-90 transition-all disabled:opacity-50"
+                            >
+                                {isPending ? 'Sending...' : 'Send'}
+                            </button>
+                        ) : (
+                            <button
+                                onClick={handleConnect}
+                                className="w-full py-4 bg-slate-700 text-gray-300 rounded-2xl font-semibold text-lg hover:bg-slate-600 transition-all"
+                            >
+                                Connect Wallet
+                            </button>
+                        )}
                     </div>
                 </div>
             </main>

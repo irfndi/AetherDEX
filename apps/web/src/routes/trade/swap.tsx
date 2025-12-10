@@ -1,7 +1,12 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ArrowDown, Settings, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
-import { useAccount, useConnect, useDisconnect } from 'wagmi'
+import { useAccount, useConnect, useDisconnect, useWriteContract } from 'wagmi'
+import { ROUTER_ABI } from '../../lib/abis'
+import { parseEther } from 'viem'
+
+// Address of the Router Contract (Placeholder)
+const ROUTER_ADDRESS = '0x0000000000000000000000000000000000000000'
 
 export const Route = createFileRoute('/trade/swap')({
     component: SwapPage,
@@ -13,12 +18,31 @@ function SwapPage() {
     const { address, isConnected } = useAccount()
     const { connectors, connect } = useConnect()
     const { disconnect } = useDisconnect()
+    const { writeContract, isPending } = useWriteContract()
 
     const handleConnect = () => {
         const connector = connectors[0]
         if (connector) {
             connect({ connector })
         }
+    }
+
+    const handleSwap = () => {
+        if (!sellAmount || !buyAmount) return
+
+        // Mock swap execution
+        writeContract({
+            address: ROUTER_ADDRESS,
+            abi: ROUTER_ABI,
+            functionName: 'swapExactTokensForTokens',
+            args: [
+                parseEther(sellAmount),
+                parseEther(buyAmount), // simplified min amount out
+                ['0x0000000000000000000000000000000000000000', '0x0000000000000000000000000000000000000000'], // dummy path
+                address!, // to
+                BigInt(Math.floor(Date.now() / 1000) + 60 * 20), // deadline
+            ],
+        })
     }
 
     return (
@@ -119,8 +143,12 @@ function SwapPage() {
 
                         {/* Swap Button */}
                         {isConnected ? (
-                            <button className="w-full mt-6 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-2xl font-semibold text-lg hover:opacity-90 transition-all glow-aether">
-                                Swap
+                            <button
+                                onClick={handleSwap}
+                                disabled={isPending}
+                                className="w-full mt-6 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-2xl font-semibold text-lg hover:opacity-90 transition-all glow-aether disabled:opacity-50"
+                            >
+                                {isPending ? 'Swapping...' : 'Swap'}
                             </button>
                         ) : (
                             <button 

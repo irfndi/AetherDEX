@@ -13,5 +13,10 @@
     "test": "bun --filter '*' test",
     "typecheck": "bun --filter '*' typecheck",
     "build": "bun --filter '*' build"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.1.2",
+    "@vitest/ui": "^4.0.15",
+    "vitest": "^4.0.15"
   }
 }
