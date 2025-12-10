@@ -1,6 +1,6 @@
 import { http, createConfig } from 'wagmi'
 import { mainnet, sepolia, hardhat, localhost } from 'wagmi/chains'
-import { injected, walletConnect } from 'wagmi/connectors'
+import { injected } from 'wagmi/connectors'
 
 // Replace with your actual WalletConnect project ID
 const projectId = 'YOUR_PROJECT_ID'
