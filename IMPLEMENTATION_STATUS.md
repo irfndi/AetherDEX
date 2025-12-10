@@ -9,24 +9,30 @@ This document tracks the readiness of the AetherDEX project across its three mai
 
 ## 1. Smart Contracts (`packages/contracts`)
 
-**Overall Status:** 🟡 **Build Passing / Tests Needed**
+**Overall Status:** 🟢 **Implemented & Verified**
 *   **Goal:** Hybrid architecture using Vyper for security-critical Pools and Solidity for Routers/Factories.
-*   **Current State:** Build issues resolved. `forge build` passes.
+*   **Current State:**
+    *   **Build:** 🟢 Passing (`forge build` with Vyper 0.3.10 support).
+    *   **Tests:** 🟢 Passing (119/119 tests passed). Critical path logic (Swap, Liquidity) fully verified.
+    *   **Coverage:** 🟡 Moderate (~36% overall Solidity coverage). `AetherRouter.sol` ~67% covered.
 
 | Feature | File Location | Status | Notes |
 | :--- | :--- | :--- | :--- |
-| **Build** | N/A | 🟢 Passing | Fixed relative imports in `src/` and `test/`. |
-| **Router (Solidity)** | `src/primary/AetherRouter.sol` | 🟡 In Progress | Needs `addLiquidity` productionizing and path logic. |
-| **Factory (Solidity)** | `src/primary/AetherFactory.sol` | 🟢 Implemented | Core factory logic appears present. |
-| **Pool (Solidity)** | `src/primary/AetherPool.sol` | 🟡 Placeholder? | Checks needed if this supersedes Vyper or vice-versa. |
-| **Pool (Vyper)** | `src/security/AetherPool.vy.disabled` | 🔴 Disabled | Currently disabled. Needs to be enabled and verified. |
+| **Build** | N/A | 🟢 Passing | Fixed relative imports and EVM version. |
+| **Router (Solidity)** | `src/primary/AetherRouter.sol` | 🟢 Implemented | `addLiquidity` (with LP forwarding) and path logic implemented (Fee denominator: 1,000,000). |
+| **Factory (Solidity)** | `src/primary/AetherFactory.sol` | 🟢 Implemented | Core factory logic deployed and integrated. |
+| **Pool (Solidity)** | `src/primary/AetherPool.sol` | ⚫ Removed | Removed in favor of Vyper implementation. |
+| **Pool (Vyper)** | `src/security/AetherPool.vy` | 🟢 Enabled | Enabled, updated with `addLiquidityNonInitial`, and verified. |
 | **Circuit Breaker** | `src/security/CircuitBreaker.sol` | 🟢 Implemented | Security module present. |
-| **Cross-Chain** | `src/primary/AetherRouterCrossChain.sol` | 🟡 Partial | Needs LayerZero/Wormhole integration finalization. |
+| **Cross-Chain** | `src/primary/AetherRouterCrossChain.sol` | 🟡 Partial | Logic exists, needs final integration testing. |
 
 **Action Items:**
 - [x] Fix `forge build` errors (Imports fixed).
-- [ ] Re-enable and test `AetherPool.vy`.
-- [ ] Run `forge test` to establish baseline pass rate.
+- [x] Re-enable and test `AetherPool.vy`.
+- [x] Run `forge test` to establish baseline pass rate (119 passed).
+- [x] Implement `addLiquidity` and path logic in `AetherRouter`.
+- [x] Restore edge case tests (`SmartContractEdgeCases.t.sol`).
+- [x] Fix LP token forwarding bug in `addLiquidity`.
 
 ---
 

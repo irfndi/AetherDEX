@@ -80,9 +80,24 @@ interface IAetherPool {
     /// @return token1 The address of the second token.
     function tokens() external view returns (address token0, address token1);
 
+    /// @notice Returns the first token address (for Vyper compatibility).
+    function token0() external view returns (address);
+
+    /// @notice Returns the second token address (for Vyper compatibility).
+    function token1() external view returns (address);
+
     /// @notice Returns the current fee for the pool.
     /// @return fee The current pool fee.
     function fee() external view returns (uint24 fee);
+
+    /// @notice Returns the reserve of token0.
+    function reserve0() external view returns (uint256);
+
+    /// @notice Returns the reserve of token1.
+    function reserve1() external view returns (uint256);
+
+    /// @notice Returns the total supply of liquidity tokens.
+    function totalSupply() external view returns (uint256);
 
     /// @notice Adds liquidity to an existing pool.
     /// @dev Must be called after initial liquidity has been provided. The router (caller) is expected to have transferred tokens to this pool contract before calling this.

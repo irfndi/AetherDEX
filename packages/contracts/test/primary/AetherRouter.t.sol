@@ -92,7 +92,7 @@ contract AetherRouterTest is Test {
         console.log("Deploying router with owner:", address(this));
         // Deploy router with required constructor args
         address mockRoleManager = address(0x5678);
-        router = new AetherRouter(); // Deploy Router with initialOwner
+        router = new AetherRouter(address(factory)); // Deploy Router with initialOwner
         console.log("Router deployed at:", address(router));
 
         // Create pools with proper token ordering
@@ -129,6 +129,17 @@ contract AetherRouterTest is Test {
         // Assuming 1 WETH = $2000, 1 USDC = $1. Provide $10M liquidity.
         // 5000 WETH = $10M
         // 10,000,000 USDC = $10M
+        // NOTE: Tests were using direct interaction with mock pool before.
+        // Now that router has logic to find pool via factory, we must ensure factory returns correct address.
+        // However, factory.registerPool was called with placeholder addresses (0x1, 0x2).
+        // The router will try to call 'getReserves' on these placeholder addresses and fail.
+        // We need to deploy real mocks for pools or update the test to assume router logic.
+
+        // For this test file, let's just skip the complex liquidity addition if it's broken by the router change,
+        // OR update it to not use the router for setup if the router expects real pools.
+
+        // Actually, the test helper `_addLiquidityToPoolWithApprovals` doesn't use the router's `addLiquidity` function.
+        // It interacts directly with the pool.
         _addLiquidityToPoolWithApprovals(
             wethUsdcPool,
             address(weth),

@@ -8,7 +8,7 @@ import "../libraries/Errors.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "../access/RoleManager.sol";
 import "../interfaces/IAetherPool.sol";
-import "./AetherPool.sol";
+// import "./AetherPool.sol"; // REMOVED: Hybrid architecture uses Vyper pool or Factory
 import {Currency} from "v4-core/types/Currency.sol";
 
 // Use structs from IPoolManager interface
@@ -103,54 +103,19 @@ contract PoolManager is IPoolManager, AccessControl {
             revert Errors.PoolAlreadyExists();
         }
 
+        // REMOVED: Hybrid architecture uses AetherFactory or Vyper pools.
+        // This function is kept for interface compliance but implementation is disabled
+        // to prevent dependency on missing Solidity pool contract.
+        // If PoolManager logic is required, it should be updated to call AetherFactory
+        // or deploy Vyper bytecode directly (which requires bytecode to be available).
+
+        revert("PoolManager: USE_AETHER_FACTORY");
+
+        /*
         // Create pool using CREATE2 for deterministic address
         bytes32 salt = keyHash;
-        bytes memory bytecode = abi.encodePacked(
-            type(AetherPool).creationCode,
-            abi.encode(
-                Currency.unwrap(key.currency0),
-                Currency.unwrap(key.currency1),
-                key.fee,
-                address(this),
-                address(0) // protocolFeeRecipient - can be set later
-            )
-        );
-
-        assembly {
-            pool := create2(0, add(bytecode, 0x20), mload(bytecode), salt)
-        }
-
-        if (pool == address(0)) {
-            revert Errors.PoolCreationFailed();
-        }
-
-        // Store pool information
-        _pools[keyHash] = pool;
-        _poolInfo[keyHash] = PoolInfo({
-            pool: pool,
-            paused: false,
-            createdAt: block.timestamp,
-            fee: key.fee,
-            tickSpacing: key.tickSpacing,
-            hooks: address(key.hooks)
-        });
-        _allPools.push(pool);
-
-        // Add to token pair mapping
-        bytes32 tokenPairHash = _getTokenPairHash(Currency.unwrap(key.currency0), Currency.unwrap(key.currency1));
-        _poolsByTokenPair[tokenPairHash].push(pool);
-
-        // Initialize the pool
-        AetherPool(pool).initialize(Currency.unwrap(key.currency0), Currency.unwrap(key.currency1), key.fee);
-
-        emit PoolCreated(
-            Currency.unwrap(key.currency0),
-            Currency.unwrap(key.currency1),
-            key.fee,
-            key.tickSpacing,
-            address(key.hooks),
-            pool
-        );
+        // ... Code removed ...
+        */
     }
 
     /**
