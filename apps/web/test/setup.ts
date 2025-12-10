@@ -10,6 +10,12 @@ afterEach(() => {
   cleanup()
 })
 
+// Mock use-api hook
+vi.mock('../src/hooks/use-api', () => ({
+    useTokens: vi.fn(() => ({ data: [], isLoading: false })),
+    usePools: vi.fn(() => ({ data: [], isLoading: false })),
+}))
+
 // Mock helper function used by existing tests
 export const createMockTokenList = () => [
   { symbol: 'ETH', name: 'Ethereum', balance: '1.5' },

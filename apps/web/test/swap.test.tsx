@@ -2,6 +2,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
 import { Route as SwapRoute } from '../src/routes/trade/swap'
 import { useAccount, useConnect, useWriteContract } from 'wagmi'
+import { useTokens } from '../src/hooks/use-api'
 
 // Helper to get component from Route
 const SwapPage = SwapRoute as any
@@ -73,5 +74,34 @@ describe('SwapPage', () => {
         fireEvent.click(swapButton)
 
         expect(writeContractMock).toHaveBeenCalled()
+    })
+
+    it('opens token selector and selects a token', () => {
+        (useAccount as Mock).mockReturnValue({ isConnected: true });
+
+        (useTokens as Mock).mockReturnValue({
+            data: [
+                { symbol: 'ETH', name: 'Ethereum', address: '0x1' },
+                { symbol: 'USDC', name: 'USD Coin', address: '0x2' }
+            ],
+            isLoading: false
+        });
+
+        render(<SwapPage />)
+
+        // Find the token selector button (currently shows ETH by default)
+        const selectorButton = screen.getByText('ETH')
+        fireEvent.click(selectorButton)
+
+        // Check if modal opened
+        expect(screen.getByText('Select a token')).toBeInTheDocument()
+
+        // Select USDC
+        const usdcOption = screen.getByText('USDC')
+        fireEvent.click(usdcOption)
+
+        // Check if modal closed and selection updated
+        expect(screen.queryByText('Select a token')).not.toBeInTheDocument()
+        expect(screen.getAllByText('USDC')[0]).toBeInTheDocument()
     })
 })

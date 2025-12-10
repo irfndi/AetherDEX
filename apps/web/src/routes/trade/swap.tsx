@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useAccount, useConnect, useDisconnect, useWriteContract } from 'wagmi'
 import { ROUTER_ABI } from '../../lib/abis'
 import { parseEther } from 'viem'
+import { useTokens } from '../../hooks/use-api'
 
 // Address of the Router Contract (Placeholder)
 const ROUTER_ADDRESS = '0x0000000000000000000000000000000000000000'
@@ -15,10 +16,13 @@ export const Route = createFileRoute('/trade/swap')({
 function SwapPage() {
     const [sellAmount, setSellAmount] = useState('')
     const [buyAmount, setBuyAmount] = useState('')
+    const [selectedSellToken, setSelectedSellToken] = useState('ETH')
+    const [isSelectorOpen, setIsSelectorOpen] = useState(false)
     const { address, isConnected } = useAccount()
     const { connectors, connect } = useConnect()
     const { disconnect } = useDisconnect()
     const { writeContract, isPending } = useWriteContract()
+    const { data: tokens, isLoading: isLoadingTokens } = useTokens()
 
     const handleConnect = () => {
         const connector = connectors[0]
@@ -106,9 +110,12 @@ function SwapPage() {
                                     onChange={(e) => setSellAmount(e.target.value)}
                                     className="flex-1 bg-transparent text-3xl font-semibold text-white outline-none"
                                 />
-                                <button className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl transition">
+                                <button
+                                    onClick={() => setIsSelectorOpen(true)}
+                                    className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl transition"
+                                >
                                     <div className="w-6 h-6 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full" />
-                                    <span className="font-semibold">ETH</span>
+                                    <span className="font-semibold">{selectedSellToken}</span>
                                     <ChevronDown className="w-4 h-4" />
                                 </button>
                             </div>
@@ -135,7 +142,7 @@ function SwapPage() {
                                     className="flex-1 bg-transparent text-3xl font-semibold text-white outline-none"
                                 />
                                 <button className="flex items-center gap-2 px-4 py-2 bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 rounded-xl transition">
-                                    Select token
+                                    {isLoadingTokens ? 'Loading...' : 'Select token'}
                                     <ChevronDown className="w-4 h-4" />
                                 </button>
                             </div>
@@ -160,6 +167,51 @@ function SwapPage() {
                         )}
                     </div>
                 </div>
+
+                {/* Token Selector Modal */}
+                {isSelectorOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                        <div className="glass-card w-full max-w-md p-6 m-4">
+                            <div className="flex items-center justify-between mb-6">
+                                <h3 className="text-xl font-semibold text-white">Select a token</h3>
+                                <button
+                                    onClick={() => setIsSelectorOpen(false)}
+                                    className="p-2 hover:bg-white/10 rounded-lg transition text-gray-400 hover:text-white"
+                                >
+                                    Close
+                                </button>
+                            </div>
+
+                            <div className="space-y-2 max-h-96 overflow-y-auto">
+                                {isLoadingTokens ? (
+                                    <div className="text-center text-gray-400 py-4">Loading tokens...</div>
+                                ) : (
+                                    tokens?.map((token) => (
+                                        <button
+                                            key={token.address}
+                                            onClick={() => {
+                                                setSelectedSellToken(token.symbol)
+                                                setIsSelectorOpen(false)
+                                            }}
+                                            className="w-full flex items-center justify-between p-3 hover:bg-white/5 rounded-xl transition group"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full" />
+                                                <div className="text-left">
+                                                    <div className="text-white font-medium">{token.symbol}</div>
+                                                    <div className="text-sm text-gray-400">{token.name}</div>
+                                                </div>
+                                            </div>
+                                            <span className="text-white opacity-0 group-hover:opacity-100 transition">
+                                                Select
+                                            </span>
+                                        </button>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
             </main>
         </div>
     )
