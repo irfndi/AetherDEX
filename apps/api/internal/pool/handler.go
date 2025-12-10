@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/irfndi/AetherDEX/apps/api/internal/models"
 )
 
 type Handler struct {
@@ -16,7 +17,7 @@ func NewHandler(service Service) *Handler {
 }
 
 func (h *Handler) CreatePool(c *gin.Context) {
-	var pool Pool
+	var pool models.Pool
 	if err := c.ShouldBindJSON(&pool); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

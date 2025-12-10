@@ -226,11 +226,11 @@ func (suite *WebSocketIntegrationTestSuite) TestMockDataGeneration() {
 	var response Message
 	err = pricesConn.ReadJSON(&response)
 	require.NoError(suite.T(), err)
-	assert.Equal(suite.T(), MessageTypeSubscribe, response.Type)
+	assert.Equal(suite.T(), MessageTypeSubscriptionConfirmed, response.Type)
 
 	err = poolsConn.ReadJSON(&response)
 	require.NoError(suite.T(), err)
-	assert.Equal(suite.T(), MessageTypeSubscribe, response.Type)
+	assert.Equal(suite.T(), MessageTypeSubscriptionConfirmed, response.Type)
 
 	// Start mock data generation
 	suite.generator.Start(500 * time.Millisecond)
@@ -406,7 +406,7 @@ func (suite *WebSocketIntegrationTestSuite) TestWebSocketConcurrentSubscriptions
 				return
 			}
 
-			assert.Equal(suite.T(), MessageTypeSubscribe, response.Type)
+			assert.Equal(suite.T(), MessageTypeSubscriptionConfirmed, response.Type)
 		}(i)
 	}
 

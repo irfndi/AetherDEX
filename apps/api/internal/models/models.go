@@ -1,9 +1,9 @@
 package models
 
 import (
-	"errors"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
@@ -13,8 +13,8 @@ type User struct {
 	ID        uint           `json:"id" gorm:"primaryKey"`
 	Address   string         `json:"address" gorm:"uniqueIndex;not null;size:42"`
 	Nonce     string         `json:"nonce" gorm:"size:64"`
-	Roles     []string       `json:"roles" gorm:"type:text[]"`
-	IsActive  bool           `json:"is_active" gorm:"default:true"`
+	Roles     pq.StringArray `json:"roles" gorm:"type:text[]"`
+	IsActive  *bool          `json:"is_active" gorm:"default:true"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `json:"deleted_at" gorm:"index"`
@@ -28,7 +28,7 @@ func (User) TableName() string {
 // BeforeCreate hook to set default values
 func (u *User) BeforeCreate(tx *gorm.DB) error {
 	if u.Roles == nil {
-		u.Roles = []string{"user"}
+		u.Roles = pq.StringArray{"user"}
 	}
 	return nil
 }
@@ -45,7 +45,7 @@ type Pool struct {
 	Reserve1  decimal.Decimal `json:"reserve1" gorm:"type:decimal(36,18)"`         // Reserve of token1
 	Volume24h decimal.Decimal `json:"volume_24h" gorm:"type:decimal(36,18)"`       // 24h trading volume
 	TVL       decimal.Decimal `json:"tvl" gorm:"type:decimal(36,18)"`              // Total Value Locked
-	IsActive  bool            `json:"is_active" gorm:"default:true"`
+	IsActive  *bool           `json:"is_active" gorm:"default:true"`
 	CreatedAt time.Time       `json:"created_at"`
 	UpdatedAt time.Time       `json:"updated_at"`
 	DeletedAt gorm.DeletedAt  `json:"deleted_at" gorm:"index"`
@@ -71,12 +71,12 @@ type Token struct {
 	Symbol      string          `json:"symbol" gorm:"not null;size:20;index"`
 	Name        string          `json:"name" gorm:"not null;size:100"`
 	Decimals    uint8           `json:"decimals" gorm:"not null"`
-	TotalSupply decimal.Decimal `json:"total_supply" gorm:"type:decimal(36,18)"`
-	Price       decimal.Decimal `json:"price" gorm:"type:decimal(36,18)"`
-	MarketCap   decimal.Decimal `json:"market_cap" gorm:"type:decimal(36,18)"`
-	Volume24h   decimal.Decimal `json:"volume_24h" gorm:"type:decimal(36,18)"`
+	TotalSupply decimal.Decimal `json:"total_supply" gorm:"type:decimal(36,18);column:total_supply"`
+	Price       decimal.Decimal `json:"price" gorm:"type:decimal(36,18);column:price"`
+	MarketCap   decimal.Decimal `json:"market_cap" gorm:"type:decimal(36,18);column:market_cap"`
+	Volume24h   decimal.Decimal `json:"volume_24h" gorm:"type:decimal(36,18);column:volume_24h"`
 	IsVerified  bool            `json:"is_verified" gorm:"default:false"`
-	IsActive    bool            `json:"is_active" gorm:"default:true"`
+	IsActive    *bool           `json:"is_active" gorm:"default:true"`
 	LogoURL     string          `json:"logo_url" gorm:"size:255"`
 	WebsiteURL  string          `json:"website_url" gorm:"size:255"`
 	CreatedAt   time.Time       `json:"created_at"`
@@ -109,7 +109,7 @@ type LiquidityPosition struct {
 	Token0Amount decimal.Decimal `json:"token0_amount" gorm:"type:decimal(36,18)"`
 	Token1Amount decimal.Decimal `json:"token1_amount" gorm:"type:decimal(36,18)"`
 	Shares       decimal.Decimal `json:"shares" gorm:"type:decimal(36,18)"`
-	IsActive     bool            `json:"is_active" gorm:"default:true"`
+	IsActive     *bool           `json:"is_active" gorm:"default:true"`
 	CreatedAt    time.Time       `json:"created_at"`
 	UpdatedAt    time.Time       `json:"updated_at"`
 	DeletedAt    gorm.DeletedAt  `json:"deleted_at" gorm:"index"`

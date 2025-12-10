@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/irfndi/AetherDEX/apps/api/internal/models"
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 )
 
@@ -147,7 +148,7 @@ func (r *userRepository) RemoveRole(address, role string) error {
 	}
 
 	// Remove role from slice
-	var newRoles []string
+	var newRoles pq.StringArray
 	for _, existingRole := range user.Roles {
 		if existingRole != role {
 			newRoles = append(newRoles, existingRole)

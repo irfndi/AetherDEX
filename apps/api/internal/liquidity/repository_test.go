@@ -12,6 +12,10 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+func boolPtr(b bool) *bool {
+	return &b
+}
+
 // LiquidityPositionRepositoryTestSuite provides comprehensive tests for liquidity position repository
 type LiquidityPositionRepositoryTestSuite struct {
 	suite.Suite
@@ -55,7 +59,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestCreateLiquidityPosition()
 		Token0Amount: decimal.NewFromInt(500),
 		Token1Amount: decimal.NewFromInt(500),
 		Shares:       decimal.NewFromInt(1000),
-		IsActive:     true,
+		IsActive:     boolPtr(true),
 	}
 
 	err := suite.repo.Create(position)
@@ -81,7 +85,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetLiquidityPositionByID(
 		Token0Amount: decimal.NewFromInt(500),
 		Token1Amount: decimal.NewFromInt(500),
 		Shares:       decimal.NewFromInt(1000),
-		IsActive:     true,
+		IsActive:     boolPtr(true),
 	}
 	err := suite.repo.Create(originalPosition)
 	suite.NoError(err)
@@ -120,7 +124,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetLiquidityPositionByUse
 		Token0Amount: decimal.NewFromInt(500),
 		Token1Amount: decimal.NewFromInt(500),
 		Shares:       decimal.NewFromInt(1000),
-		IsActive:     true,
+		IsActive:     boolPtr(true),
 	}
 	err := suite.repo.Create(originalPosition)
 	suite.NoError(err)
@@ -169,7 +173,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetLiquidityPositionsByUs
 			Token0Amount: decimal.NewFromInt(500 + int64(i*50)),
 			Token1Amount: decimal.NewFromInt(500 + int64(i*50)),
 			Shares:       decimal.NewFromInt(1000 + int64(i*100)),
-			IsActive:     true,
+			IsActive:     boolPtr(true),
 		}
 		err := suite.repo.Create(position)
 		suite.NoError(err)
@@ -183,7 +187,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetLiquidityPositionsByUs
 		Token0Amount: decimal.NewFromInt(1000),
 		Token1Amount: decimal.NewFromInt(1000),
 		Shares:       decimal.NewFromInt(2000),
-		IsActive:     true,
+		IsActive:     boolPtr(true),
 	}
 	err := suite.repo.Create(differentUserPosition)
 	suite.NoError(err)
@@ -220,7 +224,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetLiquidityPositionsByPo
 			Token0Amount: decimal.NewFromInt(500 + int64(i*50)),
 			Token1Amount: decimal.NewFromInt(500 + int64(i*50)),
 			Shares:       decimal.NewFromInt(1000 + int64(i*100)),
-			IsActive:     true,
+			IsActive:     boolPtr(true),
 		}
 		err := suite.repo.Create(position)
 		suite.NoError(err)
@@ -256,7 +260,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetActivePositions() {
 			Token0Amount: decimal.NewFromInt(500 + int64(i*50)),
 			Token1Amount: decimal.NewFromInt(500 + int64(i*50)),
 			Shares:       decimal.NewFromInt(1000 + int64(i*100)),
-			IsActive:     i < 3, // First 3 are active, last 2 are inactive
+			IsActive:     boolPtr(i < 3), // First 3 are active, last 2 are inactive
 		}
 		err := suite.repo.Create(position)
 		suite.NoError(err)
@@ -269,7 +273,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetActivePositions() {
 
 	// Verify all positions are active
 	for _, position := range activePositions {
-		suite.True(position.IsActive)
+		suite.True(*position.IsActive)
 	}
 }
 
@@ -286,7 +290,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetUserActivePositions() 
 			Token0Amount: decimal.NewFromInt(500 + int64(i*50)),
 			Token1Amount: decimal.NewFromInt(500 + int64(i*50)),
 			Shares:       decimal.NewFromInt(1000 + int64(i*100)),
-			IsActive:     i < 2, // First 2 are active, last 2 are inactive
+			IsActive:     boolPtr(i < 2), // First 2 are active, last 2 are inactive
 		}
 		err := suite.repo.Create(position)
 		suite.NoError(err)
@@ -300,7 +304,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetUserActivePositions() 
 		Token0Amount: decimal.NewFromInt(1000),
 		Token1Amount: decimal.NewFromInt(1000),
 		Shares:       decimal.NewFromInt(2000),
-		IsActive:     true,
+		IsActive:     boolPtr(true),
 	}
 	err := suite.repo.Create(differentUserPosition)
 	suite.NoError(err)
@@ -313,7 +317,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetUserActivePositions() 
 	// Verify all positions belong to the user and are active
 	for _, position := range userActivePositions {
 		suite.Equal(userAddress, position.UserAddress)
-		suite.True(position.IsActive)
+		suite.True(*position.IsActive)
 	}
 }
 
@@ -335,7 +339,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestUpdateLiquidityPosition()
 		Token0Amount: decimal.NewFromInt(500),
 		Token1Amount: decimal.NewFromInt(500),
 		Shares:       decimal.NewFromInt(1000),
-		IsActive:     true,
+		IsActive:     boolPtr(true),
 	}
 	err := suite.repo.Create(position)
 	suite.NoError(err)
@@ -374,7 +378,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestUpdateLiquidity() {
 		Token0Amount: decimal.NewFromInt(500),
 		Token1Amount: decimal.NewFromInt(500),
 		Shares:       decimal.NewFromInt(1000),
-		IsActive:     true,
+		IsActive:     boolPtr(true),
 	}
 	err := suite.repo.Create(position)
 	suite.NoError(err)
@@ -407,7 +411,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestUpdateAmounts() {
 		Token0Amount: decimal.NewFromInt(500),
 		Token1Amount: decimal.NewFromInt(500),
 		Shares:       decimal.NewFromInt(1000),
-		IsActive:     true,
+		IsActive:     boolPtr(true),
 	}
 	err := suite.repo.Create(position)
 	suite.NoError(err)
@@ -442,7 +446,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestDeleteLiquidityPosition()
 		Token0Amount: decimal.NewFromInt(500),
 		Token1Amount: decimal.NewFromInt(500),
 		Shares:       decimal.NewFromInt(1000),
-		IsActive:     true,
+		IsActive:     boolPtr(true),
 	}
 	err := suite.repo.Create(position)
 	suite.NoError(err)
@@ -475,7 +479,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestListLiquidityPositions() 
 			Token0Amount: decimal.NewFromInt(500 + int64(i*50)),
 			Token1Amount: decimal.NewFromInt(500 + int64(i*50)),
 			Shares:       decimal.NewFromInt(1000 + int64(i*100)),
-			IsActive:     true,
+			IsActive:     boolPtr(true),
 		}
 		err := suite.repo.Create(position)
 		suite.NoError(err)
@@ -506,7 +510,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetTotalLiquidityByPool()
 			Token0Amount: decimal.NewFromInt(amount / 2),
 			Token1Amount: decimal.NewFromInt(amount / 2),
 			Shares:       decimal.NewFromInt(amount),
-			IsActive:     true,
+			IsActive:     boolPtr(true),
 		}
 		err := suite.repo.Create(position)
 		suite.NoError(err)
@@ -520,7 +524,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetTotalLiquidityByPool()
 		Token0Amount: decimal.NewFromInt(2500),
 		Token1Amount: decimal.NewFromInt(2500),
 		Shares:       decimal.NewFromInt(5000),
-		IsActive:     false,
+		IsActive:     boolPtr(false),
 	}
 	err := suite.repo.Create(inactivePosition)
 	suite.NoError(err)
@@ -556,7 +560,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetUserTotalLiquidity() {
 			Token0Amount: decimal.NewFromInt(amount / 2),
 			Token1Amount: decimal.NewFromInt(amount / 2),
 			Shares:       decimal.NewFromInt(1000 + int64(i*100)),
-			IsActive:     true,
+			IsActive:     boolPtr(true),
 		}
 		err := suite.repo.Create(position)
 		suite.NoError(err)
@@ -570,7 +574,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetUserTotalLiquidity() {
 		Token0Amount: decimal.NewFromInt(2500),
 		Token1Amount: decimal.NewFromInt(2500),
 		Shares:       decimal.NewFromInt(5000),
-		IsActive:     false,
+		IsActive:     boolPtr(false),
 	}
 	err := suite.repo.Create(inactivePosition)
 	suite.NoError(err)
@@ -583,7 +587,7 @@ func (suite *LiquidityPositionRepositoryTestSuite) TestGetUserTotalLiquidity() {
 		Token0Amount: decimal.NewFromInt(5000),
 		Token1Amount: decimal.NewFromInt(5000),
 		Shares:       decimal.NewFromInt(10000),
-		IsActive:     true,
+		IsActive:     boolPtr(true),
 	}
 	err = suite.repo.Create(differentUserPosition)
 	suite.NoError(err)

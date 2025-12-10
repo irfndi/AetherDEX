@@ -46,6 +46,10 @@ func (suite *TokenRepositoryTestSuite) TearDownSuite() {
 	}
 }
 
+func boolPtr(b bool) *bool {
+	return &b
+}
+
 // TestCreateToken tests token creation
 func (suite *TokenRepositoryTestSuite) TestCreateToken() {
 	token := &models.Token{
@@ -58,7 +62,7 @@ func (suite *TokenRepositoryTestSuite) TestCreateToken() {
 		MarketCap:   decimal.NewFromInt(1500000),
 		Volume24h:   decimal.NewFromInt(50000),
 		IsVerified:  true,
-		IsActive:    true,
+		IsActive:    boolPtr(true),
 		LogoURL:     "https://example.com/logo.png",
 		WebsiteURL:  "https://example.com",
 	}
@@ -89,7 +93,7 @@ func (suite *TokenRepositoryTestSuite) TestGetTokenByID() {
 		MarketCap:   decimal.NewFromInt(1500000),
 		Volume24h:   decimal.NewFromInt(50000),
 		IsVerified:  true,
-		IsActive:    true,
+		IsActive:    boolPtr(true),
 	}
 	err := suite.repo.Create(originalToken)
 	suite.NoError(err)
@@ -128,7 +132,7 @@ func (suite *TokenRepositoryTestSuite) TestGetTokenByAddress() {
 		Name:        "Test Token",
 		Decimals:    18,
 		TotalSupply: decimal.NewFromInt(1000000),
-		IsActive:    true,
+		IsActive:    boolPtr(true),
 	}
 	err := suite.repo.Create(originalToken)
 	suite.NoError(err)
@@ -165,7 +169,7 @@ func (suite *TokenRepositoryTestSuite) TestGetTokenBySymbol() {
 		Name:        "Test Token",
 		Decimals:    18,
 		TotalSupply: decimal.NewFromInt(1000000),
-		IsActive:    true,
+		IsActive:    boolPtr(true),
 	}
 	err := suite.repo.Create(originalToken)
 	suite.NoError(err)
@@ -203,7 +207,7 @@ func (suite *TokenRepositoryTestSuite) TestUpdateToken() {
 		Decimals:    18,
 		TotalSupply: decimal.NewFromInt(1000000),
 		Price:       decimal.NewFromFloat(1.5),
-		IsActive:    true,
+		IsActive:    boolPtr(true),
 	}
 	err := suite.repo.Create(token)
 	suite.NoError(err)
@@ -239,7 +243,7 @@ func (suite *TokenRepositoryTestSuite) TestDeleteToken() {
 		Name:        "Test Token",
 		Decimals:    18,
 		TotalSupply: decimal.NewFromInt(1000000),
-		IsActive:    true,
+		IsActive:    boolPtr(true),
 	}
 	err := suite.repo.Create(token)
 	suite.NoError(err)
@@ -271,7 +275,7 @@ func (suite *TokenRepositoryTestSuite) TestListTokens() {
 			Name:        fmt.Sprintf("Test Token %d", i),
 			Decimals:    18,
 			TotalSupply: decimal.NewFromInt(1000000 + int64(i*100000)),
-			IsActive:    true,
+			IsActive:    boolPtr(true),
 		}
 		err := suite.repo.Create(token)
 		suite.NoError(err)
@@ -299,7 +303,7 @@ func (suite *TokenRepositoryTestSuite) TestGetVerifiedTokens() {
 			Decimals:    18,
 			TotalSupply: decimal.NewFromInt(1000000),
 			IsVerified:  i < 3, // First 3 are verified
-			IsActive:    true,
+			IsActive:    boolPtr(true),
 		}
 		err := suite.repo.Create(token)
 		suite.NoError(err)
@@ -313,7 +317,7 @@ func (suite *TokenRepositoryTestSuite) TestGetVerifiedTokens() {
 	// Verify all tokens are verified and active
 	for _, token := range verifiedTokens {
 		suite.True(token.IsVerified)
-		suite.True(token.IsActive)
+		suite.True(*token.IsActive)
 	}
 }
 
@@ -327,7 +331,7 @@ func (suite *TokenRepositoryTestSuite) TestGetActiveTokens() {
 			Name:        fmt.Sprintf("Test Token %d", i),
 			Decimals:    18,
 			TotalSupply: decimal.NewFromInt(1000000),
-			IsActive:    i < 4, // First 4 are active
+			IsActive:    boolPtr(i < 4), // First 4 are active
 		}
 		err := suite.repo.Create(token)
 		suite.NoError(err)
@@ -340,7 +344,7 @@ func (suite *TokenRepositoryTestSuite) TestGetActiveTokens() {
 
 	// Verify all tokens are active
 	for _, token := range activeTokens {
-		suite.True(token.IsActive)
+		suite.True(*token.IsActive)
 	}
 }
 
@@ -355,7 +359,7 @@ func (suite *TokenRepositoryTestSuite) TestGetTokensBySymbols() {
 			Name:        fmt.Sprintf("%s Token", symbol),
 			Decimals:    18,
 			TotalSupply: decimal.NewFromInt(1000000),
-			IsActive:    true,
+			IsActive:    boolPtr(true),
 		}
 		err := suite.repo.Create(token)
 		suite.NoError(err)
@@ -368,7 +372,7 @@ func (suite *TokenRepositoryTestSuite) TestGetTokensBySymbols() {
 		Name:        "Inactive Token",
 		Decimals:    18,
 		TotalSupply: decimal.NewFromInt(1000000),
-		IsActive:    false,
+		IsActive:    boolPtr(false),
 	}
 	err := suite.repo.Create(inactiveToken)
 	suite.NoError(err)
@@ -383,7 +387,7 @@ func (suite *TokenRepositoryTestSuite) TestGetTokensBySymbols() {
 	returnedSymbols := make([]string, len(tokens))
 	for i, token := range tokens {
 		returnedSymbols[i] = token.Symbol
-		suite.True(token.IsActive)
+		suite.True(*token.IsActive)
 	}
 	suite.Contains(returnedSymbols, "BTC")
 	suite.Contains(returnedSymbols, "ETH")
@@ -407,7 +411,7 @@ func (suite *TokenRepositoryTestSuite) TestUpdatePrice() {
 		Decimals:    18,
 		TotalSupply: decimal.NewFromInt(1000000),
 		Price:       decimal.NewFromFloat(1.0),
-		IsActive:    true,
+		IsActive:    boolPtr(true),
 	}
 	err := suite.repo.Create(token)
 	suite.NoError(err)
@@ -441,7 +445,7 @@ func (suite *TokenRepositoryTestSuite) TestUpdateMarketData() {
 		TotalSupply: decimal.NewFromInt(1000000),
 		MarketCap:   decimal.NewFromInt(1000000),
 		Volume24h:   decimal.NewFromInt(50000),
-		IsActive:    true,
+		IsActive:    boolPtr(true),
 	}
 	err := suite.repo.Create(token)
 	suite.NoError(err)
@@ -476,7 +480,7 @@ func (suite *TokenRepositoryTestSuite) TestSearchTokens() {
 			Name:        "Bitcoin",
 			Decimals:    8,
 			TotalSupply: decimal.NewFromInt(21000000),
-			IsActive:    true,
+			IsActive:    boolPtr(true),
 		},
 		{
 			Address:     "0x2222222222222222222222222222222222222222",
@@ -484,7 +488,7 @@ func (suite *TokenRepositoryTestSuite) TestSearchTokens() {
 			Name:        "Ethereum",
 			Decimals:    18,
 			TotalSupply: decimal.NewFromInt(120000000),
-			IsActive:    true,
+			IsActive:    boolPtr(true),
 		},
 		{
 			Address:     "0x3333333333333333333333333333333333333333",
@@ -492,7 +496,7 @@ func (suite *TokenRepositoryTestSuite) TestSearchTokens() {
 			Name:        "USD Coin",
 			Decimals:    6,
 			TotalSupply: decimal.NewFromInt(1000000000),
-			IsActive:    true,
+			IsActive:    boolPtr(true),
 		},
 		{
 			Address:     "0x4444444444444444444444444444444444444444",
@@ -500,7 +504,7 @@ func (suite *TokenRepositoryTestSuite) TestSearchTokens() {
 			Name:        "Wrapped Bitcoin",
 			Decimals:    8,
 			TotalSupply: decimal.NewFromInt(150000),
-			IsActive:    true,
+			IsActive:    boolPtr(true),
 		},
 	}
 
@@ -522,7 +526,7 @@ func (suite *TokenRepositoryTestSuite) TestSearchTokens() {
 	// Search by partial name
 	results, err = suite.repo.SearchTokens("coin", 10, 0)
 	suite.NoError(err)
-	suite.Len(results, 2) // USD Coin and Wrapped Bitcoin (contains "coin")
+	suite.Len(results, 3) // Bitcoin, USD Coin and Wrapped Bitcoin (contains "coin")
 
 	// Search with no results
 	results, err = suite.repo.SearchTokens("nonexistent", 10, 0)
@@ -549,7 +553,7 @@ func (suite *TokenRepositoryTestSuite) TestGetTopTokensByVolume() {
 			Decimals:    18,
 			TotalSupply: decimal.NewFromInt(1000000),
 			Volume24h:   decimal.NewFromInt(volume),
-			IsActive:    true,
+			IsActive:    boolPtr(true),
 		}
 		err := suite.repo.Create(token)
 		suite.NoError(err)
@@ -563,7 +567,7 @@ func (suite *TokenRepositoryTestSuite) TestGetTopTokensByVolume() {
 		Decimals:    18,
 		TotalSupply: decimal.NewFromInt(1000000),
 		Volume24h:   decimal.NewFromInt(1000000), // Highest volume
-		IsActive:    false,
+		IsActive:    boolPtr(false),
 	}
 	err := suite.repo.Create(inactiveToken)
 	suite.NoError(err)
@@ -577,7 +581,7 @@ func (suite *TokenRepositoryTestSuite) TestGetTopTokensByVolume() {
 	suite.True(topTokens[0].Volume24h.GreaterThanOrEqual(topTokens[1].Volume24h))
 	suite.True(topTokens[1].Volume24h.GreaterThanOrEqual(topTokens[2].Volume24h))
 	for _, token := range topTokens {
-		suite.True(token.IsActive)
+		suite.True(*token.IsActive)
 	}
 
 	// Verify highest volume token is TEST3 (800000)
@@ -596,7 +600,7 @@ func (suite *TokenRepositoryTestSuite) TestGetTopTokensByMarketCap() {
 			Decimals:    18,
 			TotalSupply: decimal.NewFromInt(1000000),
 			MarketCap:   decimal.NewFromInt(marketCap),
-			IsActive:    true,
+			IsActive:    boolPtr(true),
 		}
 		err := suite.repo.Create(token)
 		suite.NoError(err)
@@ -610,7 +614,7 @@ func (suite *TokenRepositoryTestSuite) TestGetTopTokensByMarketCap() {
 		Decimals:    18,
 		TotalSupply: decimal.NewFromInt(1000000),
 		MarketCap:   decimal.NewFromInt(10000000), // Highest market cap
-		IsActive:    false,
+		IsActive:    boolPtr(false),
 	}
 	err := suite.repo.Create(inactiveToken)
 	suite.NoError(err)
@@ -624,7 +628,7 @@ func (suite *TokenRepositoryTestSuite) TestGetTopTokensByMarketCap() {
 	suite.True(topTokens[0].MarketCap.GreaterThanOrEqual(topTokens[1].MarketCap))
 	suite.True(topTokens[1].MarketCap.GreaterThanOrEqual(topTokens[2].MarketCap))
 	for _, token := range topTokens {
-		suite.True(token.IsActive)
+		suite.True(*token.IsActive)
 	}
 
 	// Verify highest market cap token is TEST3 (8000000)

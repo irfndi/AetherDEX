@@ -2,8 +2,9 @@ package transaction
 
 import (
 	"errors"
-	"gorm.io/gorm"
 	"time"
+
+	"gorm.io/gorm"
 
 	"github.com/irfndi/AetherDEX/apps/api/internal/models" // Added import
 )
@@ -129,6 +130,9 @@ func (r *transactionRepository) List(limit, offset int) ([]*models.Transaction, 
 
 // GetByStatus retrieves transactions by status with pagination
 func (r *transactionRepository) GetByStatus(status models.TransactionStatus, limit, offset int) ([]*models.Transaction, error) {
+	if status == "" {
+		return nil, errors.New("status cannot be empty")
+	}
 	var transactions []*models.Transaction
 	err := r.db.Preload("User").Preload("Pool").Where("status = ?", status).
 		Order("created_at DESC").Limit(limit).Offset(offset).Find(&transactions).Error
@@ -137,6 +141,9 @@ func (r *transactionRepository) GetByStatus(status models.TransactionStatus, lim
 
 // GetByType retrieves transactions by type with pagination
 func (r *transactionRepository) GetByType(txType models.TransactionType, limit, offset int) ([]*models.Transaction, error) {
+	if txType == "" {
+		return nil, errors.New("type cannot be empty")
+	}
 	var transactions []*models.Transaction
 	err := r.db.Preload("User").Preload("Pool").Where("type = ?", txType).
 		Order("created_at DESC").Limit(limit).Offset(offset).Find(&transactions).Error
@@ -164,6 +171,9 @@ func (r *transactionRepository) GetTransactionsByDateRange(start, end time.Time)
 func (r *transactionRepository) UpdateStatus(txHash string, status models.TransactionStatus) error {
 	if txHash == "" {
 		return errors.New("txHash cannot be empty")
+	}
+	if status == "" {
+		return errors.New("status cannot be empty")
 	}
 	return r.db.Model(&models.Transaction{}).Where("tx_hash = ?", txHash).Update("status", status).Error
 }

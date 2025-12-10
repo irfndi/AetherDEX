@@ -233,7 +233,7 @@ func (c *Client) sendPong() {
 // sendSubscriptionConfirmation sends a subscription confirmation message to the client
 func (c *Client) sendSubscriptionConfirmation(topic, symbol, poolID string) {
 	confirmationResponse := Message{
-		Type:      MessageTypeSubscribe,
+		Type:      MessageTypeSubscriptionConfirmed,
 		Topic:     topic,
 		Symbol:    symbol,
 		PoolID:    poolID,
@@ -251,7 +251,7 @@ func (c *Client) sendSubscriptionConfirmation(topic, symbol, poolID string) {
 // sendUnsubscriptionConfirmation sends an unsubscription confirmation message to the client
 func (c *Client) sendUnsubscriptionConfirmation(topic, symbol, poolID string) {
 	confirmationResponse := Message{
-		Type:      MessageTypeUnsubscribe,
+		Type:      MessageTypeUnsubscriptionConfirmed,
 		Topic:     topic,
 		Symbol:    symbol,
 		PoolID:    poolID,

@@ -112,7 +112,9 @@ func TestHubStructure(t *testing.T) {
 func TestMessageConstants(t *testing.T) {
 	// Test that constants are defined (this will fail at compile time if they're not)
 	assert.NotEmpty(t, MessageTypeSubscribe)
+	assert.NotEmpty(t, MessageTypeSubscriptionConfirmed)
 	assert.NotEmpty(t, MessageTypeUnsubscribe)
+	assert.NotEmpty(t, MessageTypeUnsubscriptionConfirmed)
 	assert.NotEmpty(t, MessageTypePriceUpdate)
 	assert.NotEmpty(t, MessageTypePoolUpdate)
 	assert.NotEmpty(t, MessageTypePing)

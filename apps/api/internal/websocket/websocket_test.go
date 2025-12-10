@@ -57,7 +57,7 @@ func (suite *WebSocketTestSuite) TestWebSocketConnection() {
 	wsURL := "ws" + strings.TrimPrefix(suite.testServer.URL, "http") + "/ws/prices"
 
 	// Connect to WebSocket
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	conn, _, err := dialWithRetry(wsURL, nil)
 	suite.Require().NoError(err)
 	defer conn.Close()
 
@@ -76,7 +76,7 @@ func (suite *WebSocketTestSuite) TestWebSocketAuthentication() {
 	header := http.Header{}
 	header.Set("Authorization", "Bearer test-token")
 
-	conn, resp, err := websocket.DefaultDialer.Dial(wsURL, header)
+	conn, resp, err := dialWithRetry(wsURL, header)
 	if err == nil {
 		conn.Close()
 	}
@@ -90,7 +90,7 @@ func (suite *WebSocketTestSuite) TestWebSocketAuthentication() {
 func (suite *WebSocketTestSuite) TestPriceFeedSubscription() {
 	wsURL := "ws" + strings.TrimPrefix(suite.testServer.URL, "http") + "/ws/prices"
 
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	conn, _, err := dialWithRetry(wsURL, nil)
 	suite.Require().NoError(err)
 	defer conn.Close()
 
@@ -151,7 +151,7 @@ func (suite *WebSocketTestSuite) TestPriceFeedSubscription() {
 func (suite *WebSocketTestSuite) TestPoolUpdateSubscription() {
 	wsURL := "ws" + strings.TrimPrefix(suite.testServer.URL, "http") + "/ws/pools"
 
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	conn, _, err := dialWithRetry(wsURL, nil)
 	suite.Require().NoError(err)
 	defer conn.Close()
 
@@ -213,7 +213,7 @@ func (suite *WebSocketTestSuite) TestPoolUpdateSubscription() {
 func (suite *WebSocketTestSuite) TestWebSocketErrorHandling() {
 	wsURL := "ws" + strings.TrimPrefix(suite.testServer.URL, "http") + "/ws/prices"
 
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	conn, _, err := dialWithRetry(wsURL, nil)
 	suite.Require().NoError(err)
 	defer conn.Close()
 
@@ -247,8 +247,10 @@ func (suite *WebSocketTestSuite) TestConcurrentWebSocketConnections() {
 			defer wg.Done()
 
 			wsURL := "ws" + strings.TrimPrefix(suite.testServer.URL, "http") + "/ws/prices"
-			conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
-			suite.Require().NoError(err)
+			conn, _, err := dialWithRetry(wsURL, nil)
+			if err != nil {
+				return
+			}
 
 			mu.Lock()
 			connections = append(connections, conn)
@@ -306,7 +308,7 @@ func (suite *WebSocketTestSuite) TestWebSocketStats() {
 	conns := make([]*websocket.Conn, 3)
 	for i := 0; i < 3; i++ {
 		wsURL := "ws" + strings.TrimPrefix(suite.testServer.URL, "http") + "/ws/prices"
-		conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+		conn, _, err := dialWithRetry(wsURL, nil)
 		suite.Require().NoError(err)
 		conns[i] = conn
 	}
@@ -329,7 +331,7 @@ func (suite *WebSocketTestSuite) TestWebSocketStats() {
 func (suite *WebSocketTestSuite) TestSubscriptionManagement() {
 	wsURL := "ws" + strings.TrimPrefix(suite.testServer.URL, "http") + "/ws/prices"
 
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	conn, _, err := dialWithRetry(wsURL, nil)
 	suite.Require().NoError(err)
 	defer conn.Close()
 

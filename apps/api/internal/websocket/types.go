@@ -10,9 +10,11 @@ import (
 type MessageType string
 
 const (
-	MessageTypeSubscribe   MessageType = "subscribe"
-	MessageTypeUnsubscribe MessageType = "unsubscribe"
-	MessageTypePriceUpdate MessageType = "price_update"
+	MessageTypeSubscribe             MessageType = "subscribe"
+	MessageTypeSubscriptionConfirmed MessageType = "subscription_confirmed"
+	MessageTypeUnsubscribe           MessageType = "unsubscribe"
+	MessageTypeUnsubscriptionConfirmed MessageType = "unsubscription_confirmed"
+	MessageTypePriceUpdate           MessageType = "price_update"
 	MessageTypePoolUpdate  MessageType = "pool_update"
 	MessageTypeError       MessageType = "error"
 	MessageTypePing        MessageType = "ping"

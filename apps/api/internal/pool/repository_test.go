@@ -33,6 +33,10 @@ func (suite *PoolRepositoryTestSuite) SetupSuite() {
 	suite.repo = NewPoolRepository(db)
 }
 
+func boolPtr(b bool) *bool {
+	return &b
+}
+
 // SetupTest runs before each test
 func (suite *PoolRepositoryTestSuite) SetupTest() {
 	// Clean up database before each test
@@ -58,7 +62,7 @@ func (suite *PoolRepositoryTestSuite) TestCreatePool() {
 		Reserve1:  decimal.NewFromInt(500000),
 		Volume24h: decimal.NewFromInt(100000),
 		TVL:       decimal.NewFromInt(1000000),
-		IsActive:  true,
+		IsActive:  boolPtr(true),
 	}
 
 	err := suite.repo.Create(pool)
@@ -86,7 +90,7 @@ func (suite *PoolRepositoryTestSuite) TestCreatePoolSameTokens() {
 		Reserve1:  decimal.NewFromInt(500000),
 		Volume24h: decimal.NewFromInt(100000),
 		TVL:       decimal.NewFromInt(1000000),
-		IsActive:  true,
+		IsActive:  boolPtr(true),
 	}
 
 	err := suite.repo.Create(pool)
@@ -107,7 +111,7 @@ func (suite *PoolRepositoryTestSuite) TestGetPoolByID() {
 		Reserve1:  decimal.NewFromInt(500000),
 		Volume24h: decimal.NewFromInt(100000),
 		TVL:       decimal.NewFromInt(1000000),
-		IsActive:  true,
+		IsActive:  boolPtr(true),
 	}
 	err := suite.repo.Create(originalPool)
 	suite.NoError(err)
@@ -149,7 +153,7 @@ func (suite *PoolRepositoryTestSuite) TestGetPoolByPoolID() {
 		Reserve1:  decimal.NewFromInt(500000),
 		Volume24h: decimal.NewFromInt(100000),
 		TVL:       decimal.NewFromInt(1000000),
-		IsActive:  true,
+		IsActive:  boolPtr(true),
 	}
 	err := suite.repo.Create(originalPool)
 	suite.NoError(err)
@@ -189,7 +193,7 @@ func (suite *PoolRepositoryTestSuite) TestGetPoolByTokens() {
 		Reserve1:  decimal.NewFromInt(500000),
 		Volume24h: decimal.NewFromInt(100000),
 		TVL:       decimal.NewFromInt(1000000),
-		IsActive:  true,
+		IsActive:  boolPtr(true),
 	}
 	err := suite.repo.Create(originalPool)
 	suite.NoError(err)
@@ -249,7 +253,7 @@ func (suite *PoolRepositoryTestSuite) TestUpdatePool() {
 		Reserve1:  decimal.NewFromInt(500000),
 		Volume24h: decimal.NewFromInt(100000),
 		TVL:       decimal.NewFromInt(1000000),
-		IsActive:  true,
+		IsActive:  boolPtr(true),
 	}
 	err := suite.repo.Create(pool)
 	suite.NoError(err)
@@ -257,7 +261,7 @@ func (suite *PoolRepositoryTestSuite) TestUpdatePool() {
 	// Update pool
 	pool.Liquidity = decimal.NewFromInt(2000000)
 	pool.TVL = decimal.NewFromInt(2000000)
-	pool.IsActive = false
+	pool.IsActive = boolPtr(false)
 	err = suite.repo.Update(pool)
 	suite.NoError(err)
 
@@ -266,7 +270,7 @@ func (suite *PoolRepositoryTestSuite) TestUpdatePool() {
 	suite.NoError(err)
 	suite.True(updatedPool.Liquidity.Equal(decimal.NewFromInt(2000000)))
 	suite.True(updatedPool.TVL.Equal(decimal.NewFromInt(2000000)))
-	suite.False(updatedPool.IsActive)
+	suite.False(*updatedPool.IsActive)
 }
 
 // TestUpdatePoolNil tests updating nil pool
@@ -289,7 +293,7 @@ func (suite *PoolRepositoryTestSuite) TestDeletePool() {
 		Reserve1:  decimal.NewFromInt(500000),
 		Volume24h: decimal.NewFromInt(100000),
 		TVL:       decimal.NewFromInt(1000000),
-		IsActive:  true,
+		IsActive:  boolPtr(true),
 	}
 	err := suite.repo.Create(pool)
 	suite.NoError(err)
@@ -325,7 +329,7 @@ func (suite *PoolRepositoryTestSuite) TestListPools() {
 			Reserve1:  decimal.NewFromInt(500000),
 			Volume24h: decimal.NewFromInt(100000),
 			TVL:       decimal.NewFromInt(1000000),
-			IsActive:  true,
+			IsActive:  boolPtr(true),
 		}
 		err := suite.repo.Create(pool)
 		suite.NoError(err)
@@ -355,7 +359,7 @@ func (suite *PoolRepositoryTestSuite) TestGetActivePools() {
 		Reserve1:  decimal.NewFromInt(500000),
 		Volume24h: decimal.NewFromInt(100000),
 		TVL:       decimal.NewFromInt(1000000),
-		IsActive:  true,
+		IsActive:  boolPtr(true),
 	}
 	inactivePool := &models.Pool{
 		PoolID:    "inactive-pool",
@@ -367,7 +371,7 @@ func (suite *PoolRepositoryTestSuite) TestGetActivePools() {
 		Reserve1:  decimal.NewFromInt(500000),
 		Volume24h: decimal.NewFromInt(100000),
 		TVL:       decimal.NewFromInt(1000000),
-		IsActive:  false,
+		IsActive:  boolPtr(false),
 	}
 
 	err := suite.repo.Create(activePool)
@@ -395,7 +399,7 @@ func (suite *PoolRepositoryTestSuite) TestUpdateLiquidity() {
 		Reserve1:  decimal.NewFromInt(500000),
 		Volume24h: decimal.NewFromInt(100000),
 		TVL:       decimal.NewFromInt(1000000),
-		IsActive:  true,
+		IsActive:  boolPtr(true),
 	}
 	err := suite.repo.Create(pool)
 	suite.NoError(err)
@@ -431,7 +435,7 @@ func (suite *PoolRepositoryTestSuite) TestUpdateReserves() {
 		Reserve1:  decimal.NewFromInt(500000),
 		Volume24h: decimal.NewFromInt(100000),
 		TVL:       decimal.NewFromInt(1000000),
-		IsActive:  true,
+		IsActive:  boolPtr(true),
 	}
 	err := suite.repo.Create(pool)
 	suite.NoError(err)
@@ -470,7 +474,7 @@ func (suite *PoolRepositoryTestSuite) TestGetTopPoolsByTVL() {
 			Reserve1:  decimal.NewFromInt(500000),
 			Volume24h: decimal.NewFromInt(100000),
 			TVL:       decimal.NewFromInt(3000000), // Highest TVL
-			IsActive:  true,
+			IsActive:  boolPtr(true),
 		},
 		{
 			PoolID:    "pool-2",
@@ -482,7 +486,7 @@ func (suite *PoolRepositoryTestSuite) TestGetTopPoolsByTVL() {
 			Reserve1:  decimal.NewFromInt(500000),
 			Volume24h: decimal.NewFromInt(100000),
 			TVL:       decimal.NewFromInt(1000000), // Lowest TVL
-			IsActive:  true,
+			IsActive:  boolPtr(true),
 		},
 		{
 			PoolID:    "pool-3",
@@ -494,7 +498,7 @@ func (suite *PoolRepositoryTestSuite) TestGetTopPoolsByTVL() {
 			Reserve1:  decimal.NewFromInt(500000),
 			Volume24h: decimal.NewFromInt(100000),
 			TVL:       decimal.NewFromInt(2000000), // Middle TVL
-			IsActive:  true,
+			IsActive:  boolPtr(true),
 		},
 	}
 
@@ -528,7 +532,7 @@ func (suite *PoolRepositoryTestSuite) TestGetPoolsByToken() {
 			Reserve1:  decimal.NewFromInt(500000),
 			Volume24h: decimal.NewFromInt(100000),
 			TVL:       decimal.NewFromInt(1000000),
-			IsActive:  true,
+			IsActive:  boolPtr(true),
 		},
 		{
 			PoolID:    "pool-2",
@@ -540,7 +544,7 @@ func (suite *PoolRepositoryTestSuite) TestGetPoolsByToken() {
 			Reserve1:  decimal.NewFromInt(500000),
 			Volume24h: decimal.NewFromInt(100000),
 			TVL:       decimal.NewFromInt(1000000),
-			IsActive:  true,
+			IsActive:  boolPtr(true),
 		},
 		{
 			PoolID:    "pool-3",
@@ -552,7 +556,7 @@ func (suite *PoolRepositoryTestSuite) TestGetPoolsByToken() {
 			Reserve1:  decimal.NewFromInt(500000),
 			Volume24h: decimal.NewFromInt(100000),
 			TVL:       decimal.NewFromInt(1000000),
-			IsActive:  true,
+			IsActive:  boolPtr(true),
 		},
 	}
 

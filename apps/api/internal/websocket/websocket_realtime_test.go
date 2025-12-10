@@ -114,13 +114,15 @@ func TestRapidPriceUpdates(t *testing.T) {
 				lastPrices = append(lastPrices, make(map[string]string))
 
 				// Subscribe to price updates
-				subMsg := Message{
-					Type:  "subscribe",
-					Topic: "prices",
-					Data:  map[string]interface{}{"symbols": tt.symbols},
+				for _, symbol := range tt.symbols {
+					subMsg := Message{
+						Type:   "subscribe",
+						Topic:  "prices",
+						Symbol: symbol,
+					}
+					err = conn.WriteJSON(subMsg)
+					require.NoError(t, err)
 				}
-				err = conn.WriteJSON(subMsg)
-				require.NoError(t, err)
 
 				// Start message receiver for this client
 				go func(clientIndex int, conn *websocket.Conn) {
@@ -162,7 +164,7 @@ func TestRapidPriceUpdates(t *testing.T) {
 				}
 
 				priceUpdate := PriceUpdate{
-					Symbol:    "ETH/USDT",
+					Symbol:    symbol,
 					Price:     decimal.NewFromFloat(basePrice + float64(i)*0.001 + rand.Float64()*10 - 5),
 					Change24h: decimal.NewFromFloat(rand.Float64()*10 - 5),
 					Volume24h: decimal.NewFromFloat(1000000 + rand.Float64()*500000),
@@ -230,13 +232,15 @@ func TestSimultaneousPoolUpdates(t *testing.T) {
 		receivedCounts = append(receivedCounts, 0)
 
 		// Subscribe to pool updates
-		subMsg := Message{
-			Type:  "subscribe",
-			Topic: "pools",
-			Data:  map[string]interface{}{"pool_ids": []string{"pool_1", "pool_2", "pool_3", "pool_4", "pool_5"}},
+		for _, poolID := range []string{"pool_1", "pool_2", "pool_3", "pool_4", "pool_5"} {
+			subMsg := Message{
+				Type:   "subscribe",
+				Topic:  "pools",
+				PoolID: poolID,
+			}
+			err = conn.WriteJSON(subMsg)
+			require.NoError(t, err)
 		}
-		err = conn.WriteJSON(subMsg)
-		require.NoError(t, err)
 
 		// Start message receiver
 		go func(clientIndex int, conn *websocket.Conn) {
@@ -356,9 +360,9 @@ func TestClientReconnectionScenarios(t *testing.T) {
 
 			// Subscribe
 			subMsg := Message{
-				Type:  "subscribe",
-				Topic: "prices",
-				Data:  map[string]interface{}{"symbols": []string{"ETH/USDT"}},
+				Type:   "subscribe",
+				Topic:  "prices",
+				Symbol: "ETH/USDT",
 			}
 			err = conn.WriteJSON(subMsg)
 			if err != nil {
@@ -402,9 +406,9 @@ func TestClientReconnectionScenarios(t *testing.T) {
 
 		// Subscribe and receive some messages
 		subMsg := Message{
-			Type:  "subscribe",
-			Topic: "prices",
-			Data:  map[string]interface{}{"symbols": []string{"ETH/USDT"}},
+			Type:   "subscribe",
+			Topic:  "prices",
+			Symbol: "ETH/USDT",
 		}
 		err = conn1.WriteJSON(subMsg)
 		require.NoError(t, err)
@@ -520,9 +524,9 @@ func TestClientReconnectionScenarios(t *testing.T) {
 
 					// Subscribe
 					subMsg := Message{
-						Type:  "subscribe",
-						Topic: "prices",
-						Data:  map[string]interface{}{"symbols": []string{fmt.Sprintf("TOKEN%d/USDT", clientID)}},
+						Type:   "subscribe",
+						Topic:  "prices",
+						Symbol: fmt.Sprintf("TOKEN%d/USDT", clientID),
 					}
 					err = conn.WriteJSON(subMsg)
 					if err != nil {
@@ -576,13 +580,15 @@ func TestRealTimeDataIntegrity(t *testing.T) {
 		mutexes = append(mutexes, sync.Mutex{})
 
 		// Subscribe to price updates
-		subMsg := Message{
-			Type:  "subscribe",
-			Topic: "prices",
-			Data:  map[string]interface{}{"symbols": []string{"ETH/USDT", "BTC/USDT"}},
+		for _, symbol := range []string{"ETH/USDT", "BTC/USDT"} {
+			subMsg := Message{
+				Type:   "subscribe",
+				Topic:  "prices",
+				Symbol: symbol,
+			}
+			err = conn.WriteJSON(subMsg)
+			require.NoError(t, err)
 		}
-		err = conn.WriteJSON(subMsg)
-		require.NoError(t, err)
 
 		// Start message collector
 		go func(clientIndex int, conn *websocket.Conn) {
@@ -621,12 +627,14 @@ func TestRealTimeDataIntegrity(t *testing.T) {
 			case <-ticker.C:
 				// Alternate between ETH and BTC updates
 				basePrice := 2000.0
+				symbol := "ETH/USDT"
 				if counter%2 == 1 {
 					basePrice = 45000.0
+					symbol = "BTC/USDT"
 				}
 
 				priceUpdate := PriceUpdate{
-					Symbol:    "ETH/USDT",
+					Symbol:    symbol,
 					Price:     decimal.NewFromFloat(basePrice + float64(counter)*0.1),
 					Change24h: decimal.NewFromFloat(float64(counter % 10)),
 					Volume24h: decimal.NewFromFloat(float64(1000000 + counter*1000)),

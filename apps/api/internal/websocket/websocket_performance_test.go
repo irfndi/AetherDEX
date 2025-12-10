@@ -87,7 +87,7 @@ func TestConcurrentConnections(t *testing.T) {
 
 					// Connect to WebSocket
 					url := strings.Replace(suite.server.URL, "http", "ws", 1) + "/ws/prices"
-					conn, _, err := websocket.DefaultDialer.Dial(url, nil)
+					conn, _, err := dialWithRetry(url, nil)
 					if err != nil {
 						atomic.AddInt64(&errorCount, 1)
 						return
@@ -96,9 +96,9 @@ func TestConcurrentConnections(t *testing.T) {
 
 					// Send subscription message
 					subMsg := Message{
-						Type:  "subscribe",
-						Topic: "prices",
-						Data:  map[string]interface{}{"symbols": []string{"ETH/USDT"}},
+						Type:   "subscribe",
+						Topic:  "prices",
+						Symbol: "ETH/USDT",
 					}
 					err = conn.WriteJSON(subMsg)
 					if err != nil {
@@ -157,9 +157,9 @@ func TestHighFrequencyBroadcasting(t *testing.T) {
 
 				// Subscribe to price updates
 				subMsg := Message{
-					Type:  "subscribe",
-					Topic: "prices",
-					Data:  map[string]interface{}{"symbols": []string{"ETH/USDT"}},
+					Type:   "subscribe",
+					Topic:  "prices",
+					Symbol: "ETH/USDT",
 				}
 				err = conn.WriteJSON(subMsg)
 				require.NoError(t, err)
@@ -245,11 +245,20 @@ func TestMemoryUsageUnderLoad(t *testing.T) {
 
 		// Subscribe to updates
 		subMsg := Message{
-			Type:  "subscribe",
-			Topic: "prices",
-			Data:  map[string]interface{}{"symbols": []string{"ETH/USDT", "BTC/USDT"}},
+			Type:   "subscribe",
+			Topic:  "prices",
+			Symbol: "ETH/USDT",
 		}
 		err = conn.WriteJSON(subMsg)
+		require.NoError(t, err)
+
+		// Subscribe to second symbol
+		subMsg2 := Message{
+			Type:   "subscribe",
+			Topic:  "prices",
+			Symbol: "BTC/USDT",
+		}
+		err = conn.WriteJSON(subMsg2)
 		require.NoError(t, err)
 	}
 
@@ -288,7 +297,13 @@ func TestMemoryUsageUnderLoad(t *testing.T) {
 	finalAlloc := m2.Alloc
 
 	// Memory should not have grown excessively
-	memoryGrowth := finalAlloc - initialAlloc
+	var memoryGrowth uint64
+	if finalAlloc > initialAlloc {
+		memoryGrowth = finalAlloc - initialAlloc
+	} else {
+		t.Logf("Memory actually decreased: initial=%d, final=%d", initialAlloc, finalAlloc)
+		memoryGrowth = 0
+	}
 	maxAcceptableGrowth := uint64(50 * 1024 * 1024) // 50MB
 
 	assert.True(t, memoryGrowth < maxAcceptableGrowth,
@@ -327,9 +342,9 @@ func TestConnectionThroughput(t *testing.T) {
 
 			// Quick subscription test
 			subMsg := Message{
-				Type:  "subscribe",
-				Topic: "prices",
-				Data:  map[string]interface{}{"symbols": []string{"ETH/USDT"}},
+				Type:   "subscribe",
+				Topic:  "prices",
+				Symbol: "ETH/USDT",
 			}
 			err = conn.WriteJSON(subMsg)
 			if err != nil {
@@ -381,9 +396,9 @@ func TestBroadcastLatency(t *testing.T) {
 
 		// Subscribe to price updates
 		subMsg := Message{
-			Type:  "subscribe",
-			Topic: "prices",
-			Data:  map[string]interface{}{"symbols": []string{"ETH/USDT"}},
+			Type:   "subscribe",
+			Topic:  "prices",
+			Symbol: "ETH/USDT",
 		}
 		err = conn.WriteJSON(subMsg)
 		require.NoError(t, err)
@@ -399,12 +414,14 @@ func TestBroadcastLatency(t *testing.T) {
 				if msg.Type == "price_update" {
 					receiveTime := time.Now()
 					if data, ok := msg.Data.(map[string]interface{}); ok {
-						if timestampFloat, ok := data["timestamp"].(float64); ok {
-							sendTime := time.Unix(int64(timestampFloat), 0)
-							latency := receiveTime.Sub(sendTime)
-							mu.Lock()
-							latencies = append(latencies, latency)
-							mu.Unlock()
+						if timestampStr, ok := data["timestamp"].(string); ok {
+							sendTime, err := time.Parse(time.RFC3339, timestampStr)
+							if err == nil {
+								latency := receiveTime.Sub(sendTime)
+								mu.Lock()
+								latencies = append(latencies, latency)
+								mu.Unlock()
+							}
 						}
 					}
 				}

@@ -39,6 +39,9 @@ func (r *poolRepository) Create(pool *models.Pool) error {
 	if pool == nil {
 		return errors.New("pool cannot be nil")
 	}
+	if pool.Token0 == pool.Token1 {
+		return errors.New("Token0 and Token1 cannot be the same")
+	}
 	return r.db.Create(pool).Error
 }
 

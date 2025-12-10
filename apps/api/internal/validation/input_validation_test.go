@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -54,6 +55,7 @@ func (suite *InputValidationTestSuite) setupRoutes() {
 		api.POST("/swap", suite.mockSwapHandler)
 		api.POST("/pools", suite.mockPoolHandler)
 		api.GET("/search", suite.mockSearchHandler)
+		api.POST("/search", suite.mockSearchHandler)
 		api.POST("/user/profile", suite.mockProfileHandler)
 	}
 }
@@ -208,7 +210,7 @@ func (suite *InputValidationTestSuite) TestSQLInjectionPrevention() {
 
 	for i, payload := range sqlInjectionPayloads {
 		suite.Run(fmt.Sprintf("SQL_Injection_%d", i+1), func() {
-			req := httptest.NewRequest("GET", fmt.Sprintf("/api/v1/search?q=%s", payload), nil)
+			req := httptest.NewRequest("GET", fmt.Sprintf("/api/v1/search?q=%s", url.QueryEscape(payload)), nil)
 			w := httptest.NewRecorder()
 
 			suite.router.ServeHTTP(w, req)
@@ -234,7 +236,7 @@ func (suite *InputValidationTestSuite) TestPathTraversalPrevention() {
 
 	for i, payload := range pathTraversalPayloads {
 		suite.Run(fmt.Sprintf("Path_Traversal_%d", i+1), func() {
-			req := httptest.NewRequest("GET", fmt.Sprintf("/api/v1/search?file=%s", payload), nil)
+			req := httptest.NewRequest("GET", fmt.Sprintf("/api/v1/search?file=%s", url.QueryEscape(payload)), nil)
 			w := httptest.NewRecorder()
 
 			suite.router.ServeHTTP(w, req)
@@ -395,6 +397,22 @@ func (suite *InputValidationTestSuite) mockPoolHandler(c *gin.Context) {
 }
 
 func (suite *InputValidationTestSuite) mockSearchHandler(c *gin.Context) {
+	if c.Request.Method == "POST" {
+		var req map[string]interface{}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+			return
+		}
+
+		command, ok := req["command"].(string)
+		if ok && containsCommandInjection(command) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid command"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "Command executed"})
+		return
+	}
+
 	query := c.Query("q")
 	file := c.Query("file")
 
@@ -459,6 +477,33 @@ func isValidAmount(amount string) bool {
 	if len(amount) > 50 {
 		return false
 	}
+
+	// Check if it's a valid decimal number and decimal places
+	dots := 0
+	decimalPart := false
+	decimals := 0
+	for _, char := range amount {
+		if char == '.' {
+			dots++
+			if dots > 1 {
+				return false
+			}
+			decimalPart = true
+			continue
+		}
+		if char < '0' || char > '9' {
+			return false
+		}
+		if decimalPart {
+			decimals++
+		}
+	}
+
+	// Limit to 18 decimal places
+	if decimals > 18 {
+		return false
+	}
+
 	return true
 }
 
@@ -501,6 +546,18 @@ func containsPathTraversal(input string) bool {
 	lowerInput := strings.ToLower(input)
 	for _, pattern := range pathPatterns {
 		if strings.Contains(lowerInput, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsCommandInjection(input string) bool {
+	cmdPatterns := []string{
+		";", "&&", "|", "`", "$(", "${", ">", "<",
+	}
+	for _, pattern := range cmdPatterns {
+		if strings.Contains(input, pattern) {
 			return true
 		}
 	}
