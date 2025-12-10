@@ -46,7 +46,9 @@ contract DynamicFeeHookImprovedTest is Test {
 
     // Events to test
     event FeeUpdated(address token0, address token1, uint24 newFee, uint256 volatilityScore, uint256 liquidityScore);
-    event MarketConditionUpdated(bytes32 poolId, uint256 volatilityScore, uint256 liquidityScore, uint256 activityScore);
+    event MarketConditionUpdated(
+        bytes32 poolId, uint256 volatilityScore, uint256 liquidityScore, uint256 activityScore
+    );
 
     // Removed incomplete comment block that was causing compilation errors
     /*notice Set up the test environment

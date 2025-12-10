@@ -173,7 +173,8 @@ contract TWAPOracleHookTest is Test {
     }
 
     function _poolId(address tokenA, address tokenB) private pure returns (bytes32) {
-        return tokenA < tokenB ? keccak256(abi.encodePacked(tokenA, tokenB)) : keccak256(abi.encodePacked(tokenB, tokenA));
+        return
+            tokenA < tokenB ? keccak256(abi.encodePacked(tokenA, tokenB)) : keccak256(abi.encodePacked(tokenB, tokenA));
     }
 
     function _advanceTime(uint256 delta) private {

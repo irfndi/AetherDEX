@@ -99,13 +99,6 @@ func (m *MockTokenRepository) GetTopTokensByMarketCap(limit int) ([]*models.Toke
 	return args.Get(0).([]*models.Token), args.Error(1)
 }
 
-// Adjust types in repository.go if necessary.  For now, using interface{} in mock to match `decimal.Decimal` which is what the interface expects,
-// but since we are mocking, we can just use the correct type in the implementation.
-// Wait, the repository interface uses decimal.Decimal. I should import it.
-// However, to keep this file self contained I will just ignore the specific type for a moment in the mock definition above and rely on imports if I can.
-// Actually, let's look at `service.go` again. It uses `decimal.Decimal`.
-// I need to import "github.com/shopspring/decimal" in this test file.
-
 func TestCreateToken(t *testing.T) {
 	mockRepo := new(MockTokenRepository)
 	service := NewService(mockRepo)

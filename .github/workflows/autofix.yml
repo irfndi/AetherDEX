@@ -32,10 +32,10 @@ jobs:
         run: bun install --frozen-lockfile
 
       # Run Biome formatting and linting with auto-fix
-      - name: Format and lint with Biome
+      - name: Lint with Oxlint
         run: |
           cd apps/web
-          bunx biome check --write --unsafe --config-path ../../.config/biome.json app components hooks lib
+          bun run lint
         continue-on-error: true
 
       # Setup Go for backend formatting
@@ -43,12 +43,12 @@ jobs:
         with:
           go-version: '1.23'
           cache-dependency-path: |
-            backend/go.sum
+            apps/api/go.sum
 
       # Run Go formatting
       - name: Format Go code
         run: |
-          cd backend
+          cd apps/api
           go fmt ./...
 
       # Setup Foundry for smart contract formatting
@@ -60,7 +60,7 @@ jobs:
       # Run Foundry formatting
       - name: Format Solidity contracts
         run: |
-          cd backend/smart-contract
+          cd packages/contracts
           forge fmt
 
       # Run autofix.ci action to commit changes

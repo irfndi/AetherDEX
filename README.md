@@ -30,7 +30,7 @@ AetherDEX is a comprehensive decentralized exchange platform built on Ethereum a
 - **TWAP Oracle**: Time-weighted average price calculations for reliable price feeds
 - **Extensible Hooks**: Customizable hook architecture for advanced trading strategies
 - **Gas Optimized**: Sophisticated algorithms for minimal gas consumption
-- **Modern Stack**: Next.js 15 + React 19 frontend with Go backend infrastructure
+- **Modern Stack**: Vite + React 19 frontend with Go backend infrastructure
 - **Real-time Data**: WebSocket integration for live price feeds and market data
 
 ## Architecture
@@ -39,15 +39,12 @@ AetherDEX is structured as a monorepo with the following components:
 
 ```
 AetherDEX/
-├── backend/                # Go backend services and smart contracts
-│   ├── smart-contract/     # Solidity smart contracts (Foundry)
-│   ├── api/                # REST API endpoints
-│   ├── internal/           # Internal Go packages
-│   └── pkg/                # Shared Go packages
-├── interface/              # Frontend applications
-│   └── web/                # Next.js web interface
+├── apps/
+│   ├── api/                # Go backend services
+│   └── web/                # Vite web interface
+├── packages/
+│   └── contracts/          # Solidity smart contracts (Foundry)
 ├── docs/                   # Project documentation
-├── infrastructure/         # Docker and deployment configs
 └── scripts/                # Utility and deployment scripts
 ```
 
@@ -72,18 +69,18 @@ AetherDEX/
    cd AetherDEX
    ```
 
-2. Install dependencies with pnpm (JS/TS) plus language-specific tooling:
+2. Install dependencies with bun (JS/TS) plus language-specific tooling:
 
    ```bash
    # JavaScript/TypeScript workspaces
-   pnpm install
+   bun install
 
    # Smart contracts
-   cd backend/smart-contract
+   cd packages/contracts
    forge install
 
    # Backend API
-   cd ../../backend
+   cd ../../apps/api
    go mod download
    ```
 
@@ -94,7 +91,7 @@ AetherDEX/
 Navigate to the smart contract directory and run tests:
 
 ```bash
-cd backend/smart-contract
+cd packages/contracts
 forge test
 ```
 
