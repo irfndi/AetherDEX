@@ -15,6 +15,12 @@ interface IAetherPool:
 
     def swap(amountIn: uint256, tokenIn: address, to: address) -> uint256: nonpayable
 
+    def initialize(token0: address, token1: address, fee: uint24): nonpayable
+
+    def addInitialLiquidity(amount0Desired: uint256, amount1Desired: uint256) -> uint256: nonpayable
+
+    def addLiquidityNonInitial(recipient: address, amount0Desired: uint256, amount1Desired: uint256, data: Bytes[128]) -> (uint256, uint256, uint256): nonpayable
+
     # --- View Functions ---
     def getReserves() -> (uint256, uint256): view
 

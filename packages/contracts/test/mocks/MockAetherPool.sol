@@ -36,6 +36,18 @@ contract MockAetherPool is IAetherPool {
         return _fee;
     }
 
+    function reserve0() external pure override returns (uint256) {
+        return 1000 * 1e18; // Dummy reserve
+    }
+
+    function reserve1() external pure override returns (uint256) {
+        return 1000 * 1e18; // Dummy reserve
+    }
+
+    function totalSupply() external view override returns (uint256) {
+        return totalLiquidity;
+    }
+
     function swap(uint256 amountIn, address _tokenIn, address to) external override returns (uint256 amountOut) {
         require(_tokenIn == token0 || _tokenIn == token1, "INVALID_TOKEN_IN");
         require(to != address(0), "INVALID_RECIPIENT");

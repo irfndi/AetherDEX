@@ -46,6 +46,18 @@ contract MockPool is IAetherPool {
         return storedFee;
     }
 
+    function reserve0() external pure override returns (uint256) {
+        return 1000 * 1e18; // Dummy reserve
+    }
+
+    function reserve1() external pure override returns (uint256) {
+        return 1000 * 1e18; // Dummy reserve
+    }
+
+    function totalSupply() external pure override returns (uint256) {
+        return 0; // Mock total supply
+    }
+
     function tokens() external view override returns (address, address) {
         return (token0, token1);
     }

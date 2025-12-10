@@ -412,6 +412,51 @@ def initialize_pool(amount0: uint256, amount1: uint256) -> uint256:
     return liquidity
 
 @external
+@nonreentrant('lock')
+def addLiquidityNonInitial(
+    recipient: address,
+    amount0Desired: uint256,
+    amount1Desired: uint256,
+    data: Bytes[128]
+) -> (uint256, uint256, uint256):
+    """
+    @notice Adds liquidity to an existing pool.
+    @dev Assumes tokens have been transferred to the pool before calling this function.
+    """
+    assert self.initialized, "NOT_INITIALIZED"
+    assert self.totalSupply > 0, "USE_ADD_INITIAL_LIQUIDITY"
+
+    _reserve0: uint256 = self.reserve0
+    _reserve1: uint256 = self.reserve1
+
+    # Check current balances
+    balance0: uint256 = ERC20(self.poolToken0).balanceOf(self)
+    balance1: uint256 = ERC20(self.poolToken1).balanceOf(self)
+
+    amount0: uint256 = balance0 - _reserve0
+    amount1: uint256 = balance1 - _reserve1
+
+    # Calculate liquidity
+    _totalSupply: uint256 = self.totalSupply
+    liquidity: uint256 = self._min(
+        (amount0 * _totalSupply) / _reserve0,
+        (amount1 * _totalSupply) / _reserve1
+    )
+
+    assert liquidity > 0, "INSUFFICIENT_LIQUIDITY_MINTED"
+
+    self.balanceOf[recipient] += liquidity
+    self.totalSupply += liquidity
+
+    self.reserve0 = balance0
+    self.reserve1 = balance1
+
+    log Mint(msg.sender, recipient, amount0, amount1, liquidity)
+    log Transfer(EMPTY_ADDRESS, recipient, liquidity)
+
+    return (amount0, amount1, liquidity)
+
+@external
 @nonreentrant('lock') # Ensure reentrancy protection
 def addInitialLiquidity(amount0_desired: uint256, amount1_desired: uint256) -> uint256:
     """

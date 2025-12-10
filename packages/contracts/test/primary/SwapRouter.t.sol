@@ -88,6 +88,18 @@ contract MockPool is IAetherPool {
         return storedFee;
     }
 
+    function reserve0() external pure override returns (uint256) {
+        return 1000 * 1e18; // Dummy reserve
+    }
+
+    function reserve1() external pure override returns (uint256) {
+        return 1000 * 1e18; // Dummy reserve
+    }
+
+    function totalSupply() external pure override returns (uint256) {
+        return 0; // Mock total supply
+    }
+
     function tokens() external view override returns (address, address) {
         return (token0, token1);
     }
@@ -141,7 +153,15 @@ contract MockPool is IAetherPool {
 
     function swap(uint256 amountIn, address tokenIn, address to) external override returns (uint256 amountOut) {
         require(tokenIn == token0 || tokenIn == token1, "MockPool: INVALID_INPUT_TOKEN");
-        amountOut = amountIn / 2; // Simple mock logic for amount out
+
+        // Match Router's getAmountOut formula (Constant Product with Fee)
+        uint256 reserveIn = 1000 * 1e18;
+        uint256 reserveOut = 1000 * 1e18;
+        uint256 feeDenominator = 1_000_000;
+        uint256 amountInWithFee = amountIn * (feeDenominator - storedFee);
+        uint256 numerator = amountInWithFee * reserveOut;
+        uint256 denominator = (reserveIn * feeDenominator) + amountInWithFee;
+        amountOut = numerator / denominator;
 
         if (amountOut > 0) {
             address tokenToTransferOut;
@@ -216,6 +236,11 @@ contract MockPool is IAetherPool {
         return (amount0Actual, amount1Actual, liquidityMinted);
     }
 
+    // Implement transfer for Router initialization logic (forwarding LP tokens)
+    function transfer(address to, uint256 amount) external returns (bool) {
+        return true;
+    }
+
     // Implement other IAetherPool functions if they become necessary for tests, possibly with reverts or default values.
     // --- End IAetherPool Implementation ---
 }
@@ -263,7 +288,7 @@ contract SwapRouterTest is
         // --- Deploy Core Contracts ---
         feeRegistry = new FeeRegistry(address(this), address(this), 500); // Deploy FeeRegistry with treasury and 5% protocol fee
         factory = new AetherFactory(address(this), address(feeRegistry), 3000); // Pass owner, registry, and initial pool fee of 0.3%
-        router = new AetherRouter(); // Deploy Router with factory and roleManager
+        router = new AetherRouter(address(factory)); // Deploy Router with factory and roleManager
 
         // Define PoolKey parameters (assuming 3000 fee, 60 tickSpacing, no hooks)
         uint24 fee = 3000;
@@ -318,7 +343,7 @@ contract SwapRouterTest is
         // Call router's addLiquidity
         vm.startPrank(address(this)); // Simulate 'this' as the caller
         (/* uint256 amountAActual */,/* uint256 amountBActual */, uint256 liquidity) = router.addLiquidity(
-            address(pool), amountADesired, amountBDesired, amountAMin, amountBMin, address(this), deadline
+            _token0, _token1, amountADesired, amountBDesired, amountAMin, amountBMin, address(this), deadline
         );
         vm.stopPrank();
 
@@ -354,10 +379,9 @@ contract SwapRouterTest is
         tokenA.approve(address(router), amountIn);
 
         // Construct path for router swap
-        address[] memory path = new address[](3);
+        address[] memory path = new address[](2);
         path[0] = address(tokenA); // Input token
         path[1] = address(tokenB); // Output token (determines swap direction implicitly in simple pool)
-        path[2] = address(pool); // Pool address
 
         uint256 amountOutMin = 0; // No slippage for test
         uint256 deadline = block.timestamp + 60;
@@ -393,10 +417,9 @@ contract SwapRouterTest is
         tokenB.approve(address(router), amountIn);
 
         // Construct path for router swap (reverse)
-        address[] memory path = new address[](3);
+        address[] memory path = new address[](2);
         path[0] = address(tokenB); // Input token
         path[1] = address(tokenA); // Output token
-        path[2] = address(pool); // Pool address
 
         uint256 amountOutMin = 0; // No slippage for test
         uint256 deadline = block.timestamp + 60;
