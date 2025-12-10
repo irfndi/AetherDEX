@@ -107,8 +107,10 @@ func (suite *AuthMiddlewareTestSuite) SetupSuite() {
 
 // SetupTest runs before each test
 func (suite *AuthMiddlewareTestSuite) SetupTest() {
-	// Clear nonce store for each test
+	// Clear nonce store for each test (with proper locking)
+	suite.middleware.nonceMu.Lock()
 	suite.middleware.nonceStore = make(map[string]time.Time)
+	suite.middleware.nonceMu.Unlock()
 }
 
 // setupRoutes configures test routes
