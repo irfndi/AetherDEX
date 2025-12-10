@@ -49,3 +49,21 @@ export const fetchTokens = async () => {
         ]
     }
 }
+
+export interface SwapQuoteParams {
+    tokenIn: string
+    tokenOut: string
+    amountIn: string
+    slippage?: number
+}
+
+export const fetchSwapQuote = async (params: SwapQuoteParams) => {
+    const { data } = await api.post('/swap/quote', {
+        token_in: params.tokenIn,
+        token_out: params.tokenOut,
+        amount_in: params.amountIn,
+        slippage: params.slippage,
+    })
+    return data
+}
+

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
 import { Route as SendRoute } from '../src/routes/trade/send'
 import { useAccount, useSendTransaction } from 'wagmi'
 
-const SendPage = SendRoute as any
+const SendPage = SendRoute.component as any
 
 describe('SendPage', () => {
     beforeEach(() => {

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
 import { Route as LimitRoute } from '../src/routes/trade/limit'
 import { useAccount } from 'wagmi'
 
-const LimitPage = LimitRoute as any
+const LimitPage = LimitRoute.component as any
 
 describe('LimitPage', () => {
     beforeEach(() => {

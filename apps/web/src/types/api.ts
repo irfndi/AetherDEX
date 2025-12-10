@@ -50,3 +50,35 @@ export interface Transaction {
     created_at: string
     updated_at: string
 }
+
+export interface SwapQuoteRequest {
+    token_in: string
+    token_out: string
+    amount_in: string
+    slippage?: number
+}
+
+export interface RouteHop {
+    pool_id: string
+    token_in: string
+    token_out: string
+}
+
+export interface TokenInfo {
+    address: string
+    symbol: string
+    name: string
+    decimals: number
+}
+
+export interface SwapQuote {
+    amount_out: string
+    min_amount_out: string
+    price_impact: string
+    fee: string
+    fee_rate: string
+    route: RouteHop[]
+    token_in: TokenInfo
+    token_out: TokenInfo
+}
+

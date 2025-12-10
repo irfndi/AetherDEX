@@ -7,20 +7,21 @@ expect.extend(matchers)
 
 // runs a cleanup after each test case (e.g. clearing jsdom)
 afterEach(() => {
-  cleanup()
+    cleanup()
 })
 
 // Mock use-api hook
 vi.mock('../src/hooks/use-api', () => ({
     useTokens: vi.fn(() => ({ data: [], isLoading: false })),
     usePools: vi.fn(() => ({ data: [], isLoading: false })),
+    useSwapQuote: vi.fn(() => ({ data: null, isLoading: false, error: null })),
 }))
 
 // Mock helper function used by existing tests
 export const createMockTokenList = () => [
-  { symbol: 'ETH', name: 'Ethereum', balance: '1.5' },
-  { symbol: 'USDC', name: 'USD Coin', balance: '500.0' },
-  { symbol: 'DAI', name: 'Dai', balance: '100.0' },
+    { symbol: 'ETH', name: 'Ethereum', balance: '1.5' },
+    { symbol: 'USDC', name: 'USD Coin', balance: '500.0' },
+    { symbol: 'DAI', name: 'Dai', balance: '100.0' },
 ];
 
 // Mocking wagmi hooks
@@ -59,8 +60,12 @@ vi.mock('@tanstack/react-router', async () => {
     const actual = await vi.importActual('@tanstack/react-router')
     return {
         ...actual,
-        createFileRoute: () => (config: any) => config.component,
+        createFileRoute: () => (config: any) => ({
+            component: config.component,
+            ...config
+        }),
         Link: (props: any) => null,
         useRouter: vi.fn(),
     }
 })
+
