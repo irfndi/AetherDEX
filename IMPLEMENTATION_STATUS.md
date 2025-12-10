@@ -40,7 +40,7 @@ This document tracks the readiness of the AetherDEX project across its three mai
 | :--- | :--- | :--- | :--- |
 | **Entry Point** | `cmd/api/main.go` | 🟢 Wired | Pool routes registered. DB/Redis init present. |
 | **Pool Module** | `internal/pool/` | 🟢 Implemented | Service and Handler created. |
-| **Auth Module** | `internal/auth/` | 🟡 Partial | Structure exists, needs wiring. |
+| **Auth Module** | `internal/auth/` | 🟢 Implemented | Wired in `main.go`, tests improved. |
 | **Token Module** | `internal/token/` | 🟢 Implemented | Service and Handler created, wired in `main.go`. |
 | **Database** | `internal/database/` | 🟢 Configured | GORM + Postgres setup in `main.go`. |
 | **Redis** | `cmd/api/main.go` | 🟢 Configured | Redis client setup present. |
