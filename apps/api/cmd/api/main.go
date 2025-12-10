@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/irfndi/AetherDEX/apps/api/internal/pool"
+	"github.com/irfndi/AetherDEX/apps/api/internal/token"
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
@@ -81,6 +82,12 @@ func main() {
 		poolService := pool.NewService(poolRepo)
 		poolHandler := pool.NewHandler(poolService)
 		poolHandler.RegisterRoutes(v1)
+
+		// Token module initialization
+		tokenRepo := token.NewTokenRepository(db)
+		tokenService := token.NewService(tokenRepo)
+		tokenHandler := token.NewHandler(tokenService)
+		tokenHandler.RegisterRoutes(v1)
 	}
 
 	// Server configuration
