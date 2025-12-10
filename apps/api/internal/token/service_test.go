@@ -179,3 +179,105 @@ func TestListTokens(t *testing.T) {
 	assert.Equal(t, expectedTokens, tokens)
 	mockRepo.AssertExpectations(t)
 }
+
+func TestGetTokenByAddress(t *testing.T) {
+	mockRepo := new(MockTokenRepository)
+	service := NewService(mockRepo)
+
+	expectedToken := &models.Token{ID: 1, Address: "0x123", Symbol: "TST"}
+	mockRepo.On("GetByAddress", "0x123").Return(expectedToken, nil)
+
+	token, err := service.GetTokenByAddress("0x123")
+	assert.NoError(t, err)
+	assert.Equal(t, expectedToken, token)
+	mockRepo.AssertExpectations(t)
+}
+
+func TestGetTokenBySymbol(t *testing.T) {
+	mockRepo := new(MockTokenRepository)
+	service := NewService(mockRepo)
+
+	expectedToken := &models.Token{ID: 1, Address: "0x123", Symbol: "TST"}
+	mockRepo.On("GetBySymbol", "TST").Return(expectedToken, nil)
+
+	token, err := service.GetTokenBySymbol("TST")
+	assert.NoError(t, err)
+	assert.Equal(t, expectedToken, token)
+	mockRepo.AssertExpectations(t)
+}
+
+func TestGetVerifiedTokens(t *testing.T) {
+	mockRepo := new(MockTokenRepository)
+	service := NewService(mockRepo)
+
+	expectedTokens := []*models.Token{
+		{ID: 1, Symbol: "TST1", IsVerified: true},
+	}
+
+	mockRepo.On("GetVerifiedTokens", 10, 0).Return(expectedTokens, nil)
+
+	tokens, err := service.GetVerifiedTokens(0, 0)
+	assert.NoError(t, err)
+	assert.Equal(t, expectedTokens, tokens)
+	mockRepo.AssertExpectations(t)
+}
+
+func TestSearchTokens(t *testing.T) {
+	mockRepo := new(MockTokenRepository)
+	service := NewService(mockRepo)
+
+	expectedTokens := []*models.Token{
+		{ID: 1, Symbol: "TST", Name: "Test Token"},
+	}
+
+	mockRepo.On("SearchTokens", "Test", 10, 0).Return(expectedTokens, nil)
+
+	tokens, err := service.SearchTokens("Test", 0, 0)
+	assert.NoError(t, err)
+	assert.Equal(t, expectedTokens, tokens)
+	mockRepo.AssertExpectations(t)
+}
+
+func TestGetTopTokensByVolume(t *testing.T) {
+	mockRepo := new(MockTokenRepository)
+	service := NewService(mockRepo)
+
+	expectedTokens := []*models.Token{
+		{ID: 1, Symbol: "TST1", Volume24h: decimal.NewFromInt(1000)},
+	}
+
+	mockRepo.On("GetTopTokensByVolume", 10).Return(expectedTokens, nil)
+
+	tokens, err := service.GetTopTokensByVolume(0)
+	assert.NoError(t, err)
+	assert.Equal(t, expectedTokens, tokens)
+	mockRepo.AssertExpectations(t)
+}
+
+func TestGetTopTokensByMarketCap(t *testing.T) {
+	mockRepo := new(MockTokenRepository)
+	service := NewService(mockRepo)
+
+	expectedTokens := []*models.Token{
+		{ID: 1, Symbol: "TST1", MarketCap: decimal.NewFromInt(1000000)},
+	}
+
+	mockRepo.On("GetTopTokensByMarketCap", 10).Return(expectedTokens, nil)
+
+	tokens, err := service.GetTopTokensByMarketCap(0)
+	assert.NoError(t, err)
+	assert.Equal(t, expectedTokens, tokens)
+	mockRepo.AssertExpectations(t)
+}
+
+func TestUpdateTokenPrice(t *testing.T) {
+	mockRepo := new(MockTokenRepository)
+	service := NewService(mockRepo)
+
+	price := decimal.NewFromFloat(1.5)
+	mockRepo.On("UpdatePrice", uint(1), price).Return(nil)
+
+	err := service.UpdateTokenPrice(1, price)
+	assert.NoError(t, err)
+	mockRepo.AssertExpectations(t)
+}
