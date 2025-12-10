@@ -11,8 +11,10 @@ import {Test} from "forge-std/Test.sol";
 import {Hooks} from "../../src/libraries/Hooks.sol";
 import {Permissions} from "../../src/interfaces/Permissions.sol";
 import {IPoolManager} from "../../src/interfaces/IPoolManager.sol";
-import {PoolKey} from "../../src/types/PoolKey.sol";
+import {PoolKey} from "../../lib/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
 
 /**
  * @title HooksValidator
@@ -43,7 +45,7 @@ contract HooksTest is Test {
      * @notice Sets up the test environment by initializing dummy struct variables.
      */
     function setUp() public {
-        DUMMY_POOL_KEY = PoolKey(address(0), address(0), 0, 0, address(0));
+        DUMMY_POOL_KEY = PoolKey(Currency.wrap(address(0)), Currency.wrap(address(0)), 0, 0, IHooks(address(0)));
         DUMMY_SWAP_PARAMS = IPoolManager.SwapParams(true, 100, 1);
         DUMMY_MODIFY_PARAMS = IPoolManager.ModifyPositionParams(0, 0, 0);
         DUMMY_DELTA = BalanceDelta(10, 20);
@@ -151,11 +153,10 @@ contract HooksTest is Test {
             afterDonate: true
         });
         uint160 flagsAll = Hooks.permissionsToFlags(pAll);
-        uint160 expectedAllFlags = (
-            Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG
+        uint160 expectedAllFlags =
+            (Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG
                 | Hooks.AFTER_MODIFY_POSITION_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG
-                | Hooks.BEFORE_DONATE_FLAG | Hooks.AFTER_DONATE_FLAG
-        );
+                | Hooks.BEFORE_DONATE_FLAG | Hooks.AFTER_DONATE_FLAG);
         assertEq(flagsAll, expectedAllFlags, "Flags mismatch for all permissions");
 
         // Test case 4: No permissions
@@ -206,7 +207,7 @@ contract HooksTest is Test {
     function test_ValidateHookAddress() public {
         // Deploy the wrapper contract
         HooksValidator validator = new HooksValidator();
-        
+
         // Manually construct addresses with flags
         uint160 flags_bs = Hooks.BEFORE_SWAP_FLAG;
         address hook_bs = address(uint160(DUMMY_HOOK_TARGET) | flags_bs);
@@ -216,20 +217,20 @@ contract HooksTest is Test {
         address hook_none = DUMMY_HOOK_TARGET; // No flags
 
         // -- Test valid cases (these should not revert) --
-        
+
         // Valid: Hook with BEFORE_SWAP_FLAG requesting BEFORE_SWAP_FLAG
         validator.validateHookAddress(hook_bs, Hooks.BEFORE_SWAP_FLAG);
 
         // Valid: Hook with multiple flags requesting one of its flags
         validator.validateHookAddress(hook_bs_amp, Hooks.BEFORE_SWAP_FLAG);
         validator.validateHookAddress(hook_bs_amp, Hooks.AFTER_MODIFY_POSITION_FLAG);
-        
+
         // Valid: Requesting zero permissions (should always pass)
         validator.validateHookAddress(hook_bs, 0);
         validator.validateHookAddress(hook_none, 0);
-        
+
         // -- Test invalid cases (these should revert) --
-        
+
         // Invalid: Address zero with any permission requested (should revert)
         vm.expectRevert(); // Changed: Expect generic revert due to revert_strings = 'strip'
         validator.validateHookAddress(address(0), Hooks.BEFORE_SWAP_FLAG);
@@ -242,8 +243,6 @@ contract HooksTest is Test {
         vm.expectRevert(); // Changed: Expect generic revert due to revert_strings = 'strip'
         validator.validateHookAddress(hook_bs_amp, Hooks.AFTER_SWAP_FLAG);
     }
-
-
 
     /**
      * @notice Tests manually encoding and decoding permissions flags and target address.

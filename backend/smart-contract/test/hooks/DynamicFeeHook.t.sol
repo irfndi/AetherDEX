@@ -8,12 +8,15 @@ Email: join.mantap@gmail.com
 pragma solidity ^0.8.29;
 
 import {Test} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {DynamicFeeHook} from "../../src/hooks/DynamicFeeHook.sol";
 import {IPoolManager} from "../../src/interfaces/IPoolManager.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {FeeRegistry} from "../../src/primary/FeeRegistry.sol";
-import {PoolKey} from "../../src/types/PoolKey.sol";
+import {PoolKey} from "../../lib/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "../../src/types/BalanceDelta.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {Hooks} from "../../src/libraries/Hooks.sol";
 import {MockPoolManager} from "../mocks/MockPoolManager.sol";
 import {HookFactory} from "../utils/HookFactory.sol";
@@ -34,14 +37,18 @@ contract DynamicFeeHookImprovedTest is Test {
 
     // Constants for testing
     uint24 public constant MIN_FEE = 100; // 0.01%
-    uint24 public constant MAX_FEE = 100000; // 10%
-    uint24 public constant FEE_STEP = 50; // 0.005%
+    uint24 public constant MAX_FEE = 50000; // 5%
+    uint24 public constant FEE_STEP = 10; // 0.001%
     uint24 public constant INITIAL_FEE = 3000; // 0.3%
+    uint24 public constant EXPECTED_DYNAMIC_FEE = 3663; // Dynamically calculated fee based on high volatility + medium liquidity
     uint256 public constant VOLUME_THRESHOLD = 1000e18; // 1000 tokens
-    uint256 public constant MAX_VOLUME_MULTIPLIER = 10; // Maximum volume multiplier
+    uint256 public constant MAX_VOLUME_MULTIPLIER = 5; // Maximum volume multiplier
 
     // Events to test
-    event FeeUpdated(address token0, address token1, uint24 newFee);
+    event FeeUpdated(address token0, address token1, uint24 newFee, uint256 volatilityScore, uint256 liquidityScore);
+    event MarketConditionUpdated(
+        bytes32 poolId, uint256 volatilityScore, uint256 liquidityScore, uint256 activityScore
+    );
 
     // Removed incomplete comment block that was causing compilation errors
     /*notice Set up the test environment
@@ -55,7 +62,7 @@ contract DynamicFeeHookImprovedTest is Test {
         }
 
         // Deploy FeeRegistry with test contract as owner
-        feeRegistry = new FeeRegistry(address(this));
+        feeRegistry = new FeeRegistry(address(this), address(this), 500);
 
         // Deploy factory for hook deployment
         factory = new HookFactory();
@@ -82,8 +89,13 @@ contract DynamicFeeHookImprovedTest is Test {
      * @return key The created pool key
      */
     function _createPoolKey(uint24 fee) internal view returns (PoolKey memory) {
-        return
-            PoolKey({token0: address(token0), token1: address(token1), fee: fee, tickSpacing: 60, hooks: address(hook)});
+        return PoolKey({
+            currency0: Currency.wrap(address(token0)),
+            currency1: Currency.wrap(address(token1)),
+            fee: fee,
+            tickSpacing: 60,
+            hooks: IHooks(address(hook))
+        });
     }
 
     // Removed incomplete comment block that was causing compilation errors
@@ -128,7 +140,7 @@ contract DynamicFeeHookImprovedTest is Test {
      */
     function test_BeforeSwap_InvalidToken0() public {
         PoolKey memory key = _createPoolKey(INITIAL_FEE);
-        key.token0 = address(0);
+        key.currency0 = Currency.wrap(address(0));
 
         vm.expectRevert(DynamicFeeHook.InvalidTokenAddress.selector);
         hook.beforeSwap(
@@ -144,7 +156,7 @@ contract DynamicFeeHookImprovedTest is Test {
      */
     function test_BeforeSwap_InvalidToken1() public {
         PoolKey memory key = _createPoolKey(INITIAL_FEE);
-        key.token1 = address(0);
+        key.currency1 = Currency.wrap(address(0));
 
         vm.expectRevert(DynamicFeeHook.InvalidTokenAddress.selector);
         hook.beforeSwap(
@@ -168,9 +180,7 @@ contract DynamicFeeHookImprovedTest is Test {
             address(feeRegistry), abi.encodeWithSelector(FeeRegistry.getFee.selector, key), abi.encode(INITIAL_FEE)
         );
 
-        // Expect the FeeUpdated event
-        vm.expectEmit(true, true, true, true);
-        emit FeeUpdated(address(token0), address(token1), INITIAL_FEE);
+        vm.recordLogs();
 
         // Call afterSwap
         bytes4 selector = hook.afterSwap(
@@ -182,6 +192,7 @@ contract DynamicFeeHookImprovedTest is Test {
         );
 
         assertEq(selector, hook.afterSwap.selector);
+        _assertFeeUpdatedLog();
     }
 
     // Removed incomplete comment block that was causing compilation errors
@@ -196,9 +207,13 @@ contract DynamicFeeHookImprovedTest is Test {
             address(feeRegistry), abi.encodeWithSelector(FeeRegistry.getFee.selector, key), abi.encode(INITIAL_FEE)
         );
 
-        // Expect the FeeUpdated event
-        vm.expectEmit(true, true, true, true);
-        emit FeeUpdated(address(token0), address(token1), INITIAL_FEE);
+        // The DynamicFeeHook calculates a new fee based on market conditions:
+        // - High volatility (volatilityScore: 10000)
+        // - Medium liquidity (liquidityScore: 5000)
+        // - High activity (activityScore: 10000)
+        // Expected calculated fee: EXPECTED_DYNAMIC_FEE (not the initial fee of 3000)
+        // Expect the FeeUpdated event with the dynamically calculated fee
+        vm.recordLogs();
 
         // Call afterSwap
         bytes4 selector = hook.afterSwap(
@@ -210,6 +225,7 @@ contract DynamicFeeHookImprovedTest is Test {
         );
 
         assertEq(selector, hook.afterSwap.selector);
+        _assertFeeUpdatedLog();
     }
 
     // Removed incomplete comment block that was causing compilation errors
@@ -286,10 +302,10 @@ contract DynamicFeeHookImprovedTest is Test {
         // Calculate fee
         uint256 feeAmount = hook.calculateFee(key, amount);
 
-        // For very large volume, multiplier should be capped at MAX_VOLUME_MULTIPLIER (10)
-        // scaledFee = 3000 * 10 = 30000
-        // feeAmount = 20000e18 * 30000 / 1e6 = 600e18
-        assertEq(feeAmount, 600e18);
+        // For very large volume, multiplier should be capped at MAX_VOLUME_MULTIPLIER (5)
+        // scaledFee = 3000 * 5 = 15000
+        // feeAmount = 20000e18 * 15000 / 1e6 = 300e18
+        assertEq(feeAmount, 300e18);
     }
 
     // Removed incomplete comment block that was causing compilation errors
@@ -325,6 +341,29 @@ contract DynamicFeeHookImprovedTest is Test {
 
         // Test fee that's a multiple of FEE_STEP
         assertTrue(hook.validateFee(MIN_FEE + FEE_STEP));
+    }
+
+    function _assertFeeUpdatedLog() private {
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+        bytes32 expectedTopic = keccak256("FeeUpdated(address,address,uint24,uint256,uint256)");
+        bool found;
+
+        for (uint256 i = 0; i < entries.length; i++) {
+            if (entries[i].emitter != address(hook) || entries[i].topics[0] != expectedTopic) continue;
+
+            (uint24 newFee, uint256 volatilityScore, uint256 liquidityScore) =
+                abi.decode(entries[i].data, (uint24, uint256, uint256));
+
+            assertEq(entries[i].topics[1], bytes32(uint256(uint160(address(token0)))));
+            assertEq(entries[i].topics[2], bytes32(uint256(uint160(address(token1)))));
+            assertEq(newFee, EXPECTED_DYNAMIC_FEE);
+            assertEq(volatilityScore, 10000);
+            assertEq(liquidityScore, 5000);
+            found = true;
+            break;
+        }
+
+        assertTrue(found, "FeeUpdated event not emitted");
     }
 
     // Removed incomplete comment block that was causing compilation errors

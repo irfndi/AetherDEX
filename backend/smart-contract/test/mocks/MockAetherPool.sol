@@ -8,6 +8,7 @@ contract MockAetherPool is IAetherPool {
     address public token0;
     address public token1;
     uint24 public _fee;
+    bool private _initialized;
 
     // Track minted liquidity for basic burn/mint logic
     uint256 public totalLiquidity;
@@ -18,11 +19,13 @@ contract MockAetherPool is IAetherPool {
     }
 
     function initialize(address _token0, address _token1, uint24 __fee) public override {
+        require(!_initialized, "ALREADY_INITIALIZED");
         require(_token0 != address(0) && _token1 != address(0), "ZERO_ADDRESS");
         require(_token0 != _token1, "IDENTICAL_ADDRESSES");
         token0 = _token0 < _token1 ? _token0 : _token1;
         token1 = _token0 < _token1 ? _token1 : _token0;
         _fee = __fee;
+        _initialized = true;
     }
 
     function tokens() external view override returns (address, address) {
@@ -40,7 +43,7 @@ contract MockAetherPool is IAetherPool {
 
         // Simplified mock swap logic: 2% fee/slippage
         amountOut = (amountIn * 98) / 100;
-        
+
         address _tokenOut = (_tokenIn == token0) ? token1 : token0;
 
         // Simulate transfer (not strictly necessary for this mock unless balances are tracked)
@@ -69,30 +72,61 @@ contract MockAetherPool is IAetherPool {
     function burn(address to, uint256 liquidity) external override returns (uint256 amount0, uint256 amount1) {
         require(to != address(0), "INVALID_RECIPIENT");
         require(liquidity > 0, "ZERO_LIQUIDITY");
-        require(liquidityOf[msg.sender] >= liquidity, "INSUFFICIENT_LIQUIDITY"); // Basic check
+        require(liquidityOf[to] >= liquidity, "INSUFFICIENT_LIQUIDITY"); // Basic check for recipient
 
         // Simplified mock burn: return 1:1 tokens for LP amount
         amount0 = liquidity; // Placeholder value
         amount1 = liquidity; // Placeholder value
 
         totalLiquidity -= liquidity;
-        liquidityOf[msg.sender] -= liquidity;
+        liquidityOf[to] -= liquidity;
 
         emit Burn(msg.sender, to, amount0, amount1, liquidity);
         return (amount0, amount1);
     }
 
-    function addInitialLiquidity(uint256 amount0Desired, uint256 amount1Desired) external override returns (uint256 liquidity) {
+    function addInitialLiquidity(uint256 amount0Desired, uint256 amount1Desired)
+        external
+        override
+        returns (uint256 liquidity)
+    {
         require(token0 != address(0) && token1 != address(0), "NOT_INITIALIZED");
         require(totalLiquidity == 0, "ALREADY_INITIALIZED"); // Can only add initial liquidity once
         require(amount0Desired > 0 && amount1Desired > 0, "ZERO_INITIAL_LIQUIDITY");
 
         // Simplified: liquidity is sum of amounts (not price-based)
-        liquidity = amount0Desired + amount1Desired; 
+        liquidity = amount0Desired + amount1Desired;
         totalLiquidity = liquidity;
         liquidityOf[msg.sender] = liquidity; // Assign to caller
 
         emit Mint(msg.sender, msg.sender, amount0Desired, amount1Desired, liquidity);
         return liquidity;
+    }
+
+    function addLiquidityNonInitial(
+        address recipient,
+        uint256 amount0Desired,
+        uint256 amount1Desired,
+        bytes calldata /* data */
+    )
+        external
+        override
+        returns (uint256 amount0Actual, uint256 amount1Actual, uint256 liquidityMinted)
+    {
+        require(token0 != address(0) && token1 != address(0), "NOT_INITIALIZED");
+        require(totalLiquidity > 0, "USE_ADD_INITIAL_LIQUIDITY");
+        require(amount0Desired > 0 && amount1Desired > 0, "ZERO_LIQUIDITY");
+        require(recipient != address(0), "INVALID_RECIPIENT");
+
+        // Simplified: use desired amounts as actual amounts and sum for liquidity
+        amount0Actual = amount0Desired;
+        amount1Actual = amount1Desired;
+        liquidityMinted = amount0Desired + amount1Desired;
+
+        totalLiquidity += liquidityMinted;
+        liquidityOf[recipient] += liquidityMinted;
+
+        emit Mint(msg.sender, recipient, amount0Actual, amount1Actual, liquidityMinted);
+        return (amount0Actual, amount1Actual, liquidityMinted);
     }
 }

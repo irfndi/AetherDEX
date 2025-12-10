@@ -14,7 +14,10 @@ import "../src/primary/AetherFactory.sol";
 import "../src/primary/FeeRegistry.sol"; // Added FeeRegistry import
 import {AetherRouter} from "../src/primary/AetherRouter.sol";
 import {IAetherPool} from "../src/interfaces/IAetherPool.sol";
-import {PoolKey} from "../src/types/PoolKey.sol"; // Specifically import PoolKey struct
+import {PoolKey} from "../lib/v4-core/src/types/PoolKey.sol"; // Specifically import PoolKey struct
+import {Currency} from "v4-core/types/Currency.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
+import {IPoolManager} from "../src/interfaces/IPoolManager.sol";
 import "../src/libraries/TransferHelper.sol"; // Import TransferHelper for safeTransfer
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol"; // Import IERC20
 
@@ -90,11 +93,15 @@ contract MockPool is IAetherPool {
     }
 
     // IAetherPool's mint (by LP amount)
-    function mint(address /* recipient */, uint128 amount) 
-        external 
+    function mint(
+        address,
+        /* recipient */
+        uint128 amount
+    )
+        external
         pure
-        override 
-        returns (uint256 amount0, uint256 amount1) 
+        override
+        returns (uint256 amount0, uint256 amount1)
     {
         // Mock: If LP amount is > 0, return some dummy token amounts
         // In a real pool, this would calculate required token amounts based on 'amount' of LP tokens
@@ -112,7 +119,12 @@ contract MockPool is IAetherPool {
 
     // This is the mint function AetherRouter.addLiquidity currently expects (even if via placeholder logic)
     // It does NOT have 'override' as its signature differs from IAetherPool's standard mint.
-    function mint(address /* to */, uint256 amount0Desired, uint256 amount1Desired)
+    function mint(
+        address,
+        /* to */
+        uint256 amount0Desired,
+        uint256 amount1Desired
+    )
         external
         pure
         // No 'override' here as it's not matching the IAetherPool.mint(address, uint128)
@@ -120,18 +132,14 @@ contract MockPool is IAetherPool {
     {
         amount0 = amount0Desired;
         amount1 = amount1Desired; // Corrected typo from amountBDesired
-        liquidity = (amount0Desired + amount1Desired) / 2; 
+        liquidity = (amount0Desired + amount1Desired) / 2;
         if (liquidity == 0 && (amount0Desired > 0 || amount1Desired > 0)) {
-            liquidity = 1; 
+            liquidity = 1;
         }
         return (amount0, amount1, liquidity);
     }
 
-    function swap(uint256 amountIn, address tokenIn, address to)
-        external
-        override
-        returns (uint256 amountOut)
-    {
+    function swap(uint256 amountIn, address tokenIn, address to) external override returns (uint256 amountOut) {
         require(tokenIn == token0 || tokenIn == token1, "MockPool: INVALID_INPUT_TOKEN");
         amountOut = amountIn / 2; // Simple mock logic for amount out
 
@@ -147,10 +155,14 @@ contract MockPool is IAetherPool {
         return amountOut;
     }
 
-    function burn(address /* to */, uint256 liquidityToBurn) 
-        external 
+    function burn(
+        address,
+        /* to */
+        uint256 liquidityToBurn
+    )
+        external
         pure
-        override 
+        override
         returns (uint256 amount0Out, uint256 amount1Out)
     {
         // Mock: If liquidityToBurn > 0, return some dummy token amounts
@@ -166,10 +178,10 @@ contract MockPool is IAetherPool {
         return (amount0Out, amount1Out);
     }
 
-    function addInitialLiquidity(uint256 amount0Desired, uint256 amount1Desired) 
-        external 
+    function addInitialLiquidity(uint256 amount0Desired, uint256 amount1Desired)
+        external
         pure
-        override 
+        override
         returns (uint256 liquidityOut)
     {
         // Mock: Return some liquidity based on desired amounts
@@ -180,6 +192,28 @@ contract MockPool is IAetherPool {
         // Actual token transfers from depositor to pool would be managed by a PoolManager or similar
         // This would also likely set initial reserves and price
         return liquidityOut;
+    }
+
+    function addLiquidityNonInitial(
+        address,
+        /* recipient */
+        uint256 amount0Desired,
+        uint256 amount1Desired,
+        bytes calldata /* data */
+    )
+        external
+        pure
+        override
+        returns (uint256 amount0Actual, uint256 amount1Actual, uint256 liquidityMinted)
+    {
+        // Mock: Use desired amounts as actual amounts
+        amount0Actual = amount0Desired;
+        amount1Actual = amount1Desired;
+        liquidityMinted = (amount0Desired + amount1Desired) / 2;
+        if (liquidityMinted == 0 && (amount0Desired > 0 || amount1Desired > 0)) {
+            liquidityMinted = 1;
+        }
+        return (amount0Actual, amount1Actual, liquidityMinted);
     }
 
     // Implement other IAetherPool functions if they become necessary for tests, possibly with reverts or default values.
@@ -205,7 +239,13 @@ contract SwapRouterTest is
         returns (PoolKey memory key, bytes32 poolId)
     {
         require(token0 < token1, "UNSORTED_TOKENS");
-        key = PoolKey({token0: token0, token1: token1, fee: fee, tickSpacing: tickSpacing, hooks: hooks});
+        key = PoolKey({
+            currency0: Currency.wrap(token0),
+            currency1: Currency.wrap(token1),
+            fee: fee,
+            tickSpacing: tickSpacing,
+            hooks: IHooks(hooks)
+        });
         poolId = keccak256(abi.encode(key));
     }
 
@@ -221,9 +261,9 @@ contract SwapRouterTest is
         address _token1 = address(tokenA) < address(tokenB) ? address(tokenB) : address(tokenA);
 
         // --- Deploy Core Contracts ---
-        feeRegistry = new FeeRegistry(address(this)); // Deploy FeeRegistry
+        feeRegistry = new FeeRegistry(address(this), address(this), 500); // Deploy FeeRegistry with treasury and 5% protocol fee
         factory = new AetherFactory(address(this), address(feeRegistry), 3000); // Pass owner, registry, and initial pool fee of 0.3%
-        router = new AetherRouter(); // Deploy Router (no constructor args)
+        router = new AetherRouter(); // Deploy Router with factory and roleManager
 
         // Define PoolKey parameters (assuming 3000 fee, 60 tickSpacing, no hooks)
         uint24 fee = 3000;
@@ -267,13 +307,17 @@ contract SwapRouterTest is
         uint256 amountBMin = 0;
         uint256 deadline = block.timestamp + 60; // Set deadline
 
+        // Fund the test sender so the router can pull liquidity without underflowing balances
+        tokenA.mint(address(this), amountADesired);
+        tokenB.mint(address(this), amountBDesired);
+
         // Approve the ROUTER to spend tokens
         tokenA.approve(address(router), type(uint256).max);
         tokenB.approve(address(router), type(uint256).max);
 
         // Call router's addLiquidity
         vm.startPrank(address(this)); // Simulate 'this' as the caller
-        ( /* uint256 amountAActual */ , /* uint256 amountBActual */, uint256 liquidity) = router.addLiquidity(
+        (/* uint256 amountAActual */,/* uint256 amountBActual */, uint256 liquidity) = router.addLiquidity(
             address(pool), amountADesired, amountBDesired, amountAMin, amountBMin, address(this), deadline
         );
         vm.stopPrank();
@@ -284,14 +328,22 @@ contract SwapRouterTest is
 
     function test_createPool() public view {
         // Use poolId calculated in setUp
-        assertEq(address(pool), factory.getPool(poolKeyAB.token0, poolKeyAB.token1), "Pool address mismatch"); // Correct: Access mapping with token addresses
+        assertEq(
+            address(pool),
+            factory.getPoolAddress(
+                address(uint160(Currency.unwrap(poolKeyAB.currency0))),
+                address(uint160(Currency.unwrap(poolKeyAB.currency1))),
+                poolKeyAB.fee
+            ),
+            "Pool address mismatch"
+        ); // Correct: Use getPoolAddress with fee parameter
     }
 
     function test_swapTokens() public {
         uint256 amountIn = 10 ether;
 
         // Calculate expected amount using x*y=k formula and the actual pool fee
-        // uint256 currentFee = pool.fee(); // Get actual fee from pool
+        // uint256 currentFee = pool.getFee(); // Get actual fee from pool
         // uint256 amountInWithFee = (amountIn * (10000 - currentFee)) / 10000; // Unused variable
 
         // Mint tokens to 'this' for swapping
@@ -330,7 +382,7 @@ contract SwapRouterTest is
         uint256 amountIn = 10 ether;
 
         // Calculate expected amount using x*y=k formula and the actual pool fee
-        // uint256 currentFee = pool.fee(); // Get actual fee from pool
+        // uint256 currentFee = pool.getFee(); // Get actual fee from pool
         // uint256 amountInWithFee = (amountIn * (10000 - currentFee)) / 10000; // Unused variable
 
         // Mint tokens to 'this' for swapping

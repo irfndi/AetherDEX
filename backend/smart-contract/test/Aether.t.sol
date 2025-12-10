@@ -212,6 +212,9 @@ contract AetherRouterTest is Test, IEvents {
         vm.stopPrank();
 
         // --- Deploy Router ---
+        // Deploy a mock pool manager and role manager for testing
+        address mockPoolManager = address(0x1234);
+        address mockRoleManager = address(0x5678);
         router = new AetherRouter();
 
         // --- Get Sorted Tokens ---
@@ -250,7 +253,7 @@ contract AetherRouterTest is Test, IEvents {
         uint256 amountBMin = 0; // No slippage for initial seed
         uint256 deadline = block.timestamp + 1;
 
-        ( /*amountAActual*/ , /*amountBActual*/, uint256 liquidity) = router.addLiquidity(
+        (/*amountAActual*/,/*amountBActual*/, uint256 liquidity) = router.addLiquidity(
             address(pool), amountADesired, amountBDesired, amountAMin, amountBMin, address(this), deadline
         );
 

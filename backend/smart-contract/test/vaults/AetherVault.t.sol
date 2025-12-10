@@ -164,7 +164,9 @@ contract AetherVaultTest is Test {
         // Check totalYieldGenerated for approximate equality.
         assertApproxEqAbs(calculatedTotalYield, expectedYield, 2, "Wrong yield amount based on totalYieldGenerated");
         // Also check that totalAssets reflects this yield on top of physical balance
-        assertApproxEqAbs(currentTotalAssets, baseAssets + calculatedTotalYield, 2, "totalAssets != baseAssets + totalYieldGenerated");
+        assertApproxEqAbs(
+            currentTotalAssets, baseAssets + calculatedTotalYield, 2, "totalAssets != baseAssets + totalYieldGenerated"
+        );
     }
 
     function test_CrossChainYieldSync() public {

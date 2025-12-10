@@ -9,69 +9,61 @@ on:
       - main
       - develop
     paths:
-      - "interface/web/**"
+      - "apps/web/**"
       - ".github/workflows/frontend-build.yml"
   pull_request:
     branches:
       - main
       - develop
     paths:
-      - "interface/web/**"
+      - "apps/web/**"
       - ".github/workflows/frontend-build.yml"
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: interface/web
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 # v4.0.0
+        with:
+          version: 9.12.0
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "18"
-          cache: "npm"
-          cache-dependency-path: "interface/web/package.json"
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Cache Bun dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.bun/install/cache
-            interface/web/node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('interface/web/bun.lockb', 'interface/web/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
+          cache: "pnpm"
+          cache-dependency-path: "pnpm-lock.yaml"
 
       - name: Install dependencies
-        run: bun install
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: bun run lint
+        run: pnpm --filter aether-dex run lint
         continue-on-error: true
 
       - name: Type check
-        run: bun run typecheck
+        run: pnpm --filter aether-dex run typecheck
         continue-on-error: true
 
       - name: Build project
-        run: bun run build
+        run: pnpm --filter aether-dex run build
 
       - name: Archive build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: frontend-build
-          path: interface/web/dist
+          path: apps/web/.next
           retention-days: 7
 
       - name: Check bundle size
         run: |
           echo "Analyzing bundle size..."
-          find dist -type f -name "*.js" | xargs du -h | sort -hr
+          cd apps/web
+          if [ -d ".next/static" ]; then
+            find .next/static -type f -name "*.js" | xargs du -h | sort -hr | head -20
+          else
+            echo "Build output not found"
+          fi

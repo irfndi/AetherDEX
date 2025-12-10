@@ -8,12 +8,18 @@ Email: join.mantap@gmail.com
 pragma solidity ^0.8.29;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {PoolKey} from "../types/PoolKey.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {PoolKey} from "../../lib/v4-core/src/types/PoolKey.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {IFeeRegistry} from "../interfaces/IFeeRegistry.sol";
 
 /// @title Fee Registry
 /// @notice Manages both static fee configurations (fee tier and tick spacing) and dynamic fees for specific Aether Pools.
 /// Allows the owner to add static configurations and register pools for dynamic fee updates by authorized addresses (e.g., hooks).
-contract FeeRegistry is Ownable {
+contract FeeRegistry is Ownable, ReentrancyGuard, IFeeRegistry {
+    using SafeERC20 for IERC20;
     // --- Constants for Dynamic Fee Adjustments ---
     uint24 private constant MIN_FEE = 100; // 0.01%
     uint24 private constant MAX_FEE = 100000; // 10.00% to match DynamicFeeHook.sol
@@ -33,6 +39,30 @@ contract FeeRegistry is Ownable {
     /// @notice Mapping from the hash of a PoolKey to the address authorized to update its dynamic fee.
     /// @dev Only this address can call `updateFee` for the given pool.
     mapping(bytes32 => address) public feeUpdaters;
+
+    /// @notice Mapping from token pair hash to fee configuration
+    mapping(bytes32 => IFeeRegistry.FeeConfiguration) public feeConfigurations;
+
+    /// @notice Mapping to track authorized dynamic fee updaters
+    mapping(address => bool) public authorizedUpdaters;
+
+    // Protocol revenue distribution
+    mapping(address => uint256) public protocolRevenue;
+    mapping(address => uint256) public totalFeesCollected;
+    address public protocolTreasury;
+    uint256 public protocolFeePercentage; // Basis points (e.g., 500 = 5%)
+
+    // Governance controls
+    uint256 public constant GOVERNANCE_DELAY = 24 hours;
+    mapping(bytes32 => uint256) public pendingGovernanceActions;
+
+    // Fee tier governance
+    struct PendingFeeChange {
+        uint24 newFee;
+        uint256 executeAfter;
+        bool executed;
+    }
+    mapping(bytes32 => PendingFeeChange) public pendingFeeChanges;
 
     // --- Events ---
 
@@ -58,6 +88,18 @@ contract FeeRegistry is Ownable {
     /// @param updater The address that performed the update.
     /// @param newFee The new dynamic fee value.
     event DynamicFeeUpdated(bytes32 indexed poolKeyHash, address indexed updater, uint24 newFee);
+
+    // Protocol revenue events
+    event ProtocolRevenueCollected(address indexed token, uint256 amount);
+    event ProtocolRevenueDistributed(address indexed token, uint256 amount, address indexed recipient);
+    event ProtocolTreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
+    event ProtocolFeePercentageUpdated(uint256 oldPercentage, uint256 newPercentage);
+
+    // Governance events
+    event GovernanceActionProposed(bytes32 indexed actionHash, uint256 executeAfter);
+    event GovernanceActionExecuted(bytes32 indexed actionHash);
+    event FeeChangeProposed(bytes32 indexed poolHash, uint24 newFee, uint256 executeAfter);
+    event FeeChangeExecuted(bytes32 indexed poolHash, uint24 oldFee, uint24 newFee);
 
     // --- Errors ---
 
@@ -112,9 +154,30 @@ contract FeeRegistry is Ownable {
     /// @param updater The address provided which is the same as the current updater.
     error NewUpdaterSameAsOld(bytes32 poolKeyHash, address updater);
 
-    /// @notice Constructs the FeeRegistry with an initial owner.
-    /// @param initialOwner The address of the owner.
-    constructor(address initialOwner) Ownable(initialOwner) {}
+    // Protocol revenue errors
+    error InvalidProtocolTreasury();
+    error InvalidProtocolFeePercentage();
+    error InsufficientProtocolRevenue();
+    error RevenueDistributionFailed();
+
+    // Governance errors
+    error GovernanceDelayNotMet();
+    error GovernanceActionAlreadyExecuted();
+    error InvalidGovernanceAction();
+    error FeeChangeAlreadyPending();
+    error FeeChangeNotReady();
+
+    /// @notice Constructs the FeeRegistry with an initial owner and protocol settings.
+    /// @param initialOwner The address that will own this contract.
+    /// @param _protocolTreasury The address that will receive protocol fees.
+    /// @param _protocolFeePercentage The percentage of fees that go to protocol (in basis points).
+    constructor(address initialOwner, address _protocolTreasury, uint256 _protocolFeePercentage) Ownable(initialOwner) {
+        if (_protocolTreasury == address(0)) revert InvalidProtocolTreasury();
+        if (_protocolFeePercentage > 10000) revert InvalidProtocolFeePercentage(); // Max 100%
+
+        protocolTreasury = _protocolTreasury;
+        protocolFeePercentage = _protocolFeePercentage;
+    }
 
     /// @notice Adds a new static fee configuration (fee tier and tick spacing).
     /// @dev Only callable by the owner. Reverts if the fee tier already exists or parameters are invalid.
@@ -220,17 +283,16 @@ contract FeeRegistry is Ownable {
         if (swapVolume > 0) {
             uint256 volumeMultiplierRaw = (swapVolume + volumeThreshold - 1) / volumeThreshold;
             uint256 unCappedFeeAdjustment = volumeMultiplierRaw * 50;
-            
+
             // Check bounds using wider types to prevent overflow
             uint256 potentialFeeForBoundCheck = uint256(currentFee) + unCappedFeeAdjustment;
             if (
-                potentialFeeForBoundCheck > MAX_FEE ||
-                potentialFeeForBoundCheck < MIN_FEE ||
-                potentialFeeForBoundCheck > type(uint24).max   // extra safety check
+                potentialFeeForBoundCheck > MAX_FEE || potentialFeeForBoundCheck < MIN_FEE
+                    || potentialFeeForBoundCheck > type(uint24).max // extra safety check
             ) {
                 revert InvalidDynamicFee();
             }
-            
+
             // Now that we've verified the bounds, we can safely cast to uint24
             // No need to keep the uncapped adjustment since we've already done the bounds check with wider types
 
@@ -330,5 +392,298 @@ contract FeeRegistry is Ownable {
         // The public mapping automatically creates a getter, but we implement
         // the function explicitly for clarity and adherence to the interface.
         return tickSpacings[fee];
+    }
+
+    // --- Interface Implementation ---
+
+    /// @notice Helper function to generate token pair hash
+    /// @param tokenA Address of the first token
+    /// @param tokenB Address of the second token
+    /// @return The hash of the ordered token pair
+    function _getTokenPairHash(address tokenA, address tokenB) internal pure returns (bytes32) {
+        (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
+        return keccak256(abi.encodePacked(token0, token1));
+    }
+
+    /// @notice Adds a new fee configuration for a token pair
+    /// @param tokenA Address of the first token
+    /// @param tokenB Address of the second token
+    /// @param fee The fee tier (e.g., 3000 for 0.3%)
+    /// @param tickSpacing The tick spacing for this fee tier
+    /// @param isStatic_ Whether the fee is static or dynamic
+    function addFeeConfiguration(address tokenA, address tokenB, uint24 fee, int24 tickSpacing, bool isStatic_)
+        external
+        onlyOwner
+    {
+        if (fee == 0 || fee > MAX_FEE || tickSpacing <= 0) {
+            revert InvalidFeeConfiguration();
+        }
+
+        bytes32 pairHash = _getTokenPairHash(tokenA, tokenB);
+
+        // Check if configuration already exists
+        if (feeConfigurations[pairHash].fee != 0) {
+            revert FeeAlreadyExists(fee);
+        }
+
+        feeConfigurations[pairHash] =
+            IFeeRegistry.FeeConfiguration({isStatic: isStatic_, fee: fee, tickSpacing: uint24(tickSpacing)});
+
+        // Also add to static fee configurations if static
+        if (isStatic_) {
+            tickSpacings[fee] = tickSpacing;
+        }
+
+        emit FeeConfigurationAdded(tokenA, tokenB, fee, tickSpacing);
+    }
+
+    /// @notice Sets or updates the static fee for a specific token pair
+    /// @param tokenA Address of the first token
+    /// @param tokenB Address of the second token
+    /// @param fee The static fee tier
+    function setStaticFee(address tokenA, address tokenB, uint24 fee) external onlyOwner {
+        if (fee == 0 || fee > MAX_FEE) {
+            revert InvalidFeeConfiguration();
+        }
+
+        bytes32 pairHash = _getTokenPairHash(tokenA, tokenB);
+
+        // Update existing configuration or create new one
+        IFeeRegistry.FeeConfiguration storage config = feeConfigurations[pairHash];
+        config.isStatic = true;
+        config.fee = fee;
+
+        emit StaticFeeSet(tokenA, tokenB, fee);
+    }
+
+    /// @notice Updates the dynamic fee for a specific token pair
+    /// @param tokenA Address of the first token
+    /// @param tokenB Address of the second token
+    /// @param newFee The new dynamic fee tier
+    function updateDynamicFee(address tokenA, address tokenB, uint24 newFee) external {
+        if (!authorizedUpdaters[msg.sender] && msg.sender != owner()) {
+            revert UnauthorizedUpdater(bytes32(0), msg.sender, owner());
+        }
+
+        if (newFee < MIN_FEE || newFee > MAX_FEE) {
+            revert InvalidDynamicFee();
+        }
+
+        bytes32 pairHash = _getTokenPairHash(tokenA, tokenB);
+        IFeeRegistry.FeeConfiguration storage config = feeConfigurations[pairHash];
+
+        if (config.isStatic) {
+            revert InvalidFeeConfiguration(); // Cannot update static fee dynamically
+        }
+
+        uint24 oldFee = config.fee;
+        config.fee = newFee;
+
+        emit DynamicFeeUpdated(tokenA, tokenB, oldFee, newFee);
+    }
+
+    /// @notice Gets the fee configuration for a token pair
+    /// @param tokenA Address of the first token
+    /// @param tokenB Address of the second token
+    /// @return config The FeeConfiguration struct for the pair
+    function getFeeConfiguration(address tokenA, address tokenB)
+        external
+        view
+        returns (IFeeRegistry.FeeConfiguration memory config)
+    {
+        bytes32 pairHash = _getTokenPairHash(tokenA, tokenB);
+        return feeConfigurations[pairHash];
+    }
+
+    /// @notice Gets the current applicable fee for a token pair
+    /// @param tokenA Address of the first token
+    /// @param tokenB Address of the second token
+    /// @return fee The current fee (static or dynamic)
+    function getCurrentFee(address tokenA, address tokenB) external view returns (uint24 fee) {
+        bytes32 pairHash = _getTokenPairHash(tokenA, tokenB);
+        IFeeRegistry.FeeConfiguration memory config = feeConfigurations[pairHash];
+
+        if (config.fee == 0) {
+            revert FeeTierNotSupported(0);
+        }
+
+        return config.fee;
+    }
+
+    /// @notice Authorizes or deauthorizes an address to update dynamic fees
+    /// @param updater The address of the updater
+    /// @param allowed True to allow, false to disallow
+    function setDynamicFeeUpdater(address updater, bool allowed) external onlyOwner {
+        authorizedUpdaters[updater] = allowed;
+        emit DynamicFeeUpdaterSet(updater, allowed);
+    }
+
+    /// @notice Checks if an address is an authorized dynamic fee updater
+    /// @param updater The address to check
+    /// @return isAllowed True if the address is allowed, false otherwise
+    function isDynamicFeeUpdater(address updater) external view returns (bool isAllowed) {
+        return authorizedUpdaters[updater];
+    }
+
+    // --- Protocol Revenue Management ---
+
+    /// @notice Collects protocol fees from a token
+    /// @param token The token address to collect fees from
+    /// @param amount The amount of fees to collect
+    function collectProtocolFees(address token, uint256 amount) external nonReentrant {
+        if (!authorizedUpdaters[msg.sender] && msg.sender != owner()) {
+            revert UnauthorizedUpdater(bytes32(0), msg.sender, owner());
+        }
+
+        if (amount == 0) return;
+
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+
+        uint256 protocolShare = (amount * protocolFeePercentage) / 10000;
+        protocolRevenue[token] += protocolShare;
+        totalFeesCollected[token] += amount;
+
+        emit ProtocolRevenueCollected(token, protocolShare);
+    }
+
+    /// @notice Distributes protocol revenue to the treasury
+    /// @param token The token to distribute
+    /// @param amount The amount to distribute (0 = all available)
+    function distributeProtocolRevenue(address token, uint256 amount) external onlyOwner nonReentrant {
+        uint256 availableRevenue = protocolRevenue[token];
+        if (availableRevenue == 0) revert InsufficientProtocolRevenue();
+
+        uint256 distributeAmount = amount == 0 ? availableRevenue : amount;
+        if (distributeAmount > availableRevenue) revert InsufficientProtocolRevenue();
+
+        protocolRevenue[token] -= distributeAmount;
+
+        IERC20(token).safeTransfer(protocolTreasury, distributeAmount);
+
+        emit ProtocolRevenueDistributed(token, distributeAmount, protocolTreasury);
+    }
+
+    /// @notice Updates the protocol treasury address with governance delay
+    /// @param newTreasury The new treasury address
+    function proposeProtocolTreasuryUpdate(address newTreasury) external onlyOwner {
+        if (newTreasury == address(0)) revert InvalidProtocolTreasury();
+
+        bytes32 actionHash = keccak256(abi.encodePacked("updateTreasury", newTreasury));
+        uint256 executeAfter = block.timestamp + GOVERNANCE_DELAY;
+
+        pendingGovernanceActions[actionHash] = executeAfter;
+        emit GovernanceActionProposed(actionHash, executeAfter);
+    }
+
+    /// @notice Executes the protocol treasury update after delay
+    /// @param newTreasury The new treasury address
+    function executeProtocolTreasuryUpdate(address newTreasury) external onlyOwner {
+        bytes32 actionHash = keccak256(abi.encodePacked("updateTreasury", newTreasury));
+        uint256 executeAfter = pendingGovernanceActions[actionHash];
+
+        if (executeAfter == 0) revert InvalidGovernanceAction();
+        if (block.timestamp < executeAfter) revert GovernanceDelayNotMet();
+
+        address oldTreasury = protocolTreasury;
+        protocolTreasury = newTreasury;
+
+        delete pendingGovernanceActions[actionHash];
+
+        emit ProtocolTreasuryUpdated(oldTreasury, newTreasury);
+        emit GovernanceActionExecuted(actionHash);
+    }
+
+    /// @notice Updates the protocol fee percentage with governance delay
+    /// @param newPercentage The new fee percentage in basis points
+    function proposeProtocolFeeUpdate(uint256 newPercentage) external onlyOwner {
+        if (newPercentage > 10000) revert InvalidProtocolFeePercentage();
+
+        bytes32 actionHash = keccak256(abi.encodePacked("updateFeePercentage", newPercentage));
+        uint256 executeAfter = block.timestamp + GOVERNANCE_DELAY;
+
+        pendingGovernanceActions[actionHash] = executeAfter;
+        emit GovernanceActionProposed(actionHash, executeAfter);
+    }
+
+    /// @notice Executes the protocol fee percentage update after delay
+    /// @param newPercentage The new fee percentage in basis points
+    function executeProtocolFeeUpdate(uint256 newPercentage) external onlyOwner {
+        bytes32 actionHash = keccak256(abi.encodePacked("updateFeePercentage", newPercentage));
+        uint256 executeAfter = pendingGovernanceActions[actionHash];
+
+        if (executeAfter == 0) revert InvalidGovernanceAction();
+        if (block.timestamp < executeAfter) revert GovernanceDelayNotMet();
+
+        uint256 oldPercentage = protocolFeePercentage;
+        protocolFeePercentage = newPercentage;
+
+        delete pendingGovernanceActions[actionHash];
+
+        emit ProtocolFeePercentageUpdated(oldPercentage, newPercentage);
+        emit GovernanceActionExecuted(actionHash);
+    }
+
+    // --- Governance-Controlled Fee Management ---
+
+    /// @notice Proposes a fee change for a pool with governance delay
+    /// @param key The pool key
+    /// @param newFee The new fee to set
+    function proposeFeeChange(PoolKey calldata key, uint24 newFee) external onlyOwner {
+        if (newFee < MIN_FEE || newFee > MAX_FEE || newFee % FEE_STEP != 0) {
+            revert InvalidDynamicFee();
+        }
+
+        bytes32 poolKeyHash = keccak256(abi.encode(key));
+
+        if (pendingFeeChanges[poolKeyHash].executeAfter != 0 && !pendingFeeChanges[poolKeyHash].executed) {
+            revert FeeChangeAlreadyPending();
+        }
+
+        uint256 executeAfter = block.timestamp + GOVERNANCE_DELAY;
+
+        pendingFeeChanges[poolKeyHash] = PendingFeeChange({newFee: newFee, executeAfter: executeAfter, executed: false});
+
+        emit FeeChangeProposed(poolKeyHash, newFee, executeAfter);
+    }
+
+    /// @notice Executes a pending fee change after the governance delay
+    /// @param key The pool key
+    function executeFeeChange(PoolKey calldata key) external onlyOwner {
+        bytes32 poolKeyHash = keccak256(abi.encode(key));
+        PendingFeeChange storage pendingChange = pendingFeeChanges[poolKeyHash];
+
+        if (pendingChange.executeAfter == 0) revert InvalidGovernanceAction();
+        if (block.timestamp < pendingChange.executeAfter) revert FeeChangeNotReady();
+        if (pendingChange.executed) revert GovernanceActionAlreadyExecuted();
+
+        uint24 oldFee = dynamicFees[poolKeyHash];
+        dynamicFees[poolKeyHash] = pendingChange.newFee;
+        pendingChange.executed = true;
+
+        emit FeeChangeExecuted(poolKeyHash, oldFee, pendingChange.newFee);
+    }
+
+    // --- View Functions ---
+
+    /// @notice Gets the available protocol revenue for a token
+    /// @param token The token address
+    /// @return amount The available revenue amount
+    function getProtocolRevenue(address token) external view returns (uint256 amount) {
+        return protocolRevenue[token];
+    }
+
+    /// @notice Gets the total fees collected for a token
+    /// @param token The token address
+    /// @return amount The total collected amount
+    function getTotalFeesCollected(address token) external view returns (uint256 amount) {
+        return totalFeesCollected[token];
+    }
+
+    /// @notice Gets pending fee change details
+    /// @param key The pool key
+    /// @return pendingChange The pending fee change struct
+    function getPendingFeeChange(PoolKey calldata key) external view returns (PendingFeeChange memory pendingChange) {
+        bytes32 poolKeyHash = keccak256(abi.encode(key));
+        return pendingFeeChanges[poolKeyHash];
     }
 }

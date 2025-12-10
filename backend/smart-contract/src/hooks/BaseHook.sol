@@ -9,7 +9,7 @@ pragma solidity ^0.8.29;
 
 import {IPoolManager} from "../interfaces/IPoolManager.sol";
 import {Hooks} from "../libraries/Hooks.sol";
-import {PoolKey} from "../types/PoolKey.sol";
+import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {BalanceDelta} from "../types/BalanceDelta.sol";
 
 /**
