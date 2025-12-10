@@ -10,15 +10,15 @@ import (
 type MessageType string
 
 const (
-	MessageTypeSubscribe             MessageType = "subscribe"
-	MessageTypeSubscriptionConfirmed MessageType = "subscription_confirmed"
-	MessageTypeUnsubscribe           MessageType = "unsubscribe"
+	MessageTypeSubscribe               MessageType = "subscribe"
+	MessageTypeSubscriptionConfirmed   MessageType = "subscription_confirmed"
+	MessageTypeUnsubscribe             MessageType = "unsubscribe"
 	MessageTypeUnsubscriptionConfirmed MessageType = "unsubscription_confirmed"
-	MessageTypePriceUpdate           MessageType = "price_update"
-	MessageTypePoolUpdate  MessageType = "pool_update"
-	MessageTypeError       MessageType = "error"
-	MessageTypePing        MessageType = "ping"
-	MessageTypePong        MessageType = "pong"
+	MessageTypePriceUpdate             MessageType = "price_update"
+	MessageTypePoolUpdate              MessageType = "pool_update"
+	MessageTypeError                   MessageType = "error"
+	MessageTypePing                    MessageType = "ping"
+	MessageTypePong                    MessageType = "pong"
 )
 
 // SubscriptionTopic represents different subscription topics
