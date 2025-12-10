@@ -1,7 +1,4 @@
-"use client";
-
 import { ScrollArea } from "@radix-ui/react-scroll-area"; // Updated import path for ScrollArea
-import Image from "next/image";
 import { useState } from "react";
 import type { Token } from "./TokenSelector";
 
@@ -40,7 +37,7 @@ export const TokenList = ({ tokens, onSelect }: TokenListProps) => {
                 onSelect(token);
               }}
             >
-              <Image
+              <img
                 src={token.icon || "/placeholder.svg"}
                 alt={token.name}
                 width={32}

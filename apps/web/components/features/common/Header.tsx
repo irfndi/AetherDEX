@@ -1,7 +1,5 @@
-"use client";
-
 import { MoonIcon, SunIcon } from "lucide-react";
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,7 +22,7 @@ export function Header({ onWalletConnect }: HeaderProps) {
   return (
     <header className="fixed top-0 left-0 w-full h-16 bg-background/90 backdrop-blur-md z-50 border-b border-border">
       <div className="container max-w-7xl h-full flex items-center justify-between">
-        <Link href="/" className="font-bold text-xl">
+        <Link to="/" className="font-bold text-xl">
           Aether
         </Link>
         <div className="flex items-center gap-4">
