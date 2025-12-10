@@ -453,6 +453,49 @@ func (suite *AuthMiddlewareTestSuite) TestSecureCORS_DisallowedOrigin() {
 	assert.Empty(suite.T(), w.Header().Get("Access-Control-Allow-Origin"))
 }
 
+// TestRealRequireRole tests the real RequireRole and getUserRoles implementation
+func (suite *AuthMiddlewareTestSuite) TestRealRequireRole() {
+	// Create a new router with the REAL middleware (not the mock)
+	router := gin.New()
+	realMiddleware := NewAuthMiddleware()
+
+	router.GET("/real-protected", realMiddleware.RequireAuth(), realMiddleware.RequireRole("trader"), func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	token := suite.generateValidToken()
+
+	req := httptest.NewRequest("GET", "/real-protected", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	// getUserRoles returns "user", "trader" by default, so "trader" should pass
+	assert.Equal(suite.T(), http.StatusOK, w.Code)
+}
+
+// TestRealRequireRole_Forbidden tests the real RequireRole with missing role
+func (suite *AuthMiddlewareTestSuite) TestRealRequireRole_Forbidden() {
+	router := gin.New()
+	realMiddleware := NewAuthMiddleware()
+
+	router.GET("/real-admin", realMiddleware.RequireAuth(), realMiddleware.RequireRole("admin"), func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	token := suite.generateValidToken()
+
+	req := httptest.NewRequest("GET", "/real-admin", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	// getUserRoles returns "user", "trader" by default, so "admin" should fail
+	assert.Equal(suite.T(), http.StatusForbidden, w.Code)
+}
+
 // TestValidateSignatureRequest tests signature request validation
 func (suite *AuthMiddlewareTestSuite) TestValidateSignatureRequest() {
 	tests := []struct {

@@ -40,16 +40,17 @@ This document tracks the readiness of the AetherDEX project across its three mai
 | :--- | :--- | :--- | :--- |
 | **Entry Point** | `cmd/api/main.go` | 🟢 Wired | Pool routes registered. DB/Redis init present. |
 | **Pool Module** | `internal/pool/` | 🟢 Implemented | Service and Handler created. |
-| **Auth Module** | `internal/auth/` | 🟡 Partial | Structure exists, needs wiring. |
-| **Token Module** | `internal/token/` | 🟡 Partial | Structure exists, needs wiring. |
+| **Auth Module** | `internal/auth/` | 🟢 Implemented | Wired in `main.go`, tests improved. |
+| **Token Module** | `internal/token/` | 🟢 Implemented | Service and Handler created, wired in `main.go`. |
 | **Database** | `internal/database/` | 🟢 Configured | GORM + Postgres setup in `main.go`. |
 | **Redis** | `cmd/api/main.go` | 🟢 Configured | Redis client setup present. |
 
 **Action Items:**
 - [x] Register `internal` handlers in `cmd/api/main.go` (Gin router).
 - [x] Implement `Service` layer logic for Pools.
-- [ ] Implement `Service` layer for Tokens.
-- [ ] Create API routes for `/tokens`, `/swap/quote`.
+- [x] Implement `Service` layer for Tokens.
+- [x] Create API routes for `/tokens`.
+- [ ] Create API routes for `/swap/quote`.
 
 ---
 

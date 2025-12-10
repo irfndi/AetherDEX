@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/irfndi/AetherDEX/apps/api/internal/models" // Added import
+	"github.com/irfndi/AetherDEX/apps/api/internal/models"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )

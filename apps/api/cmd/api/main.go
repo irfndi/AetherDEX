@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/irfndi/AetherDEX/apps/api/internal/auth"
 	"github.com/irfndi/AetherDEX/apps/api/internal/pool"
+	"github.com/irfndi/AetherDEX/apps/api/internal/token"
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
@@ -60,6 +62,13 @@ func main() {
 	router.Use(gin.Logger())
 	router.Use(gin.Recovery())
 
+	// Security middleware
+	router.Use(auth.SecurityHeaders())
+	router.Use(auth.SecureCORS())
+
+	// Initialize auth middleware
+	authMiddleware := auth.NewAuthMiddleware()
+
 	// Health check endpoint
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -76,11 +85,26 @@ func main() {
 			c.JSON(http.StatusOK, gin.H{"message": "pong"})
 		})
 
+		// Protected route example (can be expanded)
+		v1.GET("/protected", authMiddleware.RequireAuth(), func(c *gin.Context) {
+			address, _ := c.Get("user_address")
+			c.JSON(http.StatusOK, gin.H{
+				"message": "Access granted",
+				"user":    address,
+			})
+		})
+
 		// Pool module initialization
 		poolRepo := pool.NewPoolRepository(db)
 		poolService := pool.NewService(poolRepo)
 		poolHandler := pool.NewHandler(poolService)
 		poolHandler.RegisterRoutes(v1)
+
+		// Token module initialization
+		tokenRepo := token.NewTokenRepository(db)
+		tokenService := token.NewService(tokenRepo)
+		tokenHandler := token.NewHandler(tokenService)
+		tokenHandler.RegisterRoutes(v1)
 	}
 
 	// Server configuration
