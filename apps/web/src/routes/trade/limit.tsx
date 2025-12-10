@@ -1,6 +1,12 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { Settings, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
+import { useAccount, useConnect, useDisconnect, useWriteContract } from 'wagmi'
+import { ROUTER_ABI } from '../../lib/abis'
+import { parseEther } from 'viem'
+
+// Address of the Router Contract (Placeholder)
+const ROUTER_ADDRESS = '0x0000000000000000000000000000000000000000'
 
 export const Route = createFileRoute('/trade/limit')({
     component: LimitPage,
@@ -9,6 +15,25 @@ export const Route = createFileRoute('/trade/limit')({
 function LimitPage() {
     const [amount, setAmount] = useState('')
     const [price, setPrice] = useState('')
+    const { address, isConnected } = useAccount()
+    const { connectors, connect } = useConnect()
+    const { disconnect } = useDisconnect()
+    const { writeContract, isPending } = useWriteContract()
+
+    const handleConnect = () => {
+        const connector = connectors[0]
+        if (connector) {
+            connect({ connector })
+        }
+    }
+
+    const handlePlaceOrder = () => {
+        if (!amount || !price) return
+
+        // Mock limit order placement (using swap as placeholder since actual limit order logic might vary)
+        // In reality this would likely call a different function on the router or a specific LimitOrderManager
+        console.log("Placing limit order:", amount, "@", price)
+    }
 
     return (
         <div className="min-h-screen">
@@ -25,9 +50,21 @@ function LimitPage() {
                         <Link to="/trade/send" className="text-gray-400 hover:text-white transition">Send</Link>
                     </nav>
 
-                    <button className="px-6 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-xl font-semibold hover:opacity-90 transition-all">
-                        Connect Wallet
-                    </button>
+                    {isConnected ? (
+                        <button
+                            onClick={() => disconnect()}
+                            className="px-6 py-2.5 bg-slate-800 rounded-xl font-semibold hover:bg-slate-700 transition-all border border-slate-700"
+                        >
+                            {address?.slice(0, 6)}...{address?.slice(-4)}
+                        </button>
+                    ) : (
+                        <button
+                            onClick={handleConnect}
+                            className="px-6 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-xl font-semibold hover:opacity-90 transition-all"
+                        >
+                            Connect Wallet
+                        </button>
+                    )}
                 </div>
             </header>
 
@@ -80,9 +117,21 @@ function LimitPage() {
                             </div>
                         </div>
 
-                        <button className="w-full py-4 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-2xl font-semibold text-lg hover:opacity-90 transition-all">
-                            Connect Wallet
-                        </button>
+                        {isConnected ? (
+                            <button
+                                onClick={handlePlaceOrder}
+                                className="w-full py-4 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-2xl font-semibold text-lg hover:opacity-90 transition-all"
+                            >
+                                Place Limit Order
+                            </button>
+                        ) : (
+                            <button
+                                onClick={handleConnect}
+                                className="w-full py-4 bg-slate-700 text-gray-300 rounded-2xl font-semibold text-lg hover:bg-slate-600 transition-all"
+                            >
+                                Connect Wallet
+                            </button>
+                        )}
                     </div>
                 </div>
             </main>

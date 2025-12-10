@@ -1,0 +1,3 @@
+$ vite preview
+  ➜  Local:   http://localhost:4173/
+  ➜  Network: http://192.168.0.2:4173/

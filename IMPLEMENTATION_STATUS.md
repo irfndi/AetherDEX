@@ -62,22 +62,27 @@ This document tracks the readiness of the AetherDEX project across its three mai
 
 ## 3. Frontend (`apps/web`)
 
-**Overall Status:** 🟡 **Wallet Integrated**
+**Overall Status:** 🟢 **Wallet, API, & Mock Contracts Integrated**
 *   **Goal:** TanStack Router for type-safe routing, migrating away from standard Next.js App Router patterns.
-*   **Current State:** Wallet connection via Wagmi added to Swap UI.
+*   **Current State:** Wallet connection via Wagmi added. API Client & Hooks setup. Swap UI uses API for tokens. Migrated to Bun. Tests pass.
 
 | Feature | File Location | Status | Notes |
 | :--- | :--- | :--- | :--- |
 | **Landing Page** | `src/routes/index.tsx` | 🟢 Implemented | TanStack Router version. Visuals only. |
-| **Swap UI** | `src/routes/trade/swap.tsx` | 🟢 Updated | Added Wagmi connection logic. |
-| **Trade Routes** | `src/routes/trade/` | 🟡 Partial | Other routes (limit, send) need update. |
+| **Swap UI** | `src/routes/trade/swap.tsx` | 🟢 Updated | Wallet, Mock Contracts, & API integration (Tokens). |
+| **Limit UI** | `src/routes/trade/limit.tsx` | 🟢 Updated | Wallet connection & mock placement added. |
+| **Send UI** | `src/routes/trade/send.tsx` | 🟢 Updated | Wallet connection & mock send added. |
+| **API Client** | `src/lib/api.ts` | 🟢 Implemented | Axios client + TanStack Query hooks. |
 | **Wallet Connect** | `wagmi.ts` | 🟢 Configured | Wagmi config created. |
-| **API Integration** | N/A | 🔴 Missing | No fetching from `apps/api` or Blockchain yet. |
+| **Tests** | `test/` | 🟢 Passing | Robust unit tests for all trade routes & API hooks. |
 
 **Action Items:**
-- [x] Complete migration of Swap UI to TanStack Router (Verified in `src/routes`).
+- [x] Complete migration of Swap UI to TanStack Router.
 - [x] Integrate Wagmi/RainbowKit for real wallet connection.
-- [ ] Connect UI to Smart Contracts (Viem) or API.
+- [x] Connect UI to Mock Smart Contracts (Viem).
+- [x] Migrate to Bun and ensure tests pass.
+- [x] Setup API Client and connect UI to (mocked/real) API endpoints.
+- [ ] Connect UI to real API endpoints once backend is fully ready.
 
 ---
 
