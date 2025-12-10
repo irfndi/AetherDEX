@@ -14,10 +14,10 @@ const FeeDenominator = 1_000_000
 
 // SwapQuoteRequest represents a request for a swap quote
 type SwapQuoteRequest struct {
-	TokenIn   string          `json:"token_in" binding:"required"`
-	TokenOut  string          `json:"token_out" binding:"required"`
-	AmountIn  decimal.Decimal `json:"amount_in" binding:"required"`
-	Slippage  decimal.Decimal `json:"slippage"` // Optional, default 0.5%
+	TokenIn  string          `json:"token_in" binding:"required"`
+	TokenOut string          `json:"token_out" binding:"required"`
+	AmountIn decimal.Decimal `json:"amount_in" binding:"required"`
+	Slippage decimal.Decimal `json:"slippage"` // Optional, default 0.5%
 }
 
 // SwapQuoteResponse represents the response for a swap quote

@@ -63,7 +63,7 @@ contract AetherRouterTest is Test {
         console.log("Deploying FeeRegistry with owner:", address(this));
         feeRegistry = new FeeRegistry(address(this), address(this), 500); // owner, treasury, fee %
         console.log("FeeRegistry deployed at:", address(feeRegistry));
-        
+
         // Add the default fee tier configuration used in tests (using 0.3% fee)
         console.log("Adding fee tier 3000 with tick spacing 60 to FeeRegistry...");
         feeRegistry.addFeeConfiguration(3000, 60); // Use 3000 (0.3%)
@@ -99,9 +99,10 @@ contract AetherRouterTest is Test {
         // Create pools with proper token ordering
         console.log("Deploying and registering WETH/USDC pool...");
         // Ensure token ordering for the mock pool
-        (address token0, address token1) = address(weth) < address(usdc) ? (address(weth), address(usdc)) : (address(usdc), address(weth));
+        (address token0, address token1) =
+            address(weth) < address(usdc) ? (address(weth), address(usdc)) : (address(usdc), address(weth));
         MockAetherPool pool1 = new MockAetherPool(token0, token1, 3000);
-        address wethUsdcPool = address(pool1); 
+        address wethUsdcPool = address(pool1);
         factory.registerPool(wethUsdcPool, address(weth), address(usdc));
         console.log("WETH/USDC Pool registered:", wethUsdcPool);
 
@@ -269,18 +270,18 @@ contract AetherRouterTest is Test {
         // numerator = 997000000 * 100000 = 99700000000000
         // denominator = 100000 * 1000000 + 997000000 = 100997000000
         // amountOut = 99700000000000 / 100997000000 ≈ 987
-        
+
         uint256 amountIn = 1000;
         uint256 reserveIn = 100000;
         uint256 reserveOut = 100000;
         uint24 fee = 3000; // 0.3%
-        
+
         uint256 feeDenominator = 1_000_000;
         uint256 amountInWithFee = amountIn * (feeDenominator - fee);
         uint256 numerator = amountInWithFee * reserveOut;
         uint256 denominator = (reserveIn * feeDenominator) + amountInWithFee;
         uint256 expectedAmountOut = numerator / denominator;
-        
+
         // Verify calculation is reasonable (less than input due to fee + slippage)
         assertTrue(expectedAmountOut < amountIn, "Output should be less than input");
         assertTrue(expectedAmountOut > 0, "Output should be positive");
@@ -288,130 +289,99 @@ contract AetherRouterTest is Test {
 
     function test_SwapRevert_InvalidPath_Empty() public {
         vm.startPrank(alice);
-        
+
         address[] memory emptyPath = new address[](0);
-        
+
         vm.expectRevert(Errors.InvalidPath.selector);
-        router.swapExactTokensForTokens(
-            1 ether,
-            0,
-            emptyPath,
-            alice,
-            block.timestamp + 1 hours
-        );
-        
+        router.swapExactTokensForTokens(1 ether, 0, emptyPath, alice, block.timestamp + 1 hours);
+
         vm.stopPrank();
     }
 
     function test_SwapRevert_InvalidPath_SingleToken() public {
         vm.startPrank(alice);
-        
+
         address[] memory singlePath = new address[](1);
         singlePath[0] = address(weth);
-        
+
         vm.expectRevert(Errors.InvalidPath.selector);
-        router.swapExactTokensForTokens(
-            1 ether,
-            0,
-            singlePath,
-            alice,
-            block.timestamp + 1 hours
-        );
-        
+        router.swapExactTokensForTokens(1 ether, 0, singlePath, alice, block.timestamp + 1 hours);
+
         vm.stopPrank();
     }
 
     function test_SwapRevert_DeadlineExpired() public {
         vm.startPrank(alice);
-        
+
         address[] memory path = new address[](2);
         path[0] = address(weth);
         path[1] = address(usdc);
-        
+
         // Set deadline to past
         uint256 pastDeadline = block.timestamp - 1;
-        
+
         vm.expectRevert(Errors.DeadlineExpired.selector);
-        router.swapExactTokensForTokens(
-            1 ether,
-            0,
-            path,
-            alice,
-            pastDeadline
-        );
-        
+        router.swapExactTokensForTokens(1 ether, 0, path, alice, pastDeadline);
+
         vm.stopPrank();
     }
 
     function test_SwapRevert_PoolNotFound() public {
         vm.startPrank(alice);
-        
+
         // Create path with unregistered token pair
         MockERC20 unknownToken = new MockERC20("Unknown", "UNK", 18);
-        
+
         address[] memory path = new address[](2);
         path[0] = address(weth);
         path[1] = address(unknownToken);
-        
+
         vm.expectRevert(Errors.PoolNotFound.selector);
-        router.swapExactTokensForTokens(
-            1 ether,
-            0,
-            path,
-            alice,
-            block.timestamp + 1 hours
-        );
-        
+        router.swapExactTokensForTokens(1 ether, 0, path, alice, block.timestamp + 1 hours);
+
         vm.stopPrank();
     }
 
     // ==========================================================================
-    // LIQUIDITY TESTS  
+    // LIQUIDITY TESTS
     // ==========================================================================
 
     function test_AddLiquidity_RevertPoolNotFound() public {
         vm.startPrank(alice);
-        
+
         MockERC20 unknownToken = new MockERC20("Unknown", "UNK", 18);
         unknownToken.mint(alice, 1000 ether);
         unknownToken.approve(address(router), type(uint256).max);
-        
+
         vm.expectRevert(Errors.PoolNotFound.selector);
         router.addLiquidity(
-            address(weth),
-            address(unknownToken),
-            1 ether,
-            1000 ether,
-            0,
-            0,
-            alice,
-            block.timestamp + 1 hours
+            address(weth), address(unknownToken), 1 ether, 1000 ether, 0, 0, alice, block.timestamp + 1 hours
         );
-        
+
         vm.stopPrank();
     }
 
     function test_RemoveLiquidity_RevertInvalidPool() public {
         vm.startPrank(alice);
-        
+
         vm.expectRevert(Errors.InvalidPoolAddress.selector);
         router.removeLiquidity(
-            address(0),  // Invalid pool address
+            address(0), // Invalid pool address
             1 ether,
             0,
             0,
             alice,
             block.timestamp + 1 hours
         );
-        
+
         vm.stopPrank();
     }
 
     function test_RemoveLiquidity_RevertDeadlineExpired() public {
         vm.startPrank(alice);
-        
+
         address validPool = factory.getPoolAddress(address(weth), address(usdc), 3000);
-        
+
         vm.expectRevert(Errors.DeadlineExpired.selector);
         router.removeLiquidity(
             validPool,
@@ -419,9 +389,9 @@ contract AetherRouterTest is Test {
             0,
             0,
             alice,
-            block.timestamp - 1  // Expired deadline
+            block.timestamp - 1 // Expired deadline
         );
-        
+
         vm.stopPrank();
     }
 
@@ -460,7 +430,7 @@ contract AetherRouterTest is Test {
         uint256 amountA = 100;
         uint256 reserveA = 1000;
         uint256 reserveB = 2000;
-        
+
         // Expected: 100 * 2000 / 1000 = 200
         uint256 expectedAmountB = (amountA * reserveB) / reserveA;
         assertEq(expectedAmountB, 200, "Quote calculation should be correct");
@@ -478,42 +448,38 @@ contract AetherRouterTest is Test {
 
     function test_SwapWithPermit_RevertInvalidPath() public {
         vm.startPrank(alice);
-        
+
         address[] memory path = new address[](1);
         path[0] = address(weth);
-        
+
         vm.expectRevert(Errors.InvalidPath.selector);
         router.swapExactTokensForTokensWithPermit(
-            1 ether,
-            0,
-            path,
-            alice,
-            block.timestamp + 1 hours,
-            block.timestamp + 1 hours,
-            0, bytes32(0), bytes32(0)
+            1 ether, 0, path, alice, block.timestamp + 1 hours, block.timestamp + 1 hours, 0, bytes32(0), bytes32(0)
         );
-        
+
         vm.stopPrank();
     }
 
     function test_SwapWithPermit_RevertDeadlineExpired() public {
         vm.startPrank(alice);
-        
+
         address[] memory path = new address[](2);
         path[0] = address(weth);
         path[1] = address(usdc);
-        
+
         vm.expectRevert(Errors.DeadlineExpired.selector);
         router.swapExactTokensForTokensWithPermit(
             1 ether,
             0,
             path,
             alice,
-            block.timestamp - 1,  // Expired swap deadline
+            block.timestamp - 1, // Expired swap deadline
             block.timestamp + 1 hours,
-            0, bytes32(0), bytes32(0)
+            0,
+            bytes32(0),
+            bytes32(0)
         );
-        
+
         vm.stopPrank();
     }
 }
