@@ -85,13 +85,13 @@ contract AetherRouter is BaseRouter {
         // But AetherPool.vy checks initialized state.
         // Ideally we check IAetherPool(pool).totalSupply().
         if (IAetherPool(pool).totalSupply() == 0) {
-             liquidity = IAetherPool(pool).addInitialLiquidity(amountA, amountB);
-             // Initial liquidity is minted to msg.sender (this router), so we must forward it to the user
-             if (to != address(this)) {
-                 IERC20(pool).safeTransfer(to, liquidity);
-             }
+            liquidity = IAetherPool(pool).addInitialLiquidity(amountA, amountB);
+            // Initial liquidity is minted to msg.sender (this router), so we must forward it to the user
+            if (to != address(this)) {
+                IERC20(pool).safeTransfer(to, liquidity);
+            }
         } else {
-             (,, liquidity) = IAetherPool(pool).addLiquidityNonInitial(to, amountA, amountB, "");
+            (,, liquidity) = IAetherPool(pool).addLiquidityNonInitial(to, amountA, amountB, "");
         }
     }
 
@@ -138,11 +138,12 @@ contract AetherRouter is BaseRouter {
     }
 
     function _swap(uint256[] memory amounts, address[] memory path, address _to) internal virtual {
-        for (uint i; i < path.length - 1; i++) {
+        for (uint256 i; i < path.length - 1; i++) {
             (address input, address output) = (path[i], path[i + 1]);
             address token0 = input < output ? input : output;
             uint256 amountOut = amounts[i + 1];
-            (uint256 amount0Out, uint256 amount1Out) = input == token0 ? (uint(0), amountOut) : (amountOut, uint(0));
+            (uint256 amount0Out, uint256 amount1Out) =
+                input == token0 ? (uint256(0), amountOut) : (amountOut, uint256(0));
             address to = i < path.length - 2 ? factory.getPoolAddress(output, path[i + 2], 3000) : _to; // Next pool or recipient
 
             address pool = factory.getPoolAddress(input, output, 3000);
@@ -184,19 +185,27 @@ contract AetherRouter is BaseRouter {
         }
     }
 
-    function getAmountsOut(AetherFactory _factory, uint256 amountIn, address[] memory path) internal view returns (uint256[] memory amounts) {
+    function getAmountsOut(AetherFactory _factory, uint256 amountIn, address[] memory path)
+        internal
+        view
+        returns (uint256[] memory amounts)
+    {
         require(path.length >= 2, "InvalidPath");
         amounts = new uint256[](path.length);
         amounts[0] = amountIn;
-        for (uint i; i < path.length - 1; i++) {
-            address pool = _factory.getPoolAddress(path[i], path[i+1], 3000);
+        for (uint256 i; i < path.length - 1; i++) {
+            address pool = _factory.getPoolAddress(path[i], path[i + 1], 3000);
             if (pool == address(0)) revert Errors.PoolNotFound();
-            (uint256 reserveIn, uint256 reserveOut) = getReserves(pool, path[i], path[i+1]);
+            (uint256 reserveIn, uint256 reserveOut) = getReserves(pool, path[i], path[i + 1]);
             amounts[i + 1] = getAmountOut(amounts[i], reserveIn, reserveOut, IAetherPool(pool).fee());
         }
     }
 
-    function getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut, uint24 fee) internal pure returns (uint256 amountOut) {
+    function getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut, uint24 fee)
+        internal
+        pure
+        returns (uint256 amountOut)
+    {
         if (amountIn == 0) revert Errors.InvalidAmountIn();
         if (reserveIn == 0 || reserveOut == 0) revert Errors.InsufficientLiquidity();
         uint256 feeDenominator = 1_000_000;
@@ -206,7 +215,11 @@ contract AetherRouter is BaseRouter {
         amountOut = numerator / denominator;
     }
 
-    function getReserves(address pool, address tokenA, address tokenB) internal view returns (uint256 reserveA, uint256 reserveB) {
+    function getReserves(address pool, address tokenA, address tokenB)
+        internal
+        view
+        returns (uint256 reserveA, uint256 reserveB)
+    {
         address token0 = IAetherPool(pool).token0();
         // address token1 = IAetherPool(pool).token1();
         (uint256 reserve0, uint256 reserve1) = (IAetherPool(pool).reserve0(), IAetherPool(pool).reserve1());

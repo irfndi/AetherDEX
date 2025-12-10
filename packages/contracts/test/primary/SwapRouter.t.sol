@@ -104,7 +104,6 @@ contract MockPool is IAetherPool {
         return (token0, token1);
     }
 
-
     // IAetherPool's mint (by LP amount)
     function mint(
         address,

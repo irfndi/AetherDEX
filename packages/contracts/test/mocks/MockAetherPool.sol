@@ -32,7 +32,6 @@ contract MockAetherPool is IAetherPool {
         return (token0, token1);
     }
 
-
     function fee() external view override returns (uint24) {
         return _fee;
     }

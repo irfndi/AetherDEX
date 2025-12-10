@@ -91,16 +91,7 @@ contract SmartContractEdgeCasesTest is Test {
 
         // Add liquidity via Router
         vm.startPrank(USER);
-        router.addLiquidity(
-            address(token0),
-            address(token1),
-            amount0,
-            amount1,
-            0,
-            0,
-            USER,
-            block.timestamp + 100
-        );
+        router.addLiquidity(address(token0), address(token1), amount0, amount1, 0, 0, USER, block.timestamp + 100);
         vm.stopPrank();
     }
 
@@ -131,13 +122,7 @@ contract SmartContractEdgeCasesTest is Test {
         // But transferring 0 tokens might fail or be weird?
         // Let's expect 0 output.
 
-        uint256[] memory amounts = router.swapExactTokensForTokens(
-            amountIn,
-            0,
-            path,
-            USER,
-            block.timestamp + 100
-        );
+        uint256[] memory amounts = router.swapExactTokensForTokens(amountIn, 0, path, USER, block.timestamp + 100);
 
         assertEq(amounts[1], 0, "Tiny swap should result in zero output due to precision");
 
@@ -154,13 +139,7 @@ contract SmartContractEdgeCasesTest is Test {
         path[1] = address(token1);
 
         vm.expectRevert(Errors.InvalidAmountIn.selector); // Router validation
-        router.swapExactTokensForTokens(
-            0,
-            0,
-            path,
-            USER,
-            block.timestamp + 100
-        );
+        router.swapExactTokensForTokens(0, 0, path, USER, block.timestamp + 100);
 
         vm.stopPrank();
     }
@@ -180,13 +159,7 @@ contract SmartContractEdgeCasesTest is Test {
         // OpenZeppelin ERC20 reverts on transfer to zero address.
 
         vm.expectRevert(); // Expect some revert from token transfer
-        router.swapExactTokensForTokens(
-            1 ether,
-            0,
-            path,
-            address(0),
-            block.timestamp + 100
-        );
+        router.swapExactTokensForTokens(1 ether, 0, path, address(0), block.timestamp + 100);
 
         vm.stopPrank();
     }
@@ -220,11 +193,23 @@ contract MockPool is IAetherPool {
     // the public variables already satisfy this interface requirement.
     // Explicit functions removed.
 
-    function reserve0() external view override returns (uint256) { return reserve0Val; }
-    function reserve1() external view override returns (uint256) { return reserve1Val; }
-    function totalSupply() external view override returns (uint256) { return totalSupplyVal; }
+    function reserve0() external view override returns (uint256) {
+        return reserve0Val;
+    }
 
-    function addInitialLiquidity(uint256 amount0Desired, uint256 amount1Desired) external override returns (uint256 liquidity) {
+    function reserve1() external view override returns (uint256) {
+        return reserve1Val;
+    }
+
+    function totalSupply() external view override returns (uint256) {
+        return totalSupplyVal;
+    }
+
+    function addInitialLiquidity(uint256 amount0Desired, uint256 amount1Desired)
+        external
+        override
+        returns (uint256 liquidity)
+    {
         // Simulate pulling tokens (Router already sent them, or we assume they are there for mock)
         // In real Vyper pool, it transfersFrom.
         // Here we just update state.
@@ -235,12 +220,11 @@ contract MockPool is IAetherPool {
         return liquidity;
     }
 
-    function addLiquidityNonInitial(
-        address,
-        uint256 amount0Desired,
-        uint256 amount1Desired,
-        bytes calldata
-    ) external override returns (uint256 amount0Actual, uint256 amount1Actual, uint256 liquidityMinted) {
+    function addLiquidityNonInitial(address, uint256 amount0Desired, uint256 amount1Desired, bytes calldata)
+        external
+        override
+        returns (uint256 amount0Actual, uint256 amount1Actual, uint256 liquidityMinted)
+    {
         reserve0Val += amount0Desired;
         reserve1Val += amount1Desired;
         liquidityMinted = 1000;
@@ -275,8 +259,13 @@ contract MockPool is IAetherPool {
         return amountOut;
     }
 
-    function mint(address, uint128) external pure override returns (uint256, uint256) { return (0,0); }
-    function burn(address, uint256) external pure override returns (uint256, uint256) { return (0,0); }
+    function mint(address, uint128) external pure override returns (uint256, uint256) {
+        return (0, 0);
+    }
+
+    function burn(address, uint256) external pure override returns (uint256, uint256) {
+        return (0, 0);
+    }
 
     // Implement transfer for LP token logic in Router (which calls IERC20(pool).transfer)
     // Since MockPool doesn't inherit ERC20, we need to mock this
