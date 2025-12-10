@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TradeSwapRouteImport } from './routes/trade/swap'
 import { Route as TradeSendRouteImport } from './routes/trade/send'
+import { Route as TradeLiquidityRouteImport } from './routes/trade/liquidity'
 import { Route as TradeLimitRouteImport } from './routes/trade/limit'
 import { Route as TradeBuyRouteImport } from './routes/trade/buy'
 
@@ -30,6 +31,11 @@ const TradeSendRoute = TradeSendRouteImport.update({
   path: '/trade/send',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TradeLiquidityRoute = TradeLiquidityRouteImport.update({
+  id: '/trade/liquidity',
+  path: '/trade/liquidity',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TradeLimitRoute = TradeLimitRouteImport.update({
   id: '/trade/limit',
   path: '/trade/limit',
@@ -45,6 +51,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/trade/buy': typeof TradeBuyRoute
   '/trade/limit': typeof TradeLimitRoute
+  '/trade/liquidity': typeof TradeLiquidityRoute
   '/trade/send': typeof TradeSendRoute
   '/trade/swap': typeof TradeSwapRoute
 }
@@ -52,6 +59,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/trade/buy': typeof TradeBuyRoute
   '/trade/limit': typeof TradeLimitRoute
+  '/trade/liquidity': typeof TradeLiquidityRoute
   '/trade/send': typeof TradeSendRoute
   '/trade/swap': typeof TradeSwapRoute
 }
@@ -60,19 +68,33 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/trade/buy': typeof TradeBuyRoute
   '/trade/limit': typeof TradeLimitRoute
+  '/trade/liquidity': typeof TradeLiquidityRoute
   '/trade/send': typeof TradeSendRoute
   '/trade/swap': typeof TradeSwapRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/trade/buy' | '/trade/limit' | '/trade/send' | '/trade/swap'
+  fullPaths:
+    | '/'
+    | '/trade/buy'
+    | '/trade/limit'
+    | '/trade/liquidity'
+    | '/trade/send'
+    | '/trade/swap'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/trade/buy' | '/trade/limit' | '/trade/send' | '/trade/swap'
+  to:
+    | '/'
+    | '/trade/buy'
+    | '/trade/limit'
+    | '/trade/liquidity'
+    | '/trade/send'
+    | '/trade/swap'
   id:
     | '__root__'
     | '/'
     | '/trade/buy'
     | '/trade/limit'
+    | '/trade/liquidity'
     | '/trade/send'
     | '/trade/swap'
   fileRoutesById: FileRoutesById
@@ -81,6 +103,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   TradeBuyRoute: typeof TradeBuyRoute
   TradeLimitRoute: typeof TradeLimitRoute
+  TradeLiquidityRoute: typeof TradeLiquidityRoute
   TradeSendRoute: typeof TradeSendRoute
   TradeSwapRoute: typeof TradeSwapRoute
 }
@@ -108,6 +131,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TradeSendRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/trade/liquidity': {
+      id: '/trade/liquidity'
+      path: '/trade/liquidity'
+      fullPath: '/trade/liquidity'
+      preLoaderRoute: typeof TradeLiquidityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/trade/limit': {
       id: '/trade/limit'
       path: '/trade/limit'
@@ -129,6 +159,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   TradeBuyRoute: TradeBuyRoute,
   TradeLimitRoute: TradeLimitRoute,
+  TradeLiquidityRoute: TradeLiquidityRoute,
   TradeSendRoute: TradeSendRoute,
   TradeSwapRoute: TradeSwapRoute,
 }

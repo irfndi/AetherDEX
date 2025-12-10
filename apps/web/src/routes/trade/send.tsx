@@ -1,8 +1,12 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { Send as SendIcon, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 import { useAccount, useConnect, useDisconnect, useSendTransaction } from 'wagmi'
 import { parseEther } from 'viem'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute('/trade/send')({
     component: SendPage,
@@ -33,100 +37,79 @@ function SendPage() {
     }
 
     return (
-        <div className="min-h-screen">
-            {/* Header */}
-            <header className="sticky top-0 z-50 glass border-b border-white/10">
-                <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-                    <Link to="/" className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
-                        AetherDEX
-                    </Link>
+        <div className="flex flex-col items-center justify-center min-h-[85vh] p-4 animate-float">
+            <div className="w-full max-w-lg relative">
+                {/* Glow Effect */}
+                <div className="absolute inset-0 bg-primary/20 blur-[100px] rounded-full pointer-events-none" />
 
-                    <nav className="flex items-center gap-6">
-                        <Link to="/trade/swap" className="text-gray-400 hover:text-white transition">Swap</Link>
-                        <Link to="/trade/limit" className="text-gray-400 hover:text-white transition">Limit</Link>
-                        <Link to="/trade/send" className="text-cyan-400 font-medium">Send</Link>
-                    </nav>
-
-                    {isConnected ? (
-                        <button
-                            onClick={() => disconnect()}
-                            className="px-6 py-2.5 bg-slate-800 rounded-xl font-semibold hover:bg-slate-700 transition-all border border-slate-700"
-                        >
-                            {address?.slice(0, 6)}...{address?.slice(-4)}
-                        </button>
-                    ) : (
-                        <button
-                            onClick={handleConnect}
-                            className="px-6 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-xl font-semibold hover:opacity-90 transition-all"
-                        >
-                            Connect Wallet
-                        </button>
-                    )}
-                </div>
-            </header>
-
-            {/* Send Interface */}
-            <main className="container mx-auto px-6 py-12 flex items-center justify-center">
-                <div className="w-full max-w-md">
-                    <div className="glass-card p-6">
-                        <div className="flex items-center gap-2 mb-6">
-                            <SendIcon className="w-6 h-6 text-cyan-400" />
-                            <h2 className="text-xl font-semibold text-white">Send</h2>
+                <Card className="glass-card border-white/10 relative z-10">
+                    <CardHeader className="flex flex-row items-center gap-3 pb-4">
+                        <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                            <SendIcon className="h-5 w-5" />
                         </div>
+                        <CardTitle>Send</CardTitle>
+                    </CardHeader>
 
-                        {/* Recipient */}
-                        <div className="bg-slate-800/50 rounded-2xl p-4 mb-4">
-                            <span className="text-sm text-gray-400 mb-2 block">Recipient</span>
+                    <CardContent className="space-y-4">
+                        {/* Recipient Input */}
+                        <div className="space-y-2 p-4 rounded-2xl bg-black/40 border border-white/5 hover:border-white/10 transition-colors">
+                            <span className="text-sm text-muted-foreground block mb-1">Recipient</span>
                             <input
                                 type="text"
                                 placeholder="0x... or ENS name"
                                 value={recipient}
                                 onChange={(e) => setRecipient(e.target.value)}
-                                className="w-full bg-transparent text-lg text-white outline-none"
+                                className="bg-transparent text-lg text-white w-full outline-none placeholder:text-muted-foreground/30 font-medium"
                             />
                         </div>
 
-                        {/* Amount */}
-                        <div className="bg-slate-800/50 rounded-2xl p-4 mb-6">
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-sm text-gray-400">Amount</span>
-                                <span className="text-sm text-gray-400">Balance: 0.0</span>
+                        {/* Amount Input */}
+                        <div className="space-y-2 p-4 rounded-2xl bg-black/40 border border-white/5 hover:border-white/10 transition-colors">
+                            <div className="flex justify-between text-sm text-muted-foreground">
+                                <span>Amount</span>
+                                <span>Balance: 0.0</span>
                             </div>
-                            <div className="flex items-center gap-4">
+                            <div className="flex gap-4">
                                 <input
                                     type="text"
-                                    placeholder="0"
                                     value={amount}
                                     onChange={(e) => setAmount(e.target.value)}
-                                    className="flex-1 bg-transparent text-3xl font-semibold text-white outline-none"
+                                    placeholder="0"
+                                    className="bg-transparent text-3xl font-medium outline-none w-full placeholder:text-muted-foreground/30"
                                 />
-                                <button className="flex items-center gap-2 px-4 py-2 bg-slate-700 rounded-xl">
-                                    <div className="w-6 h-6 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full" />
-                                    <span className="font-semibold">ETH</span>
-                                    <ChevronDown className="w-4 h-4" />
-                                </button>
+                                <Button
+                                    variant="secondary"
+                                    className="rounded-xl gap-2 font-semibold min-w-[120px]"
+                                >
+                                    ETH
+                                    <ChevronDown className="h-4 w-4 opacity-50" />
+                                </Button>
                             </div>
                         </div>
 
+                        {/* Action Button */}
                         {isConnected ? (
-                            <button
+                            <Button
+                                size="lg"
+                                className="w-full text-lg font-semibold shadow-xl shadow-primary/20"
                                 onClick={handleSend}
                                 disabled={isPending}
-                                className="w-full py-4 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-2xl font-semibold text-lg hover:opacity-90 transition-all disabled:opacity-50"
+                                loading={isPending}
                             >
                                 {isPending ? 'Sending...' : 'Send'}
-                            </button>
+                            </Button>
                         ) : (
-                            <button
+                            <Button
+                                size="lg"
+                                className="w-full text-lg font-semibold"
                                 onClick={handleConnect}
-                                className="w-full py-4 bg-slate-700 text-gray-300 rounded-2xl font-semibold text-lg hover:bg-slate-600 transition-all"
                             >
-                                Connect Wallet
-                            </button>
+                                Connect Wallet to Send
+                            </Button>
                         )}
-                    </div>
-                </div>
-            </main>
+                    </CardContent>
+                </Card>
+            </div>
         </div>
     )
 }

@@ -18,7 +18,8 @@ test.describe('Send Page', () => {
         await expect(page.getByPlaceholder('0').first()).toBeVisible()
 
         // Check connect wallet button (when not connected)
-        await expect(page.getByRole('main').getByRole('button', { name: /Connect Wallet/i })).toBeVisible()
+        // Check connect wallet button (when not connected)
+        await expect(page.getByRole('button', { name: 'Connect Wallet to Send' })).toBeVisible()
     })
 
     test('should allow entering recipient and amount', async ({ page }) => {
@@ -35,16 +36,18 @@ test.describe('Send Page', () => {
     })
 
     test('should navigate to other trade pages', async ({ page }) => {
+        const header = page.getByRole('banner')
+
         // Navigate to Swap
-        await page.getByRole('link', { name: 'Swap' }).click()
+        await header.getByRole('link', { name: 'Swap' }).click()
         await expect(page).toHaveURL(/\/trade\/swap/)
 
         // Navigate back to Send
-        await page.getByRole('link', { name: 'Send' }).click()
+        await header.getByRole('link', { name: 'Send' }).click()
         await expect(page).toHaveURL(/\/trade\/send/)
 
         // Navigate to Limit
-        await page.getByRole('link', { name: 'Limit' }).click()
+        await header.getByRole('link', { name: 'Limit' }).click()
         await expect(page).toHaveURL(/\/trade\/limit/)
     })
 })

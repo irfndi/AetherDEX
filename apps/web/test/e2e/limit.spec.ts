@@ -14,7 +14,8 @@ test.describe('Limit Order Page', () => {
         await expect(page.getByPlaceholder('0.00')).toBeVisible() // Price
 
         // Connect wallet button
-        await expect(page.getByRole('main').getByRole('button', { name: /Connect Wallet/i })).toBeVisible()
+        // Connect wallet button
+        await expect(page.getByRole('button', { name: 'Connect Wallet to Order' })).toBeVisible()
     })
 
     test('should allow entering amount and price', async ({ page }) => {

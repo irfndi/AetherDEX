@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { ArrowDown, Settings, ChevronDown, Loader2 } from 'lucide-react'
 import { useState, useMemo, useEffect } from 'react'
 import { useAccount, useConnect, useDisconnect, useWriteContract } from 'wagmi'
@@ -6,8 +6,12 @@ import { ROUTER_ABI } from '../../lib/abis'
 import { parseEther } from 'viem'
 import { useTokens, useSwapQuote } from '../../hooks/use-api'
 import type { Token } from '../../types/api'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { cn } from '@/lib/utils'
 
-// Address of the Router Contract (Placeholder - will be replaced with real address)
+// Address of the Router Contract (Placeholder)
 const ROUTER_ADDRESS = '0x0000000000000000000000000000000000000000'
 
 export const Route = createFileRoute('/trade/swap')({
@@ -21,11 +25,11 @@ function SwapPage() {
     const [isSelectorOpen, setIsSelectorOpen] = useState<'sell' | 'buy' | null>(null)
     const { address, isConnected } = useAccount()
     const { connectors, connect } = useConnect()
-    const { disconnect } = useDisconnect()
+    const { disconnect } = useDisconnect() // kept for potential use
     const { writeContract, isPending } = useWriteContract()
     const { data: tokens, isLoading: isLoadingTokens } = useTokens()
 
-    // Set default tokens when loaded
+    // Set default tokens (ETH and USDC if available)
     useEffect(() => {
         if (tokens && tokens.length > 0 && !selectedSellToken) {
             setSelectedSellToken(tokens[0])
@@ -66,23 +70,21 @@ function SwapPage() {
             functionName: 'swapExactTokensForTokens',
             args: [
                 parseEther(sellAmount),
-                parseEther(quote.min_amount_out), // Use calculated min amount with slippage
+                parseEther(quote.min_amount_out),
                 [selectedSellToken.address as `0x${string}`, selectedBuyToken.address as `0x${string}`],
                 address!,
-                BigInt(Math.floor(Date.now() / 1000) + 60 * 20), // deadline: 20 minutes
+                BigInt(Math.floor(Date.now() / 1000) + 60 * 20),
             ],
         })
     }
 
     const handleTokenSelect = (token: Token, type: 'sell' | 'buy') => {
         if (type === 'sell') {
-            // If selecting the same token as buy, swap them
             if (selectedBuyToken && token.address === selectedBuyToken.address) {
                 setSelectedBuyToken(selectedSellToken)
             }
             setSelectedSellToken(token)
         } else {
-            // If selecting the same token as sell, swap them
             if (selectedSellToken && token.address === selectedSellToken.address) {
                 setSelectedSellToken(selectedBuyToken)
             }
@@ -99,210 +101,170 @@ function SwapPage() {
     }
 
     return (
-        <div className="min-h-screen">
-            {/* Header */}
-            <header className="sticky top-0 z-50 glass border-b border-white/10">
-                <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-                    <Link to="/" className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
-                        AetherDEX
-                    </Link>
+        <div className="flex flex-col items-center justify-center min-h-[85vh] p-4 animate-float">
+            <div className="w-full max-w-lg relative">
+                {/* Glow Effect behind card */}
+                <div className="absolute inset-0 bg-primary/20 blur-[100px] rounded-full pointer-events-none" />
 
-                    <nav className="flex items-center gap-6">
-                        <Link to="/trade/swap" className="text-cyan-400 font-medium">Swap</Link>
-                        <Link to="/trade/limit" className="text-gray-400 hover:text-white transition">Limit</Link>
-                        <Link to="/trade/send" className="text-gray-400 hover:text-white transition">Send</Link>
-                    </nav>
+                <Card className="glass-card border-white/10 relative z-10">
+                    <CardHeader className="flex flex-row items-center justify-between pb-4">
+                        <CardTitle>Swap</CardTitle>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                            <Settings className="h-4 w-4" />
+                        </Button>
+                    </CardHeader>
 
-                    {isConnected ? (
-                        <button
-                            onClick={() => disconnect()}
-                            className="px-6 py-2.5 bg-slate-800 rounded-xl font-semibold hover:bg-slate-700 transition-all border border-slate-700"
-                        >
-                            {address?.slice(0, 6)}...{address?.slice(-4)}
-                        </button>
-                    ) : (
-                        <button
-                            onClick={handleConnect}
-                            className="px-6 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-xl font-semibold hover:opacity-90 transition-all"
-                        >
-                            Connect Wallet
-                        </button>
-                    )}
-                </div>
-            </header>
-
-
-            {/* Swap Interface */}
-            <main className="container mx-auto px-6 py-12 flex items-center justify-center">
-                <div className="w-full max-w-md">
-                    {/* Swap Card */}
-                    <div className="glass-card p-6 glow-aether">
-                        {/* Header */}
-                        <div className="flex items-center justify-between mb-6">
-                            <h2 className="text-xl font-semibold text-white">Swap</h2>
-                            <button className="p-2 hover:bg-white/10 rounded-lg transition">
-                                <Settings className="w-5 h-5 text-gray-400" />
-                            </button>
-                        </div>
-
-                        {/* Sell Panel */}
-                        <div className="bg-slate-800/50 rounded-2xl p-4 mb-2">
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-sm text-gray-400">Sell</span>
-                                <span className="text-sm text-gray-400">Balance: 0.0</span>
+                    <CardContent className="space-y-4">
+                        {/* Sell Section */}
+                        <div className="space-y-2 p-4 rounded-2xl bg-black/40 border border-white/5 hover:border-white/10 transition-colors">
+                            <div className="flex justify-between text-sm text-muted-foreground">
+                                <span>Sell</span>
+                                <span>Balance: 0.0</span>
                             </div>
-                            <div className="flex items-center gap-4">
+                            <div className="flex gap-4">
                                 <input
                                     type="text"
-                                    placeholder="0"
                                     value={sellAmount}
                                     onChange={(e) => setSellAmount(e.target.value)}
-                                    className="flex-1 bg-transparent text-3xl font-semibold text-white outline-none"
+                                    placeholder="0"
+                                    className="bg-transparent text-3xl font-medium outline-none w-full placeholder:text-muted-foreground/30"
                                 />
-                                <button
+                                <Button
+                                    variant="secondary"
+                                    className="rounded-xl gap-2 font-semibold min-w-[120px]"
                                     onClick={() => setIsSelectorOpen('sell')}
-                                    className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl transition"
                                 >
-                                    <div className="w-6 h-6 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full" />
-                                    <span className="font-semibold">{selectedSellToken?.symbol || 'Select'}</span>
-                                    <ChevronDown className="w-4 h-4" />
-                                </button>
+                                    {selectedSellToken?.symbol || 'Select'}
+                                    <ChevronDown className="h-4 w-4 opacity-50" />
+                                </Button>
                             </div>
                         </div>
 
-                        {/* Swap Direction */}
-                        <div className="flex justify-center -my-2 relative z-10">
-                            <button
-                                onClick={handleSwapDirection}
-                                className="p-3 bg-slate-700 hover:bg-slate-600 rounded-xl border-4 border-slate-900 transition"
-                            >
-                                <ArrowDown className="w-4 h-4" />
-                            </button>
+                        {/* Swap Direction Button */}
+                        <div className="relative h-4">
+                            <div className="absolute left-1/2 -translate-x-1/2 -top-6">
+                                <Button
+                                    size="icon"
+                                    variant="outline"
+                                    className="h-10 w-10 rounded-xl bg-background border-4 border-background hover:bg-muted"
+                                    onClick={handleSwapDirection}
+                                >
+                                    <ArrowDown className="h-4 w-4" />
+                                </Button>
+                            </div>
                         </div>
 
-                        {/* Buy Panel */}
-                        <div className="bg-slate-800/50 rounded-2xl p-4 mt-2">
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-sm text-gray-400">Buy</span>
-                                {quote && (
-                                    <span className="text-sm text-gray-400">
-                                        Price Impact: {quote.price_impact}%
-                                    </span>
-                                )}
+                        {/* Buy Section */}
+                        <div className="space-y-2 p-4 rounded-2xl bg-black/40 border border-white/5 hover:border-white/10 transition-colors">
+                            <div className="flex justify-between text-sm text-muted-foreground">
+                                <span>Buy</span>
+                                {quote && <span>Impact: {quote.price_impact}%</span>}
                             </div>
-                            <div className="flex items-center gap-4">
-                                <div className="flex-1 flex items-center">
+                            <div className="flex gap-4">
+                                <div className="flex-1 flex items-center h-10">
                                     {isLoadingQuote ? (
-                                        <Loader2 className="w-8 h-8 text-gray-400 animate-spin" />
+                                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                                     ) : (
-                                        <span className="text-3xl font-semibold text-white">
+                                        <span className={cn("text-3xl font-medium", !quote && "text-muted-foreground/30")}>
                                             {quote?.amount_out || '0'}
                                         </span>
                                     )}
                                 </div>
-                                <button
+                                <Button
+                                    variant="secondary"
+                                    className="rounded-xl gap-2 font-semibold min-w-[120px]"
                                     onClick={() => setIsSelectorOpen('buy')}
-                                    className="flex items-center gap-2 px-4 py-2 bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 rounded-xl transition"
                                 >
-                                    {selectedBuyToken ? (
-                                        <>
-                                            <div className="w-6 h-6 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full" />
-                                            <span className="font-semibold">{selectedBuyToken.symbol}</span>
-                                        </>
-                                    ) : (
-                                        <span>{isLoadingTokens ? 'Loading...' : 'Select token'}</span>
-                                    )}
-                                    <ChevronDown className="w-4 h-4" />
-                                </button>
+                                    {selectedBuyToken?.symbol || 'Select'}
+                                    <ChevronDown className="h-4 w-4 opacity-50" />
+                                </Button>
                             </div>
                         </div>
 
-                        {/* Quote Info */}
+                        {/* Quote Details */}
                         {quote && (
-                            <div className="mt-4 p-3 bg-slate-800/30 rounded-xl text-sm space-y-1">
-                                <div className="flex justify-between text-gray-400">
-                                    <span>Fee ({(parseFloat(quote.fee_rate) * 100).toFixed(2)}%)</span>
-                                    <span>{quote.fee} {selectedSellToken?.symbol}</span>
+                            <div className="p-3 text-sm rounded-xl bg-white/5 border border-white/5 space-y-1">
+                                <div className="flex justify-between text-muted-foreground">
+                                    <span>Rate</span>
+                                    <span className="text-foreground">1 {selectedSellToken?.symbol} ≈ {(Number(quote.amount_out) / Number(sellAmount)).toFixed(4)} {selectedBuyToken?.symbol}</span>
                                 </div>
-                                <div className="flex justify-between text-gray-400">
-                                    <span>Min. received</span>
-                                    <span>{quote.min_amount_out} {selectedBuyToken?.symbol}</span>
+                                <div className="flex justify-between text-muted-foreground">
+                                    <span>Network Fee</span>
+                                    <span className="text-foreground">{quote.fee} {selectedSellToken?.symbol}</span>
                                 </div>
                             </div>
                         )}
 
-                        {/* Error Message */}
-                        {quoteError && sellAmount && parseFloat(sellAmount) > 0 && (
-                            <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-sm text-red-400">
-                                {(quoteError as Error).message || 'Failed to get quote'}
+                        {/* Error State */}
+                        {quoteError && sellAmount && (
+                            <div className="p-3 text-sm rounded-xl bg-destructive/10 border border-destructive/20 text-destructive">
+                                {(quoteError as Error).message || 'Failed to fetch quote'}
                             </div>
                         )}
 
-                        {/* Swap Button */}
+                        {/* Action Button */}
                         {isConnected ? (
-                            <button
+                            <Button
+                                size="lg"
+                                className="w-full text-lg font-semibold shadow-xl shadow-primary/20"
                                 onClick={handleSwap}
-                                disabled={isPending || isLoadingQuote || !quote}
-                                className="w-full mt-6 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-2xl font-semibold text-lg hover:opacity-90 transition-all glow-aether disabled:opacity-50"
+                                disabled={isPending || isLoadingQuote || !quote || !!quoteError}
+                                loading={isPending}
                             >
-                                {isPending ? 'Swapping...' : isLoadingQuote ? 'Getting quote...' : 'Swap'}
-                            </button>
+                                {isPending ? 'Swapping...' : 'Swap'}
+                            </Button>
                         ) : (
-                            <button
+                            <Button
+                                size="lg"
+                                className="w-full text-lg font-semibold"
                                 onClick={handleConnect}
-                                className="w-full mt-6 py-4 bg-slate-700 text-gray-300 rounded-2xl font-semibold text-lg hover:bg-slate-600 transition-all"
                             >
-                                Connect Wallet to Swap
-                            </button>
+                                Connect Wallet for Swap
+                            </Button>
                         )}
-                    </div>
-                </div>
+                    </CardContent>
+                </Card>
+            </div>
 
-                {/* Token Selector Modal */}
-                {isSelectorOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                        <div className="glass-card w-full max-w-md p-6 m-4">
-                            <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-xl font-semibold text-white">
-                                    Select {isSelectorOpen === 'sell' ? 'sell' : 'buy'} token
-                                </h3>
-                                <button
-                                    onClick={() => setIsSelectorOpen(null)}
-                                    className="p-2 hover:bg-white/10 rounded-lg transition text-gray-400 hover:text-white"
-                                >
-                                    Close
-                                </button>
-                            </div>
-
-                            <div className="space-y-2 max-h-96 overflow-y-auto">
-                                {isLoadingTokens ? (
-                                    <div className="text-center text-gray-400 py-4">Loading tokens...</div>
-                                ) : (
-                                    tokens?.map((token) => (
-                                        <button
-                                            key={token.address}
-                                            onClick={() => handleTokenSelect(token, isSelectorOpen)}
-                                            className="w-full flex items-center justify-between p-3 hover:bg-white/5 rounded-xl transition group"
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full" />
-                                                <div className="text-left">
-                                                    <div className="text-white font-medium">{token.symbol}</div>
-                                                    <div className="text-sm text-gray-400">{token.name}</div>
-                                                </div>
-                                            </div>
-                                            <span className="text-white opacity-0 group-hover:opacity-100 transition">
-                                                Select
-                                            </span>
-                                        </button>
-                                    ))
-                                )}
-                            </div>
+            {/* Token Selector Modal Overlay */}
+            {isSelectorOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <Card className="w-full max-w-md glass-card h-[500px] flex flex-col">
+                        <CardHeader className="flex flex-row items-center justify-between">
+                            <CardTitle className="text-xl">Select Token</CardTitle>
+                            <Button variant="ghost" size="sm" onClick={() => setIsSelectorOpen(null)}>Close</Button>
+                        </CardHeader>
+                        <div className="p-4 border-b border-white/10">
+                            <Input placeholder="Search name or paste address" className="bg-black/20" />
                         </div>
-                    </div>
-                )}
-            </main>
+                        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                            {isLoadingTokens ? (
+                                <div className="flex justify-center py-8"><Loader2 className="animate-spin text-muted-foreground" /></div>
+                            ) : (
+                                tokens?.map((token) => (
+                                    <button
+                                        key={token.address}
+                                        onClick={() => handleTokenSelect(token, isSelectorOpen)}
+                                        className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 transition-colors text-left group"
+                                    >
+                                        <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary/80 to-purple-600/80 flex items-center justify-center font-bold text-white shadow-lg">
+                                            {token.symbol[0]}
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="font-semibold text-foreground flex items-center justify-between">
+                                                {token.symbol}
+                                                {/* Mock Balance */}
+                                                <span className="text-sm font-normal text-muted-foreground">0.00</span>
+                                            </div>
+                                            <div className="text-sm text-muted-foreground group-hover:text-primary/80 transition-colors">{token.name}</div>
+                                        </div>
+                                    </button>
+                                ))
+                            )}
+                        </div>
+                    </Card>
+                </div>
+            )}
         </div>
     )
 }
-
