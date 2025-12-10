@@ -5,39 +5,17 @@
 # Email: join.mantap@gmail.com
 # */
 
-# @version 0.3.10
+# @version 0.4.3
 
 # --- Interfaces ---
-from vyper.interfaces import ERC20
+from ethereum.ercs import IERC20 as ERC20
 
 # --- Constants ---
 MIN_LIQUIDITY: constant(uint256) = 10**3
 EMPTY_ADDRESS: constant(address) = empty(address)
 
 # --- Internal Helper Functions ---
-@internal
-@pure
-def sqrt(x: decimal) -> decimal:
-    """
-    @notice Calculates the square root of a number using the Babylonian method.
-    @dev Implementation borrowed from Uniswap V2, adapted for Vyper decimal type.
-    @param x The input value.
-    @return y The square root of x.
-    """
-    if x == 0.0:
-        return 0.0
-    
-    z: decimal = (x + 1.0) / 2.0
-    y: decimal = x
-    
-    # Loop until we converge to the square root
-    for i in range(255):  # 255 is a reasonable upper bound; in practice, it will converge much faster
-        if z >= y:
-            break
-        y = z
-        z = (x / z + z) / 2.0
-    
-    return y
+
 
 # --- LP Token Metadata ---
 name: public(String[64])
@@ -59,11 +37,11 @@ decimals: public(uint8)
 #     amount1: uint256
 #     liquidity: uint256
 
-# event LiquidityRemoved:
-#     provider: indexed(address)
-#     amount0: uint256
-#     amount1: uint256
-#     liquidity: uint256
+event LiquidityRemoved:
+    provider: indexed(address)
+    amount0: uint256
+    amount1: uint256
+    liquidity: uint256
 
 # event Initialized:
 #     token0: address
@@ -116,7 +94,7 @@ allowance: public(HashMap[address, HashMap[address, uint256]])
 
 # --- Constructor ---
 
-@external
+@deploy
 def __init__(factory_address: address):
     """
     @notice Contract constructor called exactly once upon deployment
@@ -158,7 +136,7 @@ def initialize(token0_addr: address, token1_addr: address, pool_fee: uint24):
 # --- Functions ---
 
 @external
-@nonreentrant('lock')
+@nonreentrant
 def burn(to: address, liquidity: uint256) -> (uint256, uint256):
     """
     @notice Burns LP tokens and returns underlying tokens.
@@ -208,8 +186,8 @@ def burn(to: address, liquidity: uint256) -> (uint256, uint256):
  
     # --- Calculations ---
     # Calculate token amounts proportional to liquidity share
-    amount0: uint256 = (liquidity * _reserve0) / _totalSupply
-    amount1: uint256 = (liquidity * _reserve1) / _totalSupply
+    amount0: uint256 = (liquidity * _reserve0) // _totalSupply
+    amount1: uint256 = (liquidity * _reserve1) // _totalSupply
     
     assert amount0 > 0 and amount1 > 0, "INSUFFICIENT_LIQUIDITY_BURNED"
     
@@ -222,19 +200,19 @@ def burn(to: address, liquidity: uint256) -> (uint256, uint256):
     self.balanceOf[user_to_burn_from] -= liquidity
 
     # --- Emit Event ---
-    # log LiquidityRemoved(provider=to, amount0=amount0, amount1=amount1, liquidity=liquidity)
+    log LiquidityRemoved(provider=to, amount0=amount0, amount1=amount1, liquidity=liquidity)
 
     # --- Interactions (Transfer tokens *after* state updates) ---
     # Tokens are transferred from this contract (the pool) to the recipient 'to'
-    res0: bool = ERC20(self.poolToken0).transfer(to, amount0)
+    res0: bool = extcall ERC20(self.poolToken0).transfer(to, amount0)
     assert res0, "TRANSFER0_FAILED"
-    res1: bool = ERC20(self.poolToken1).transfer(to, amount1)
+    res1: bool = extcall ERC20(self.poolToken1).transfer(to, amount1)
     assert res1, "TRANSFER1_FAILED"
 
     return amount0, amount1
 
 @external
-@nonreentrant('lock')
+@nonreentrant
 def swap(tokenIn: address, amountIn: uint256, to: address, amountOutMin: uint256) -> uint256:
     """
     @notice Swaps one token for another.
@@ -264,12 +242,12 @@ def swap(tokenIn: address, amountIn: uint256, to: address, amountOutMin: uint256
     reserveOut: uint256 = _reserve1 if isToken0In else _reserve0
     
     # Apply fee: amountInWithFee = amountIn * (10000 - fee) / 10000
-    amountInWithFee: uint256 = (amountIn * (10000 - currentFee)) / 10000
+    amountInWithFee: uint256 = (amountIn * (10000 - currentFee)) // 10000
     
     # Calculate output amount: amountOut = (reserveOut * amountInWithFee) / (reserveIn + amountInWithFee)
     numerator: uint256 = reserveOut * amountInWithFee
     denominator: uint256 = reserveIn + amountInWithFee
-    amountOut: uint256 = numerator / denominator
+    amountOut: uint256 = numerator // denominator
     
     assert amountOut > 0, "INSUFFICIENT_OUTPUT_AMOUNT"
     assert amountOut >= amountOutMin, "INSUFFICIENT_OUTPUT_AMOUNT"
@@ -294,7 +272,7 @@ def swap(tokenIn: address, amountIn: uint256, to: address, amountOutMin: uint256
     # log Swap(sender=msg.sender, tokenIn=tokenIn, tokenOut=tokenOut, amountIn=amountIn, amountOut=amountOut)
 
     # --- Interactions (Transfer output tokens *after* state updates) ---
-    res: bool = ERC20(tokenOut).transfer(to, amountOut)
+    res: bool = extcall ERC20(tokenOut).transfer(to, amountOut)
     assert res, "TRANSFER_OUT_FAILED"
 
     return amountOut
@@ -323,7 +301,7 @@ def transfer(_to: address, _value: uint256) -> bool:
     self.balanceOf[_to] += _value
 
     # Log event
-    log Transfer(msg.sender, _to, _value)
+    log Transfer(sender=msg.sender, receiver=_to, value=_value)
 
     return True
 
@@ -337,7 +315,7 @@ def approve(spender: address, amount: uint256) -> bool:
     @return bool True if the approval was successful.
     """
     self.allowance[msg.sender][spender] = amount
-    log Approval(msg.sender, spender, amount)
+    log Approval(owner=msg.sender, spender=spender, value=amount)
     return True
 
 @external
@@ -362,14 +340,14 @@ def transferFrom(_from: address, _to: address, _value: uint256) -> bool:
     if self.allowance[_from][msg.sender] != max_value(uint256):
          self.allowance[_from][msg.sender] -= _value
     # Log event
-    log Transfer(_from, _to, _value)
+    log Transfer(sender=_from, receiver=_to, value=_value)
 
     return True
 
 # --- Public Mutating Functions --- #
 
 @external
-@nonreentrant('lock') # Ensure reentrancy protection
+@nonreentrant # Ensure reentrancy protection
 def initialize_pool(amount0: uint256, amount1: uint256) -> uint256:
     """
     @notice Initializes the pool with the first liquidity provision.
@@ -387,22 +365,18 @@ def initialize_pool(amount0: uint256, amount1: uint256) -> uint256:
     _token1: address = self.poolToken1
     
     # Pull tokens from the caller
-    ERC20(_token0).transferFrom(msg.sender, self, amount0)
-    ERC20(_token1).transferFrom(msg.sender, self, amount1)
+    extcall ERC20(_token0).transferFrom(msg.sender, self, amount0)
+    extcall ERC20(_token1).transferFrom(msg.sender, self, amount1)
     
     # Update reserves
     self.reserve0 = amount0
     self.reserve1 = amount1
     
     # Calculate liquidity working with decimal types
-    # Step 1: Cast inputs to decimal for consistent arithmetic
-    a: decimal = convert(amount0, decimal)
-    b: decimal = convert(amount1, decimal)
-    # Step 2: Perform multiplication and calculate square root
-    product_decimal: decimal = a * b
-    sqrt_result: decimal = sqrt(product_decimal)
-    # Step 3: Convert back to uint256 and subtract MIN_LIQUIDITY
-    liquidity: uint256 = convert(sqrt_result, uint256) - MIN_LIQUIDITY
+    # Calculate liquidity using uint256 and internal _sqrt
+    # product: uint256 = amount0 * amount1
+    sqrt_result: uint256 = self._sqrt(amount0 * amount1)
+    liquidity: uint256 = sqrt_result - MIN_LIQUIDITY
     
     # Mint LP tokens
     self.totalSupply = MIN_LIQUIDITY + liquidity
@@ -412,7 +386,7 @@ def initialize_pool(amount0: uint256, amount1: uint256) -> uint256:
     return liquidity
 
 @external
-@nonreentrant('lock')
+@nonreentrant
 def addLiquidityNonInitial(
     recipient: address,
     amount0Desired: uint256,
@@ -430,8 +404,8 @@ def addLiquidityNonInitial(
     _reserve1: uint256 = self.reserve1
 
     # Check current balances
-    balance0: uint256 = ERC20(self.poolToken0).balanceOf(self)
-    balance1: uint256 = ERC20(self.poolToken1).balanceOf(self)
+    balance0: uint256 = staticcall ERC20(self.poolToken0).balanceOf(self)
+    balance1: uint256 = staticcall ERC20(self.poolToken1).balanceOf(self)
 
     amount0: uint256 = balance0 - _reserve0
     amount1: uint256 = balance1 - _reserve1
@@ -439,8 +413,8 @@ def addLiquidityNonInitial(
     # Calculate liquidity
     _totalSupply: uint256 = self.totalSupply
     liquidity: uint256 = self._min(
-        (amount0 * _totalSupply) / _reserve0,
-        (amount1 * _totalSupply) / _reserve1
+        (amount0 * _totalSupply) // _reserve0,
+        (amount1 * _totalSupply) // _reserve1
     )
 
     assert liquidity > 0, "INSUFFICIENT_LIQUIDITY_MINTED"
@@ -451,13 +425,13 @@ def addLiquidityNonInitial(
     self.reserve0 = balance0
     self.reserve1 = balance1
 
-    log Mint(msg.sender, recipient, amount0, amount1, liquidity)
-    log Transfer(EMPTY_ADDRESS, recipient, liquidity)
+    log Mint(sender=msg.sender, owner=recipient, amount0=amount0, amount1=amount1, liquidity=liquidity)
+    log Transfer(sender=EMPTY_ADDRESS, receiver=recipient, value=liquidity)
 
     return (amount0, amount1, liquidity)
 
 @external
-@nonreentrant('lock') # Ensure reentrancy protection
+@nonreentrant
 def addInitialLiquidity(amount0_desired: uint256, amount1_desired: uint256) -> uint256:
     """
     @notice Adds initial liquidity to the pool after it has been initialized with token addresses and fee.
@@ -477,10 +451,10 @@ def addInitialLiquidity(amount0_desired: uint256, amount1_desired: uint256) -> u
 
     # Pull tokens from the caller
     # Vyper requires explicit check before transferFrom
-    assert ERC20(_token0).allowance(msg.sender, self) >= amount0_desired, "Token0 allowance too low"
-    assert ERC20(_token0).transferFrom(msg.sender, self, amount0_desired), "Token0 transferFrom failed"
-    assert ERC20(_token1).allowance(msg.sender, self) >= amount1_desired, "Token1 allowance too low"
-    assert ERC20(_token1).transferFrom(msg.sender, self, amount1_desired), "Token1 transferFrom failed"
+    assert staticcall ERC20(_token0).allowance(msg.sender, self) >= amount0_desired, "Token0 allowance too low"
+    assert extcall ERC20(_token0).transferFrom(msg.sender, self, amount0_desired), "Token0 transferFrom failed"
+    assert staticcall ERC20(_token1).allowance(msg.sender, self) >= amount1_desired, "Token1 allowance too low"
+    assert extcall ERC20(_token1).transferFrom(msg.sender, self, amount1_desired), "Token1 transferFrom failed"
 
     # Update reserves with the actual amounts transferred
     # NOTE: In a real scenario, consider potential slippage if amounts pulled differ from desired.
@@ -498,12 +472,12 @@ def addInitialLiquidity(amount0_desired: uint256, amount1_desired: uint256) -> u
 
     # Mint initial MIN_LIQUIDITY to the zero address (permanently locks it - V2 style)
     self.balanceOf[EMPTY_ADDRESS] += MIN_LIQUIDITY
-    log Transfer(EMPTY_ADDRESS, EMPTY_ADDRESS, MIN_LIQUIDITY) # Log transfer to zero address
+    log Transfer(sender=EMPTY_ADDRESS, receiver=EMPTY_ADDRESS, value=MIN_LIQUIDITY) # Log transfer to zero address
 
     # Mint the remaining liquidity to the provider (msg.sender)
     remaining_liquidity: uint256 = liquidity - MIN_LIQUIDITY
     self.balanceOf[msg.sender] += remaining_liquidity
-    log Transfer(EMPTY_ADDRESS, msg.sender, remaining_liquidity) # Log transfer to provider
+    log Transfer(sender=EMPTY_ADDRESS, receiver=msg.sender, value=remaining_liquidity) # Log transfer to provider
 
     # Update total supply
     self.totalSupply = liquidity
@@ -513,7 +487,7 @@ def addInitialLiquidity(amount0_desired: uint256, amount1_desired: uint256) -> u
 
     # Log the initial mint event (sender is the provider, owner is the provider for the main part)
     # Note: This event doesn't capture the MIN_LIQUIDITY sent to zero address separately.
-    log Mint(msg.sender, msg.sender, amount0_desired, amount1_desired, remaining_liquidity)
+    log Mint(sender=msg.sender, owner=msg.sender, amount0=amount0_desired, amount1=amount1_desired, liquidity=remaining_liquidity)
 
     return liquidity
 
@@ -536,8 +510,8 @@ def mint(recipient: address, amount: uint128) -> (uint256, uint256):
     # V2-style calculation based on current reserves and total supply.
     # TODO: Handle initial mint case (_totalSupply == 0) if required by design.
     assert _totalSupply > 0, "MINT_REQUIRES_EXISTING_LIQUIDITY"
-    amount0 = (liquidity * _reserve0) / _totalSupply
-    amount1 = (liquidity * _reserve1) / _totalSupply
+    amount0 = (liquidity * _reserve0) // _totalSupply
+    amount1 = (liquidity * _reserve1) // _totalSupply
 
     assert amount0 > 0 and amount1 > 0, "INSUFFICIENT_AMOUNTS_CALCULATED"
 
@@ -547,7 +521,7 @@ def mint(recipient: address, amount: uint128) -> (uint256, uint256):
     self.totalSupply += liquidity
     self.balanceOf[recipient] += liquidity
     # Emit standard ERC20 Transfer event for the minted LP tokens
-    log Transfer(EMPTY_ADDRESS, recipient, liquidity)
+    log Transfer(sender=EMPTY_ADDRESS, receiver=recipient, value=liquidity)
 
     # Update reserves (reflecting the tokens assumed to be received)
     self.reserve0 = _reserve0 + amount0
@@ -555,7 +529,7 @@ def mint(recipient: address, amount: uint128) -> (uint256, uint256):
 
     # --- Event ---
     # Log sender (PoolManager), recipient (liquidity owner), amounts, and liquidity
-    log Mint(msg.sender, recipient, amount0, amount1, liquidity)
+    log Mint(sender=msg.sender, owner=recipient, amount0=amount0, amount1=amount1, liquidity=liquidity)
 
     return amount0, amount1
 
@@ -577,14 +551,14 @@ def _sqrt(y: uint256) -> uint256:
         
     # Start with z = y
     z = y
-    x: uint256 = y / 2 + 1
+    x: uint256 = y // 2 + 1
     
     # Loop until we find the square root
-    for _ in range(100):  # Limit iterations to prevent infinite loop
+    for _: uint256 in range(100):  # Limit iterations to prevent infinite loop
         if x >= z:
             break
         z = x
-        x = (y / x + x) / 2
+        x = (y // x + x) // 2
         
     # If y is 0, z remains 0
     return z

@@ -5,7 +5,7 @@
 # Email: join.mantap@gmail.com
 # */
 
-# @version 0.3.10
+# @version 0.4.3
 
 interface ERC20:
     def transfer(recipient: address, amount: uint256) -> bool: nonpayable
@@ -38,7 +38,7 @@ event DisputeResolved:
     recipient: indexed(address)
     amount: uint256
 
-@external
+@deploy
 def __init__(_buyer: address, _seller: address, _arbiter: address, _token: ERC20, _amount: uint256):
     """
     @param _buyer The address that funds the escrow
@@ -73,10 +73,10 @@ def fund():
     """
     assert msg.sender == self.buyer, "Only buyer can fund"
     assert not self.isFunded, "Already funded"
-    res: bool = self.token.transferFrom(msg.sender, self, self.amount)
+    res: bool = extcall self.token.transferFrom(msg.sender, self, self.amount)
     assert res, "Transfer failed"
     self.isFunded = True
-    log Funded(msg.sender, self.amount)
+    log Funded(sender=msg.sender, amount=self.amount)
 
 @external
 def release():
@@ -91,11 +91,11 @@ def release():
     self.isReleased = True
     
     # Transfer funds to the seller (this is the correct recipient for 'release')
-    transfer_success: bool = self.token.transfer(self.seller, self.amount)
+    transfer_success: bool = extcall self.token.transfer(self.seller, self.amount)
     assert transfer_success, "Transfer failed"
     
     # Log the release event
-    log Released(self.amount)
+    log Released(amount=self.amount)
     
 @external
 def refund():
@@ -110,11 +110,11 @@ def refund():
     self.isReleased = True
     
     # Transfer funds to the buyer (this is the correct recipient for 'refund')
-    transfer_success: bool = self.token.transfer(self.buyer, self.amount)
+    transfer_success: bool = extcall self.token.transfer(self.buyer, self.amount)
     assert transfer_success, "Transfer failed"
     
     # Log the refund event
-    log Refunded(self.amount)
+    log Refunded(amount=self.amount)
 
 @external
 def resolve_dispute(recipient: address):
@@ -127,8 +127,8 @@ def resolve_dispute(recipient: address):
     assert not self.isReleased, "Funds already released/refunded"
     assert recipient == self.buyer or recipient == self.seller, "Recipient must be buyer or seller"
 
-    transfer_success: bool = self.token.transfer(recipient, self.amount)
+    transfer_success: bool = extcall self.token.transfer(recipient, self.amount)
     assert transfer_success, "Transfer failed"
     
     self.isReleased = True # Mark as handled
-    log DisputeResolved(recipient, self.amount)
+    log DisputeResolved(recipient=recipient, amount=self.amount)

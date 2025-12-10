@@ -5,7 +5,7 @@ Created by irfndi (github.com/irfndi) - Apr 2025
 Email: join.mantap@gmail.com
 */
 
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.31;
 
 import {Test, console} from "forge-std/Test.sol";
 import {AetherVault} from "../../src/vaults/AetherVault.sol";

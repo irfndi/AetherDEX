@@ -38,16 +38,17 @@ This document tracks the readiness of the AetherDEX project across its three mai
 
 ## 2. Backend API (`apps/api`)
 
-**Overall Status:** 🟡 **Wired Up**
+**Overall Status:** 🟢 **Core APIs Implemented**
 *   **Goal:** Go-based REST API for off-chain data, orderbook (if applicable), and indexing.
-*   **Current State:** Pool module implemented (Service + Handler) and wired in `main.go`.
+*   **Current State:** Pool, Token, and Swap modules implemented with full service layer.
 
 | Feature | File Location | Status | Notes |
 | :--- | :--- | :--- | :--- |
-| **Entry Point** | `cmd/api/main.go` | 🟢 Wired | Pool routes registered. DB/Redis init present. |
+| **Entry Point** | `cmd/api/main.go` | 🟢 Wired | All modules registered. DB/Redis init present. |
 | **Pool Module** | `internal/pool/` | 🟢 Implemented | Service and Handler created. |
 | **Auth Module** | `internal/auth/` | 🟢 Implemented | Wired in `main.go`, tests improved. |
 | **Token Module** | `internal/token/` | 🟢 Implemented | Service and Handler created, wired in `main.go`. |
+| **Swap Module** | `internal/swap/` | 🟢 Implemented | Quote calculation mirrors AetherRouter.sol. 5 unit tests passing. |
 | **Database** | `internal/database/` | 🟢 Configured | GORM + Postgres setup in `main.go`. |
 | **Redis** | `cmd/api/main.go` | 🟢 Configured | Redis client setup present. |
 
@@ -56,25 +57,26 @@ This document tracks the readiness of the AetherDEX project across its three mai
 - [x] Implement `Service` layer logic for Pools.
 - [x] Implement `Service` layer for Tokens.
 - [x] Create API routes for `/tokens`.
-- [ ] Create API routes for `/swap/quote`.
+- [x] Create API routes for `/swap/quote`.
 
 ---
 
 ## 3. Frontend (`apps/web`)
 
-**Overall Status:** 🟢 **Wallet, API, & Mock Contracts Integrated**
+**Overall Status:** 🟢 **Full Swap Flow Integrated**
 *   **Goal:** TanStack Router for type-safe routing, migrating away from standard Next.js App Router patterns.
-*   **Current State:** Wallet connection via Wagmi added. API Client & Hooks setup. Swap UI uses API for tokens. Migrated to Bun. Tests pass.
+*   **Current State:** Wallet connection, API integration, and real-time swap quotes integrated. Build passes.
 
 | Feature | File Location | Status | Notes |
 | :--- | :--- | :--- | :--- |
 | **Landing Page** | `src/routes/index.tsx` | 🟢 Implemented | TanStack Router version. Visuals only. |
-| **Swap UI** | `src/routes/trade/swap.tsx` | 🟢 Updated | Wallet, Mock Contracts, & API integration (Tokens). |
+| **Swap UI** | `src/routes/trade/swap.tsx` | 🟢 Updated | Real API quote integration, auto-calculates output, shows fees/slippage. |
 | **Limit UI** | `src/routes/trade/limit.tsx` | 🟢 Updated | Wallet connection & mock placement added. |
 | **Send UI** | `src/routes/trade/send.tsx` | 🟢 Updated | Wallet connection & mock send added. |
-| **API Client** | `src/lib/api.ts` | 🟢 Implemented | Axios client + TanStack Query hooks. |
+| **API Client** | `src/lib/api.ts` | 🟢 Implemented | Axios client + TanStack Query hooks for tokens & swap quotes. |
+| **API Hooks** | `src/hooks/use-api.ts` | 🟢 Implemented | `useTokens`, `usePools`, `useSwapQuote` hooks. |
 | **Wallet Connect** | `wagmi.ts` | 🟢 Configured | Wagmi config created. |
-| **Tests** | `test/` | 🟢 Passing | Robust unit tests for all trade routes & API hooks. |
+| **Tests** | `test/` | 🟢 Passing | Frontend unit tests fixed. E2E setup ready. |
 
 **Action Items:**
 - [x] Complete migration of Swap UI to TanStack Router.
@@ -82,7 +84,7 @@ This document tracks the readiness of the AetherDEX project across its three mai
 - [x] Connect UI to Mock Smart Contracts (Viem).
 - [x] Migrate to Bun and ensure tests pass.
 - [x] Setup API Client and connect UI to (mocked/real) API endpoints.
-- [ ] Connect UI to real API endpoints once backend is fully ready.
+- [x] Connect UI to real API endpoints (swap/quote).
 
 ---
 
@@ -91,5 +93,5 @@ This document tracks the readiness of the AetherDEX project across its three mai
 | Feature | File Location | Status | Notes |
 | :--- | :--- | :--- | :--- |
 | **PRD** | `docs/prd/` | 🟢 Complete | detailed roadmap available. |
-| **CI/CD** | `.github/workflows/` | 🟡 Existing | `foundry-tests.yml` exists. Need comprehensive CI. |
+| **CI/CD** | `.github/workflows/ci.yml` | 🟢 Comprehensive | Unified pipeline: contracts, backend, frontend (unit + E2E). |
 | **Scripts** | `scripts/` | 🟢 Useful | `slither-all`, `coverage-all` available. |

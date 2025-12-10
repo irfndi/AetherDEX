@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/irfndi/AetherDEX/apps/api/internal/auth"
 	"github.com/irfndi/AetherDEX/apps/api/internal/pool"
+	"github.com/irfndi/AetherDEX/apps/api/internal/swap"
 	"github.com/irfndi/AetherDEX/apps/api/internal/token"
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
@@ -105,6 +106,11 @@ func main() {
 		tokenService := token.NewService(tokenRepo)
 		tokenHandler := token.NewHandler(tokenService)
 		tokenHandler.RegisterRoutes(v1)
+
+		// Swap module initialization
+		swapService := swap.NewService(poolService, tokenService)
+		swapHandler := swap.NewHandler(swapService)
+		swapHandler.RegisterRoutes(v1)
 	}
 
 	// Server configuration

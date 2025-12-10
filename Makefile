@@ -53,7 +53,7 @@ build:
 	@echo "Building services..."
 	docker compose build
 	@echo "Building smart contracts..."
-	cd packages/contracts && forge build
+	cd packages/contracts && export PATH=$$PWD/.venv/bin:$$PATH && forge build
 
 # Development targets
 dev:
@@ -69,7 +69,7 @@ lint:
 	@echo "Linting backend..."
 	docker compose run --rm api go vet ./...
 	@echo "Linting smart contracts..."
-	cd packages/contracts && forge fmt --check
+	cd packages/contracts && export PATH=$$PWD/.venv/bin:$$PATH && forge fmt --check
 
 format:
 	@echo "Formatting frontend..."
@@ -77,7 +77,7 @@ format:
 	@echo "Formatting backend..."
 	docker compose run --rm api go fmt ./...
 	@echo "Formatting smart contracts..."
-	cd packages/contracts && forge fmt
+	cd packages/contracts && export PATH=$$PWD/.venv/bin:$$PATH && forge fmt
 
 # Clean targets
 clean:
@@ -86,13 +86,21 @@ clean:
 	cd packages/contracts && forge clean
 
 # Smart contract specific targets
+setup-contracts:
+	@echo "Setting up contract environment..."
+	cd packages/contracts && uv venv --python 3.13 && uv pip install vyper==0.4.3
+
 contract-test:
 	@echo "Running smart contract tests..."
-	cd packages/contracts && forge test -vvv
+	cd packages/contracts && export PATH=$$PWD/.venv/bin:$$PATH && forge test -vvv
+
+contract-coverage:
+	@echo "Running smart contract coverage..."
+	cd packages/contracts && export PATH=$$PWD/.venv/bin:$$PATH && forge coverage --report summary --ir-minimum --no-match-coverage "(test|script)"
 
 contract-deploy-local:
 	@echo "Deploying contracts to local network..."
-	cd packages/contracts && forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast
+	cd packages/contracts && export PATH=$$PWD/.venv/bin:$$PATH && forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast
 
 # Performance testing
 test-performance:

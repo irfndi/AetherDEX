@@ -5,7 +5,7 @@ Created by irfndi (github.com/irfndi) - Apr 2025
 Email: join.mantap@gmail.com
 */
 
-pragma solidity ^0.8.29; // UPDATED PRAGMA VERSION TO 0.8.29
+pragma solidity ^0.8.31; // UPDATED PRAGMA VERSION TO 0.8.29
 
 /**
  * @dev Contract module which provides a basic access control mechanism, where

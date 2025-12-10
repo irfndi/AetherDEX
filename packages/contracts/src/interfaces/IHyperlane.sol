@@ -5,7 +5,7 @@ Created by irfndi (github.com/irfndi) - Apr 2025
 Email: join.mantap@gmail.com
 */
 
-pragma solidity ^0.8.29;
+pragma solidity ^0.8.31;
 
 interface IHyperlane {
     function setRoute(uint16 srcChainId, uint16 dstChainId, bool enabled) external;

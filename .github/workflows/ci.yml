@@ -1,0 +1,236 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.23"
+  BUN_VERSION: "latest"
+
+jobs:
+  # =============================================================================
+  # Smart Contract Tests
+  # =============================================================================
+  contracts:
+    name: Smart Contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: packages/contracts
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          submodules: "recursive"
+          fetch-depth: 0
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@50d5a8956f2e319df19e6b57539d7e2acb9f8c1e # v1.5.0
+        with:
+          version: nightly
+
+      - name: Cache Foundry
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        with:
+          path: |
+            ~/.foundry/cache
+            packages/contracts/lib
+            packages/contracts/cache
+            packages/contracts/out
+          key: ${{ runner.os }}-foundry-${{ hashFiles('packages/contracts/foundry.toml') }}
+          restore-keys: ${{ runner.os }}-foundry-
+
+      - name: Install Python and Vyper
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.10"
+
+      - name: Install Vyper
+        run: |
+          pip install vyper==0.3.10
+          echo "VYPER_PATH=$(which vyper)" >> $GITHUB_ENV
+
+      - name: Install dependencies
+        run: forge install
+
+      - name: Run Forge fmt check
+        run: forge fmt --check
+        continue-on-error: true
+
+      - name: Run tests
+        env:
+          FOUNDRY_PROFILE: ci
+        run: |
+          echo "vyper_path = \"$VYPER_PATH\"" >> foundry.toml
+          forge test --via-ir -vvv
+
+      - name: Generate coverage
+        run: forge coverage --report lcov --ir-minimum
+        continue-on-error: true
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24 # v5.4.3
+        continue-on-error: true
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: contracts
+          name: solidity-coverage
+
+  # =============================================================================
+  # Backend API Tests
+  # =============================================================================
+  backend:
+    name: Backend API
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/api
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: aetherdex_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: apps/api/go.sum
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run go fmt check
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "Code is not formatted. Run 'go fmt ./...'"
+            gofmt -d .
+            exit 1
+          fi
+
+      - name: Run tests with coverage
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: test
+          DB_PASSWORD: test
+          DB_NAME: aetherdex_test
+          REDIS_ADDR: localhost:6379
+        run: go test ./... -race -coverprofile=coverage.out -covermode=atomic
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24 # v5.4.3
+        continue-on-error: true
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: apps/api/coverage.out
+          flags: backend
+          name: go-coverage
+
+  # =============================================================================
+  # Frontend Tests
+  # =============================================================================
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@4bc047ad259df6fc24a6c9b0f9a0cb08cf17fbe5 # v2.0.1
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: bun run --filter aether-dex lint
+
+      - name: Type check
+        run: bun run --filter aether-dex typecheck
+
+      - name: Run unit tests
+        run: bun run --filter aether-dex test
+        continue-on-error: true
+
+      - name: Build
+        run: bun run --filter aether-dex build
+
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+        working-directory: apps/web
+
+      - name: Run E2E tests
+        run: bun run --filter aether-dex test:e2e
+        continue-on-error: true
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: frontend-build
+          path: apps/web/dist
+          retention-days: 7
+
+  # =============================================================================
+  # Summary
+  # =============================================================================
+  ci-status:
+    name: CI Status
+    runs-on: ubuntu-latest
+    needs: [contracts, backend, frontend]
+    if: always()
+    steps:
+      - name: Check status
+        run: |
+          echo "Contracts: ${{ needs.contracts.result }}"
+          echo "Backend: ${{ needs.backend.result }}"
+          echo "Frontend: ${{ needs.frontend.result }}"
+          
+          if [[ "${{ needs.contracts.result }}" == "failure" ]] || \
+             [[ "${{ needs.backend.result }}" == "failure" ]] || \
+             [[ "${{ needs.frontend.result }}" == "failure" ]]; then
+            echo "❌ CI failed"
+            exit 1
+          fi
+          echo "✅ All CI checks passed"

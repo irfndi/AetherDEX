@@ -5,7 +5,7 @@ Created by irfndi (github.com/irfndi) - Apr 2025
 Email: join.mantap@gmail.com
 */
 
-pragma solidity ^0.8.29;
+pragma solidity ^0.8.31;
 
 import {Currency} from "v4-core/types/Currency.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";

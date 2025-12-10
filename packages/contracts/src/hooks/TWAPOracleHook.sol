@@ -5,7 +5,7 @@ Created by irfndi (github.com/irfndi) - Apr 2025
 Email: join.mantap@gmail.com
 */
 
-pragma solidity ^0.8.29;
+pragma solidity ^0.8.31;
 // slither-disable unimplemented-functions
 
 import {BaseHook} from "./BaseHook.sol";

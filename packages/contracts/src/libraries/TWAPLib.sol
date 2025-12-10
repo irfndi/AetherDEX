@@ -6,7 +6,7 @@ Email: join.mantap@gmail.com
 */
 
 // TWAPLib.sol
-pragma solidity ^0.8.29; // UPDATED PRAGMA VERSION TO 0.8.28
+pragma solidity ^0.8.31; // UPDATED PRAGMA VERSION TO 0.8.28
 /**
  * @title TWAPLib
  * @author AetherDEX

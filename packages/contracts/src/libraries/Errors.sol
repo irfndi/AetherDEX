@@ -61,6 +61,7 @@ library Errors {
     // Factory-specific errors
     error PoolAlreadyExists();
     error PoolCreationFailed();
+    error InvalidPoolAddress();
 
     // Additional missing errors
     error Overflow();

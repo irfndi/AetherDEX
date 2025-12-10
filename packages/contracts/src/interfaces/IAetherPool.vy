@@ -3,7 +3,7 @@
 # Email: join.mantap@gmail.com
 # */
 
-# @version 0.3.10
+# @version 0.4.3
 
 interface IAetherPool:
     # --- State-Changing Functions ---

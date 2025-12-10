@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.31;
 
 import "../../lib/v4-core/src/types/PoolKey.sol";
 import "../types/BalanceDelta.sol";

@@ -5,7 +5,7 @@ Created by irfndi (github.com/irfndi) - Apr 2025
 Email: join.mantap@gmail.com
 */
 
-pragma solidity ^0.8.29;
+pragma solidity ^0.8.31;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IAetherPool} from "../interfaces/IAetherPool.sol";
@@ -103,7 +103,7 @@ contract AetherRouter is BaseRouter {
         address to,
         uint256 deadline
     ) external nonReentrant checkDeadline(deadline) returns (uint256 amountA, uint256 amountB) {
-        require(pool != address(0), "InvalidPoolAddress");
+        if (pool == address(0)) revert Errors.InvalidPoolAddress();
         _transferToPool(pool, pool, liquidity);
         (amountA, amountB) = IAetherPool(pool).burn(to, liquidity);
         if (amountA < amountAMin) {
@@ -121,7 +121,7 @@ contract AetherRouter is BaseRouter {
         address to,
         uint256 deadline
     ) external nonReentrant checkDeadline(deadline) returns (uint256[] memory amounts) {
-        require(path.length >= 2, "InvalidPath");
+        if (path.length < 2) revert Errors.InvalidPath();
 
         amounts = getAmountsOut(factory, amountIn, path);
         if (amounts[amounts.length - 1] < amountOutMin) {
@@ -190,7 +190,7 @@ contract AetherRouter is BaseRouter {
         view
         returns (uint256[] memory amounts)
     {
-        require(path.length >= 2, "InvalidPath");
+        if (path.length < 2) revert Errors.InvalidPath();
         amounts = new uint256[](path.length);
         amounts[0] = amountIn;
         for (uint256 i; i < path.length - 1; i++) {
@@ -260,7 +260,7 @@ contract AetherRouter is BaseRouter {
         bytes32 r,
         bytes32 s
     ) external nonReentrant checkDeadline(deadline) returns (uint256[] memory amounts) {
-        require(path.length >= 2, "InvalidPath");
+        if (path.length < 2) revert Errors.InvalidPath();
         address tokenInAddress = path[0];
 
         // Permit the router to spend tokenIn on behalf of msg.sender
