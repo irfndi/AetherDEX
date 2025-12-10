@@ -1,14 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Settings, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
-import { useAccount, useConnect, useDisconnect, useWriteContract } from 'wagmi'
+import { useAccount, useConnect } from 'wagmi'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { cn } from '@/lib/utils'
-
-// Address of the Router Contract (Placeholder)
-const ROUTER_ADDRESS = '0x0000000000000000000000000000000000000000'
 
 export const Route = createFileRoute('/trade/limit')({
     component: LimitPage,
@@ -17,10 +12,8 @@ export const Route = createFileRoute('/trade/limit')({
 function LimitPage() {
     const [amount, setAmount] = useState('')
     const [price, setPrice] = useState('')
-    const { address, isConnected } = useAccount()
+    const { isConnected } = useAccount()
     const { connectors, connect } = useConnect()
-    const { disconnect } = useDisconnect() // kept if needed
-    const { writeContract, isPending } = useWriteContract()
 
     const handleConnect = () => {
         const connector = connectors[0]

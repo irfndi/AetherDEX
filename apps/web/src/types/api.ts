@@ -3,6 +3,8 @@ export interface Pool {
     pool_id: string
     token0: string
     token1: string
+    token0_symbol?: string
+    token1_symbol?: string
     fee_rate: string
     liquidity: string
     reserve0: string

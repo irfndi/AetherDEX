@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 
 // MockAuthenticator represents a mock authentication service
 type MockAuthenticator struct {
+	mu          sync.Mutex
 	usedNonces  map[string]bool
 	nonceWindow time.Duration
 	nonceStore  map[string]time.Time
@@ -49,6 +51,10 @@ func (a *MockAuthenticator) VerifySignature(data SignatureData) error {
 		return fmt.Errorf("signature expired")
 	}
 
+	// Lock for thread-safe access to maps
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	// Check nonce replay
 	if a.usedNonces[data.Nonce] {
 		return fmt.Errorf("nonce already used")
@@ -68,6 +74,9 @@ func (a *MockAuthenticator) VerifySignature(data SignatureData) error {
 
 // CleanupExpiredNonces removes expired nonces
 func (a *MockAuthenticator) CleanupExpiredNonces() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	now := time.Now()
 	for nonce, timestamp := range a.nonceStore {
 		if now.Sub(timestamp) > a.nonceWindow {
@@ -75,6 +84,21 @@ func (a *MockAuthenticator) CleanupExpiredNonces() {
 			delete(a.nonceStore, nonce)
 		}
 	}
+}
+
+// SetNonce sets a nonce in the store (for testing purposes)
+func (a *MockAuthenticator) SetNonce(nonce string, timestamp time.Time) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.usedNonces[nonce] = true
+	a.nonceStore[nonce] = timestamp
+}
+
+// HasNonce checks if a nonce exists (for testing purposes)
+func (a *MockAuthenticator) HasNonce(nonce string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.usedNonces[nonce]
 }
 
 // TestSignatureVerification tests ECDSA signature verification
@@ -174,15 +198,14 @@ func TestNonceValidation(t *testing.T) {
 	})
 
 	t.Run("Nonce cleanup functionality", func(t *testing.T) {
-		// Add expired nonce
-		auth.usedNonces["expired-nonce"] = true
-		auth.nonceStore["expired-nonce"] = time.Now().Add(-10 * time.Minute)
+		// Add expired nonce using helper method
+		auth.SetNonce("expired-nonce", time.Now().Add(-10*time.Minute))
 
 		// Cleanup expired nonces
 		auth.CleanupExpiredNonces()
 
 		// Verify expired nonce is removed
-		_, exists := auth.usedNonces["expired-nonce"]
+		exists := auth.HasNonce("expired-nonce")
 		assert.False(t, exists)
 	})
 }
@@ -367,7 +390,7 @@ func BenchmarkSignatureVerification(b *testing.B) {
 	b.Run("Nonce validation", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			nonce := fmt.Sprintf("bench-nonce-validation-%d", i)
-			_ = auth.usedNonces[nonce]
+			_ = auth.HasNonce(nonce)
 		}
 	})
 }

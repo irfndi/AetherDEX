@@ -3,8 +3,6 @@ import { ShoppingCart, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute('/trade/buy')({
     component: BuyPage,

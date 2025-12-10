@@ -5,7 +5,6 @@ import { useAccount, useConnect, useDisconnect, useSendTransaction } from 'wagmi
 import { parseEther } from 'viem'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute('/trade/send')({

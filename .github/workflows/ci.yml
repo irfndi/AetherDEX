@@ -56,7 +56,7 @@ jobs:
 
       - name: Install Vyper
         run: |
-          pip install vyper==0.3.10
+          pip install vyper==0.4.3
           echo "VYPER_PATH=$(which vyper)" >> $GITHUB_ENV
 
       - name: Install dependencies

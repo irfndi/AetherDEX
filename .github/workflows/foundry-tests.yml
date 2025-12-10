@@ -68,7 +68,7 @@ jobs:
 
       - name: Install Vyper
         run: |
-          pip install vyper==0.3.10
+          pip install vyper==0.4.3
           VYPER_EXECUTABLE=$(which vyper)
           echo "VYPER_PATH=${VYPER_EXECUTABLE}" >> $GITHUB_ENV
           echo "Vyper installed at: ${VYPER_EXECUTABLE}"
@@ -183,7 +183,7 @@ jobs:
       - name: Install Python dependencies
         if: steps.python-cache.outputs.cache-hit != 'true'
         run: |
-          pip install vyper==0.3.10 slither-analyzer
+          pip install vyper==0.4.3 slither-analyzer
           VYPER_EXECUTABLE=$(which vyper)
           echo "VYPER_PATH=${VYPER_EXECUTABLE}" >> $GITHUB_ENV
           echo "Vyper installed at: ${VYPER_EXECUTABLE}"

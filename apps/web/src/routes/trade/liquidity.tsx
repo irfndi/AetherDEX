@@ -1,10 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Plus, Minus, Droplets, ChevronDown, Loader2, ArrowLeft } from 'lucide-react'
+import { Plus, Minus, Droplets, ChevronDown, Loader2 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useAccount, useConnect } from 'wagmi'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { usePools, useTokens } from '../../hooks/use-api'
 import type { Token, Pool } from '../../types/api'
 import { cn } from '@/lib/utils'
@@ -25,7 +24,7 @@ function LiquidityPage() {
 
     const { isConnected } = useAccount()
     const { connectors, connect } = useConnect()
-    const { data: tokens, isLoading: isLoadingTokens } = useTokens()
+    const { data: tokens } = useTokens()
     const { data: pools, isLoading: isLoadingPools } = usePools()
 
     // Set default tokens
