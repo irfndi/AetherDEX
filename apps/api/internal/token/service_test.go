@@ -99,7 +99,6 @@ func (m *MockTokenRepository) GetTopTokensByMarketCap(limit int) ([]*models.Toke
 	return args.Get(0).([]*models.Token), args.Error(1)
 }
 
-
 func TestCreateToken(t *testing.T) {
 	mockRepo := new(MockTokenRepository)
 	service := NewService(mockRepo)
