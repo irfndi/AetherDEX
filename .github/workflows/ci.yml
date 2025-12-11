@@ -22,6 +22,8 @@ jobs:
     name: Smart Contracts
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: packages/contracts
@@ -92,6 +94,8 @@ jobs:
     name: Backend API
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: apps/api
@@ -171,6 +175,8 @@ jobs:
     name: Frontend
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout code
@@ -218,6 +224,7 @@ jobs:
   ci-status:
     name: CI Status
     runs-on: ubuntu-latest
+    permissions: {}
     needs: [contracts, backend, frontend]
     if: always()
     steps:
