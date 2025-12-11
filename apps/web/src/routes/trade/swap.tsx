@@ -25,7 +25,7 @@ function SwapPage() {
     const [isSelectorOpen, setIsSelectorOpen] = useState<'sell' | 'buy' | null>(null)
     const { address, isConnected } = useAccount()
     const { connectors, connect } = useConnect()
-    const { disconnect } = useDisconnect() // kept for potential use
+    useDisconnect() // Hook kept for potential future use
     const { writeContract, isPending } = useWriteContract()
     const { data: tokens, isLoading: isLoadingTokens } = useTokens()
 

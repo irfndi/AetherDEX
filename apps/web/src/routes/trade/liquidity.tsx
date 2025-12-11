@@ -5,7 +5,7 @@ import { useAccount, useConnect } from 'wagmi'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { usePools, useTokens } from '../../hooks/use-api'
-import type { Token, Pool } from '../../types/api'
+import type { Token } from '../../types/api'
 import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute('/trade/liquidity')({

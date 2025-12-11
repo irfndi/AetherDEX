@@ -1,5 +1,5 @@
 import { MoonIcon, SunIcon } from "lucide-react";
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,8 +16,6 @@ interface HeaderProps {
 
 export function Header({ onWalletConnect }: HeaderProps) {
   const { setTheme } = useTheme();
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const router = useRouterState();
 
   const navLinks = [
     { to: "/trade/swap", label: "Swap" },

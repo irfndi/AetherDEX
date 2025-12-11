@@ -5,7 +5,6 @@ import { useAccount, useConnect, useDisconnect, useSendTransaction } from 'wagmi
 import { parseEther } from 'viem'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute('/trade/send')({
     component: SendPage,
@@ -14,9 +13,9 @@ export const Route = createFileRoute('/trade/send')({
 function SendPage() {
     const [amount, setAmount] = useState('')
     const [recipient, setRecipient] = useState('')
-    const { address, isConnected } = useAccount()
+    const { isConnected } = useAccount()
     const { connectors, connect } = useConnect()
-    const { disconnect } = useDisconnect()
+    useDisconnect() // Hook kept for potential future use
     const { sendTransaction, isPending } = useSendTransaction()
 
     const handleConnect = () => {
