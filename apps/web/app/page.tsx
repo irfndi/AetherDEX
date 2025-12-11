@@ -2,10 +2,10 @@
 
 import { ArrowDown } from "lucide-react";
 import { useState } from "react";
-import { BackgroundTokens } from "@/components/BackgroundTokens";
-import { Header } from "@/components/Header";
-import type { Token } from "@/components/TokenSelector";
-import { TokenSelector } from "@/components/TokenSelector";
+import { BackgroundTokens } from "@/components/features/common/BackgroundTokens";
+import { Header } from "@/components/features/common/Header";
+import type { Token } from "@/components/features/trade/TokenSelector";
+import { TokenSelector } from "@/components/features/trade/TokenSelector";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -36,7 +36,7 @@ export default function Home() {
     if (fromToken && toToken && value) {
       const fromValue = Number.parseFloat(value);
       let exchangeRate: number | undefined;
-      if (fromToken && toToken && fromToken.price !== undefined && toToken.price !== undefined) {
+      if (fromToken.price !== undefined && toToken.price !== undefined) {
         exchangeRate = fromToken.price / toToken.price;
         setToAmount((fromValue * exchangeRate).toFixed(6));
       } else {
@@ -48,7 +48,6 @@ export default function Home() {
   const calculateFromAmount = (value: string) => {
     setToAmount(value);
     if (fromToken && toToken && value) {
-      const _toValue = Number.parseFloat(value);
       let exchangeRate: number | undefined;
       if (toToken.price !== undefined && fromToken.price !== undefined) {
         exchangeRate = toToken.price / fromToken.price;

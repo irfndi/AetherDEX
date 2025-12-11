@@ -1,0 +1,4 @@
+Compiling 3 files with Vyper 0.3.10
+Compiling 139 files with Solc 0.8.29
+Solc 0.8.29 finished in 2.14s
+Vyper 0.3.10 finished in 5.15s

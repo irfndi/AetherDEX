@@ -3,4 +3,4 @@
 
 echo "Running Foundry tests..."
 forge clean
-forge test --via-ir --root ./backend/smart-contract/ "$@"
+forge test --via-ir --root ./packages/contracts/ "$@"

@@ -1,67 +1,71 @@
-import '@testing-library/jest-dom'
+import { afterEach, vi, expect } from 'vitest'
 import { cleanup } from '@testing-library/react'
-import { vi, beforeAll, afterEach } from 'vitest'
+import * as matchers from '@testing-library/jest-dom/matchers'
 
-// Setup jsdom environment
-beforeAll(() => {
-  // Vitest with jsdom should handle this automatically, but ensure globals are available
-  if (typeof globalThis.document === 'undefined') {
-    // This should not happen with jsdom environment, but as a fallback
-    Object.assign(globalThis, {
-      document: {},
-      window: {},
-      navigator: {},
-    })
-  }
-})
+// Extend vitest expect with jest-dom matchers
+expect.extend(matchers)
 
-// Clean up after each test
+// runs a cleanup after each test case (e.g. clearing jsdom)
 afterEach(() => {
-  cleanup()
-  vi.clearAllMocks()
+    cleanup()
 })
 
-// Global test utilities
-global.ResizeObserver = vi.fn().mockImplementation(() => ({
-  observe: vi.fn(),
-  unobserve: vi.fn(),
-  disconnect: vi.fn(),
+// Mock use-api hook
+vi.mock('../src/hooks/use-api', () => ({
+    useTokens: vi.fn(() => ({ data: [], isLoading: false })),
+    usePools: vi.fn(() => ({ data: [], isLoading: false })),
+    useSwapQuote: vi.fn(() => ({ data: null, isLoading: false, error: null })),
 }))
 
-global.matchMedia = vi.fn().mockImplementation((query) => ({
-  matches: false,
-  media: query,
-  onchange: null,
-  addListener: vi.fn(),
-  removeListener: vi.fn(),
-  addEventListener: vi.fn(),
-  removeEventListener: vi.fn(),
-  dispatchEvent: vi.fn(),
-}))
-
-// Mock localStorage
-Object.defineProperty(global, 'localStorage', {
-  value: {
-    getItem: vi.fn(),
-    setItem: vi.fn(),
-    removeItem: vi.fn(),
-    clear: vi.fn(),
-  },
-  writable: true,
-})
-
-// Test data factories
-export const createMockToken = (overrides = {}) => ({
-  symbol: 'ETH',
-  name: 'Ethereum',
-  icon: '/eth-icon.svg',
-  balance: '1.0',
-  price: 2000,
-  ...overrides,
-})
-
+// Mock helper function used by existing tests
 export const createMockTokenList = () => [
-  createMockToken({ symbol: 'ETH', name: 'Ethereum' }),
-  createMockToken({ symbol: 'USDC', name: 'USD Coin', icon: '/usdc-icon.svg', price: 1 }),
-  createMockToken({ symbol: 'WBTC', name: 'Wrapped Bitcoin', icon: '/wbtc-icon.svg', price: 30000 }),
-]
+    { symbol: 'ETH', name: 'Ethereum', balance: '1.5' },
+    { symbol: 'USDC', name: 'USD Coin', balance: '500.0' },
+    { symbol: 'DAI', name: 'Dai', balance: '100.0' },
+];
+
+// Mocking wagmi hooks
+vi.mock('wagmi', async (importOriginal) => {
+    const mod = await importOriginal<typeof import('wagmi')>()
+    return {
+        ...mod,
+        useAccount: vi.fn(() => ({ address: undefined, isConnected: false })),
+        useConnect: vi.fn(() => ({ connectors: [], connect: vi.fn() })),
+        useDisconnect: vi.fn(() => ({ disconnect: vi.fn() })),
+        useWriteContract: vi.fn(() => ({ writeContract: vi.fn(), isPending: false })),
+        useSendTransaction: vi.fn(() => ({ sendTransaction: vi.fn(), isPending: false })),
+        createConfig: vi.fn(),
+        http: vi.fn(),
+    }
+})
+
+vi.mock('wagmi/chains', () => {
+    return {
+        mainnet: {},
+        sepolia: {},
+        hardhat: {},
+        localhost: {},
+    }
+})
+
+vi.mock('wagmi/connectors', () => {
+    return {
+        injected: vi.fn(),
+        walletConnect: vi.fn(),
+    }
+})
+
+// Mocking tanstack router
+vi.mock('@tanstack/react-router', async () => {
+    const actual = await vi.importActual('@tanstack/react-router')
+    return {
+        ...actual,
+        createFileRoute: () => (config: any) => ({
+            component: config.component,
+            ...config
+        }),
+        Link: (props: any) => null,
+        useRouter: vi.fn(),
+    }
+})
+

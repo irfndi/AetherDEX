@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { createConfig, http, WagmiProvider } from "wagmi";
 import { polygonZkEvmTestnet } from "wagmi/chains";
-import { Header } from "@/components/Header";
+import { Header } from "@/components/features/common/Header";
 import { ThemeProvider } from "@/components/ui/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
 

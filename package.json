@@ -1,17 +1,22 @@
 {
   "name": "aetherdex-monorepo",
   "private": true,
-  "packageManager": "pnpm@9.12.0",
   "scripts": {
-    "dev": "pnpm --filter aether-dex dev",
-    "web:dev": "pnpm --filter aether-dex dev",
-    "lint": "turbo run lint",
-    "test": "turbo run test",
-    "typecheck": "turbo run typecheck",
-    "build": "turbo run build",
-    "format": "turbo run format"
+    "dev": "bun --filter aether-dex dev",
+    "web:dev": "bun --filter aether-dex dev",
+    "lint": "bun --filter '*' lint",
+    "test": "bun --filter '*' test",
+    "typecheck": "bun --filter '*' typecheck",
+    "build": "bun --filter '*' build"
   },
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "tooling/*"
+  ],
   "devDependencies": {
-    "turbo": "^2.1.1"
+    "@vitejs/plugin-react": "^4.3.0",
+    "@vitest/ui": "^2.1.8",
+    "vitest": "^2.1.8"
   }
 }

@@ -1,76 +1,54 @@
-# Bun workspace isolation
-/node_modules/
-/web/node_modules/
-/orchestration/node_modules/
+# Global
+.DS_Store
+*.swp
+*.swo
+.vscode/
+.idea/
+.env
+.env.*
+!.env.example
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+bun.lockb
 
-# Rust
-/target/
-**/*.rs.bk
-
-# Foundry
-contracts/out/
-contracts/cache/
-contracts/broadcast/
-
-# Dependencies
+# Node / Monorepo
 node_modules/
+dist/
+build/
+out/
+.turbo/
+.vercel/
+
+# Frontend (apps/web)
+.next/
+apps/web/.next/
+apps/web/out/
+apps/web/build/
+apps/web/coverage/
+
+# Backend (apps/api)
+apps/api/bin/
+apps/api/*.out
+apps/api/*.html
+apps/api/*.test
+apps/api/coverage/
+apps/api/tmp/
+
+# Smart Contracts (packages/contracts)
+packages/contracts/out/
+packages/contracts/cache/
+packages/contracts/broadcast/
+packages/contracts/artifacts/
+packages/contracts/forge-cache/
+
+# Rust (if applicable)
+target/
+
+# Misc
 .pnp
 .pnp.js
-yarn.lock
-package-lock.json
-
-# Testing
 coverage/
 .nyc_output/
 
-# Production
-build/
-dist/
-out/
-.next/
-
-# Smart Contract specific
-backend/smart-contract/cache/
-backend/smart-contract/artifacts/
-backend/smart-contract/forge-cache/
-backend/smart-contract/broadcast/
-backend/smart-contract/cache/
-backend/smart-contract/out/
-
-# Environment files
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Editor directories
-.vscode/
-.idea/
-
-# IDE
-*.swp
-*.swo
-.DS_Store
-
-# Debug logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-debug.log
-
-# Misc
-*.pem
-.vercel
-.turbo
-.goose
-# Ignore node_modules files even if git tries to delete them
-apps/web/node_modules/**
-node_modules/**
-
-# Git internal files that should not be committed
-.git/FETCH_HEAD
-.git/index
-.git/logs/
-
-.pnpm-home
+.pnpm-home/

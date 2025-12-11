@@ -9,6 +9,10 @@ export default defineConfig({
     globals: true,
     watch: false,
     setupFiles: ['./test/setup.ts'],
+    // Explicitly include our test files
+    include: ['test/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
+    // Exclude e2e directory relative to root
+    exclude: ['test/e2e/**', 'node_modules/**'],
     reporters: ['verbose', 'json', 'html'],
     coverage: {
       provider: 'v8',
@@ -16,10 +20,10 @@ export default defineConfig({
       reportsDirectory: './coverage',
       thresholds: {
         global: {
-          branches: 60,
-          functions: 60,
-          lines: 60,
-          statements: 60,
+          branches: 80,
+          functions: 80,
+          lines: 80,
+          statements: 80,
         },
       },
     },
