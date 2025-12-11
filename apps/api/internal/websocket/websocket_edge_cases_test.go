@@ -807,7 +807,7 @@ func TestServerRestartScenarios(t *testing.T) {
 		}
 
 		// Verify all connections are active
-		assert.Equal(t, 3, len(suite.hub.Clients), "Should have 3 active clients")
+		assert.Equal(t, 3, suite.hub.GetClientCount(), "Should have 3 active clients")
 
 		// Simulate graceful shutdown
 		suite.ws.Stop()
@@ -901,7 +901,7 @@ func TestClientCleanup(t *testing.T) {
 		url := strings.Replace(suite.server.URL, "http", "ws", 1) + "/ws/prices"
 
 		// Track initial client count
-		initialClients := len(suite.hub.Clients)
+		initialClients := suite.hub.GetClientCount()
 
 		// Connect multiple clients
 		var connections []*websocket.Conn
@@ -922,7 +922,7 @@ func TestClientCleanup(t *testing.T) {
 
 		// Verify clients are registered
 		time.Sleep(100 * time.Millisecond)
-		assert.Equal(t, initialClients+5, len(suite.hub.Clients), "Should have 5 additional clients")
+		assert.Equal(t, initialClients+5, suite.hub.GetClientCount(), "Should have 5 additional clients")
 
 		// Abruptly close connections without proper unsubscribe
 		for _, conn := range connections {
@@ -933,7 +933,7 @@ func TestClientCleanup(t *testing.T) {
 		time.Sleep(500 * time.Millisecond)
 
 		// Verify clients are cleaned up
-		assert.Equal(t, initialClients, len(suite.hub.Clients), "Clients should be cleaned up after disconnection")
+		assert.Equal(t, initialClients, suite.hub.GetClientCount(), "Clients should be cleaned up after disconnection")
 	})
 
 	t.Run("Memory leak prevention", func(t *testing.T) {

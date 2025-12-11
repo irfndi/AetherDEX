@@ -112,7 +112,8 @@ func (h *Hub) unregisterClient(client *Client) {
 
 	if _, ok := h.Clients[client]; ok {
 		delete(h.Clients, client)
-		close(client.Send)
+		// Use thread-safe Close() instead of direct channel close
+		client.Close()
 		h.Stats.ActiveConnections--
 		h.Stats.LastUpdate = time.Now()
 

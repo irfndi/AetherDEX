@@ -566,18 +566,18 @@ func TestRealTimeDataIntegrity(t *testing.T) {
 	const numClients = 5
 	const testDuration = 5 * time.Second
 
-	var clients []*websocket.Conn
-	var receivedMessages [][]Message
-	var mutexes []sync.Mutex
+	// Pre-allocate all slices to avoid race conditions
+	clients := make([]*websocket.Conn, numClients)
+	receivedMessages := make([][]Message, numClients)
+	mutexes := make([]sync.Mutex, numClients)
 
 	// Create clients
 	for i := 0; i < numClients; i++ {
 		url := strings.Replace(suite.server.URL, "http", "ws", 1) + "/ws/prices"
 		conn, _, err := websocket.DefaultDialer.Dial(url, nil)
 		require.NoError(t, err)
-		clients = append(clients, conn)
-		receivedMessages = append(receivedMessages, []Message{})
-		mutexes = append(mutexes, sync.Mutex{})
+		clients[i] = conn
+		receivedMessages[i] = []Message{}
 
 		// Subscribe to price updates
 		for _, symbol := range []string{"ETH/USDT", "BTC/USDT"} {

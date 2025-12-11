@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -22,7 +23,8 @@ type Client struct {
 	mu            sync.RWMutex
 	ctx           context.Context
 	cancel        context.CancelFunc
-	closeOnce     sync.Once // Ensure Send channel is only closed once
+	closeOnce     sync.Once   // Ensure Send channel is only closed once
+	closed        atomic.Bool // Flag to check if client is closed
 }
 
 // NewClient creates a new WebSocket client
@@ -200,6 +202,11 @@ func (c *Client) handleUnsubscribe(topic, symbol, poolID string) {
 
 // sendError sends an error message to the client
 func (c *Client) sendError(errorMsg string, code int) {
+	// Check if client is closed before attempting to send
+	if c.closed.Load() {
+		return
+	}
+
 	errorResponse := ErrorMessage{
 		Type:      MessageTypeError,
 		Error:     errorMsg,
@@ -209,14 +216,23 @@ func (c *Client) sendError(errorMsg string, code int) {
 
 	data, _ := json.Marshal(errorResponse)
 	select {
+	case <-c.ctx.Done():
+		// Client is being closed, don't try to send
+		return
 	case c.Send <- data:
 	default:
-		close(c.Send)
+		// Channel full or closed, close safely
+		c.Close()
 	}
 }
 
 // sendPong sends a pong message to the client
 func (c *Client) sendPong() {
+	// Check if client is closed before attempting to send
+	if c.closed.Load() {
+		return
+	}
+
 	pongResponse := Message{
 		Type:      MessageTypePong,
 		Timestamp: time.Now(),
@@ -224,14 +240,23 @@ func (c *Client) sendPong() {
 
 	data, _ := json.Marshal(pongResponse)
 	select {
+	case <-c.ctx.Done():
+		// Client is being closed, don't try to send
+		return
 	case c.Send <- data:
 	default:
-		close(c.Send)
+		// Channel full or closed, close safely
+		c.Close()
 	}
 }
 
 // sendSubscriptionConfirmation sends a subscription confirmation message to the client
 func (c *Client) sendSubscriptionConfirmation(topic, symbol, poolID string) {
+	// Check if client is closed before attempting to send
+	if c.closed.Load() {
+		return
+	}
+
 	confirmationResponse := Message{
 		Type:      MessageTypeSubscriptionConfirmed,
 		Topic:     topic,
@@ -242,14 +267,23 @@ func (c *Client) sendSubscriptionConfirmation(topic, symbol, poolID string) {
 
 	data, _ := json.Marshal(confirmationResponse)
 	select {
+	case <-c.ctx.Done():
+		// Client is being closed, don't try to send
+		return
 	case c.Send <- data:
 	default:
-		close(c.Send)
+		// Channel full or closed, close safely
+		c.Close()
 	}
 }
 
 // sendUnsubscriptionConfirmation sends an unsubscription confirmation message to the client
 func (c *Client) sendUnsubscriptionConfirmation(topic, symbol, poolID string) {
+	// Check if client is closed before attempting to send
+	if c.closed.Load() {
+		return
+	}
+
 	confirmationResponse := Message{
 		Type:      MessageTypeUnsubscriptionConfirmed,
 		Topic:     topic,
@@ -260,9 +294,13 @@ func (c *Client) sendUnsubscriptionConfirmation(topic, symbol, poolID string) {
 
 	data, _ := json.Marshal(confirmationResponse)
 	select {
+	case <-c.ctx.Done():
+		// Client is being closed, don't try to send
+		return
 	case c.Send <- data:
 	default:
-		close(c.Send)
+		// Channel full or closed, close safely
+		c.Close()
 	}
 }
 
@@ -282,17 +320,14 @@ func (c *Client) SetAuth(userAddress string) {
 }
 
 // Close closes the client connection safely
-// Uses sync.Once to ensure the Send channel is only closed once, preventing panic
-// if Close() is called concurrently from multiple goroutines or multiple times
+// Sets the closed flag and cancels context to signal goroutines to stop.
+// We don't close the Send channel here to prevent races with active send operations.
+// The WritePump will exit via ctx.Done() and the channel will be garbage collected.
 func (c *Client) Close() {
-	// Cancel context first to signal goroutines to stop
+	// Set closed flag first to prevent new sends
+	c.closed.Store(true)
+	// Cancel context to signal goroutines to stop
 	if c.cancel != nil {
 		c.cancel()
 	}
-	// Safely close Send channel only once to prevent panic
-	c.closeOnce.Do(func() {
-		if c.Send != nil {
-			close(c.Send)
-		}
-	})
 }
