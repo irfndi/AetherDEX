@@ -1,6 +1,7 @@
 import { afterEach, vi, expect } from 'vitest'
 import { cleanup } from '@testing-library/react'
 import * as matchers from '@testing-library/jest-dom/matchers'
+import type { Token } from '../components/features/trade/TokenSelector'
 
 // Extend vitest expect with jest-dom matchers
 expect.extend(matchers)
@@ -23,6 +24,23 @@ export const createMockTokenList = () => [
     { symbol: 'USDC', name: 'USD Coin', balance: '500.0' },
     { symbol: 'DAI', name: 'Dai', balance: '100.0' },
 ];
+
+// Create a mock token for testing
+interface MockTokenInput {
+  symbol: string;
+  name: string;
+  price?: number;
+}
+
+export function createMockToken({ symbol, name, price }: MockTokenInput): Token {
+  return {
+    symbol,
+    name,
+    icon: null,
+    balance: "1000.0",
+    price: price || 0
+  };
+}
 
 // Mocking wagmi hooks
 vi.mock('wagmi', async (importOriginal) => {
