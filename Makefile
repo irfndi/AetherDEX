@@ -136,18 +136,16 @@ perf-test:
 # Database operations
 db-migrate:
 	@echo "Running database migrations..."
-	# Placeholder: Ensure migration script exists or update command
 	@if [ -f apps/api/cmd/migrate/main.go ]; then \
-		docker compose run --rm api go run cmd/migrate/main.go; \
+		docker compose run --rm -w /app/apps/api api go run ./cmd/migrate/main.go; \
 	else \
 		echo "Migration script not found at apps/api/cmd/migrate/main.go"; \
 	fi
 
 db-reset:
 	@echo "Resetting database..."
-	# Placeholder: Ensure migration script exists or update command
 	@if [ -f apps/api/cmd/migrate/main.go ]; then \
-		docker compose run --rm api go run cmd/migrate/main.go --reset; \
+		docker compose run --rm -w /app/apps/api api go run ./cmd/migrate/main.go --reset; \
 	else \
 		echo "Migration script not found at apps/api/cmd/migrate/main.go"; \
 	fi

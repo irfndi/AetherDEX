@@ -29,6 +29,9 @@ type userRepository struct {
 
 // NewUserRepository creates a new user repository
 func NewUserRepository(db *gorm.DB) UserRepository {
+	if db == nil {
+		panic("user repository: db cannot be nil")
+	}
 	return &userRepository{db: db}
 }
 
@@ -92,6 +95,16 @@ func (r *userRepository) Delete(id uint) error {
 
 // List retrieves users with pagination
 func (r *userRepository) List(limit, offset int) ([]*models.User, error) {
+	// Clamp pagination values to prevent unbounded reads
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	if offset < 0 {
+		offset = 0
+	}
 	var users []*models.User
 	err := r.db.Limit(limit).Offset(offset).Find(&users).Error
 	return users, err
@@ -102,7 +115,14 @@ func (r *userRepository) UpdateNonce(address, nonce string) error {
 	if address == "" || nonce == "" {
 		return errors.New("address and nonce cannot be empty")
 	}
-	return r.db.Model(&models.User{}).Where("address = ?", address).Update("nonce", nonce).Error
+	result := r.db.Model(&models.User{}).Where("address = ?", address).Update("nonce", nonce)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("user not found")
+	}
+	return nil
 }
 
 // GetActiveUsers retrieves all active users
