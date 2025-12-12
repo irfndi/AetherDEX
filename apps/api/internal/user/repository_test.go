@@ -256,12 +256,9 @@ func (suite *UserRepositoryTestSuite) TestUpdateNonce() {
 // TestUpdateNonceNotFound tests updating nonce for non-existent user
 func (suite *UserRepositoryTestSuite) TestUpdateNonceNotFound() {
 	err := suite.repo.UpdateNonce("0x0000000000000000000000000000000000000000", "new-nonce")
-	// Update returns nil error if no rows affected in GORM v2 (unless RowsAffected check is added)
-	// But repository implementation uses Update("nonce", nonce).Error.
-	// GORM Update returns error only on DB error.
-	// If the test expects an error, we should check repository implementation.
-	// Repository: return r.db.Model(&models.User{}).Where("address = ?", address).Update("nonce", nonce).Error
-	suite.NoError(err) // It should be no error, just no update
+	// UpdateNonce now returns an error if no rows are affected (user not found)
+	suite.Error(err)
+	suite.Contains(err.Error(), "user not found")
 }
 
 // TestUpdateNonceEmptyParams tests updating nonce with empty params
