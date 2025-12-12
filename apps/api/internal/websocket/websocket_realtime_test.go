@@ -100,18 +100,18 @@ func TestRapidPriceUpdates(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Pre-allocate slices to avoid race conditions with goroutines
-			clients := make([]*websocket.Conn, tt.numClients)
-			receivedCounts := make([]int64, tt.numClients)
-			lastPrices := make([]map[string]string, tt.numClients)
+			var clients []*websocket.Conn
+			var receivedCounts []int64
+			var lastPrices []map[string]string
 
 			// Create clients
 			for i := 0; i < tt.numClients; i++ {
 				url := strings.Replace(suite.server.URL, "http", "ws", 1) + "/ws/prices"
 				conn, _, err := websocket.DefaultDialer.Dial(url, nil)
 				require.NoError(t, err)
-				clients[i] = conn
-				lastPrices[i] = make(map[string]string)
+				clients = append(clients, conn)
+				receivedCounts = append(receivedCounts, 0)
+				lastPrices = append(lastPrices, make(map[string]string))
 
 				// Subscribe to price updates
 				for _, symbol := range tt.symbols {
@@ -189,8 +189,8 @@ func TestRapidPriceUpdates(t *testing.T) {
 			// Verify results
 			assert.True(t, updateDuration < tt.maxDuration, "Updates took too long: %v", updateDuration)
 
-			for i := 0; i < len(receivedCounts); i++ {
-				receivedCount := atomic.LoadInt64(&receivedCounts[i])
+			for i, count := range receivedCounts {
+				receivedCount := atomic.LoadInt64(&count)
 				minExpected := int64(float64(tt.numUpdates) * 0.8) // Allow 20% loss
 				assert.True(t, receivedCount >= minExpected,
 					"Client %d received too few updates: %d, expected at least %d",
@@ -218,7 +218,7 @@ func TestSimultaneousPoolUpdates(t *testing.T) {
 	const numPools = 5
 	const updatesPerPool = 50
 
-	// Pre-allocate slices to avoid race conditions with goroutines
+	// Pre-allocate slices to avoid race conditions when goroutines access slice element addresses
 	clients := make([]*websocket.Conn, numClients)
 	receivedCounts := make([]int64, numClients)
 	var poolUpdates []map[string]interface{}
@@ -307,8 +307,8 @@ func TestSimultaneousPoolUpdates(t *testing.T) {
 
 	// Verify results
 	totalExpectedUpdates := numPools * updatesPerPool
-	for i := 0; i < len(receivedCounts); i++ {
-		receivedCount := atomic.LoadInt64(&receivedCounts[i])
+	for i, count := range receivedCounts {
+		receivedCount := atomic.LoadInt64(&count)
 		minExpected := int64(float64(totalExpectedUpdates) * 0.8) // Allow 20% loss
 		assert.True(t, receivedCount >= minExpected,
 			"Client %d received too few pool updates: %d, expected at least %d",
