@@ -12,18 +12,14 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-	gorm "gorm.io/gorm"
 )
 
 // APIIntegrationTestSuite defines the test suite for API integration tests
 type APIIntegrationTestSuite struct {
 	suite.Suite
 	router *gin.Engine
-	db     *gorm.DB
-	rdb    *redis.Client
 }
 
 // SetupSuite runs before all tests in the suite
@@ -742,21 +738,21 @@ func (suite *APIIntegrationTestSuite) TestAPIErrorHandling() {
 // Test Concurrent API Requests
 func (suite *APIIntegrationTestSuite) TestConcurrentRequests() {
 	const numRequests = 10
-	done := make(chan bool, numRequests)
+	results := make(chan int, numRequests)
 
 	for i := 0; i < numRequests; i++ {
 		go func() {
 			req, _ := http.NewRequest("GET", "/health", nil)
 			w := httptest.NewRecorder()
 			suite.router.ServeHTTP(w, req)
-			suite.Equal(http.StatusOK, w.Code)
-			done <- true
+			results <- w.Code
 		}()
 	}
 
-	// Wait for all requests to complete
+	// Wait for all requests to complete and verify results
 	for i := 0; i < numRequests; i++ {
-		<-done
+		code := <-results
+		suite.Equal(http.StatusOK, code)
 	}
 }
 

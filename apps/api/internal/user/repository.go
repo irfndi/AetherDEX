@@ -112,55 +112,49 @@ func (r *userRepository) GetActiveUsers() ([]*models.User, error) {
 	return users, err
 }
 
-// AddRole adds a role to a user (atomic operation with row-level locking)
+// AddRole adds a role to a user
 func (r *userRepository) AddRole(address, role string) error {
 	if address == "" || role == "" {
 		return errors.New("address and role cannot be empty")
 	}
 
-	return r.db.Transaction(func(tx *gorm.DB) error {
-		var user models.User
-		// Use row-level locking to prevent race conditions
-		err := tx.Set("gorm:query_option", "FOR UPDATE").Where("address = ?", address).First(&user).Error
-		if err != nil {
-			return err
-		}
+	var user models.User
+	err := r.db.Where("address = ?", address).First(&user).Error
+	if err != nil {
+		return err
+	}
 
-		// Check if role already exists
-		for _, existingRole := range user.Roles {
-			if existingRole == role {
-				return nil // Role already exists
-			}
+	// Check if role already exists
+	for _, existingRole := range user.Roles {
+		if existingRole == role {
+			return nil // Role already exists
 		}
+	}
 
-		user.Roles = append(user.Roles, role)
-		return tx.Save(&user).Error
-	})
+	user.Roles = append(user.Roles, role)
+	return r.db.Save(&user).Error
 }
 
-// RemoveRole removes a role from a user (atomic operation with row-level locking)
+// RemoveRole removes a role from a user
 func (r *userRepository) RemoveRole(address, role string) error {
 	if address == "" || role == "" {
 		return errors.New("address and role cannot be empty")
 	}
 
-	return r.db.Transaction(func(tx *gorm.DB) error {
-		var user models.User
-		// Use row-level locking to prevent race conditions
-		err := tx.Set("gorm:query_option", "FOR UPDATE").Where("address = ?", address).First(&user).Error
-		if err != nil {
-			return err
-		}
+	var user models.User
+	err := r.db.Where("address = ?", address).First(&user).Error
+	if err != nil {
+		return err
+	}
 
-		// Remove role from slice
-		var newRoles pq.StringArray
-		for _, existingRole := range user.Roles {
-			if existingRole != role {
-				newRoles = append(newRoles, existingRole)
-			}
+	// Remove role from slice
+	var newRoles pq.StringArray
+	for _, existingRole := range user.Roles {
+		if existingRole != role {
+			newRoles = append(newRoles, existingRole)
 		}
+	}
 
-		user.Roles = newRoles
-		return tx.Save(&user).Error
-	})
+	user.Roles = newRoles
+	return r.db.Save(&user).Error
 }

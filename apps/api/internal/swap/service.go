@@ -2,6 +2,7 @@ package swap
 
 import (
 	"errors"
+	"math/big"
 
 	"github.com/irfndi/AetherDEX/apps/api/internal/pool"
 	"github.com/irfndi/AetherDEX/apps/api/internal/token"
@@ -175,4 +176,12 @@ func (s *service) GetQuote(req *SwapQuoteRequest) (*SwapQuoteResponse, error) {
 			Decimals: tokenOutData.Decimals,
 		},
 	}, nil
+}
+
+// Helper function for big.Int calculations (if needed for precision)
+func mulDiv(a, b, c *big.Int) *big.Int {
+	result := new(big.Int)
+	result.Mul(a, b)
+	result.Div(result, c)
+	return result
 }

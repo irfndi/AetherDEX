@@ -109,9 +109,6 @@ func (r *transactionRepository) Update(transaction *models.Transaction) error {
 	if transaction == nil {
 		return errors.New("transaction cannot be nil")
 	}
-	if transaction.ID == 0 {
-		return errors.New("id cannot be zero")
-	}
 	return r.db.Save(transaction).Error
 }
 
@@ -203,7 +200,7 @@ func (r *transactionRepository) GetPoolTransactionVolume(poolID string, since ti
 	}
 
 	err := r.db.Model(&models.Transaction{}).
-		Select("COALESCE(SUM(amount_in), 0) as total_volume").
+		Select("COALESCE(SUM(CAST(amount_in AS DECIMAL)), 0) as total_volume").
 		Where("pool_id = ? AND created_at >= ? AND status = ?", poolID, since, models.TransactionStatusConfirmed).
 		Scan(&result).Error
 

@@ -179,36 +179,33 @@ func (h *Hub) unsubscribeClient(subscription *Subscription) {
 // broadcastMessage broadcasts a message to all connected clients
 func (h *Hub) broadcastMessage(message []byte) {
 	h.mu.RLock()
-	clientsToUnregister := make([]*Client, 0)
+	clientsToRemove := make([]*Client, 0)
 	messagesSent := int64(0)
 	for client := range h.Clients {
 		select {
 		case client.Send <- message:
 			messagesSent++
 		default:
-			// Client's send channel is full, close safely and mark for unregistration
-			client.Close()
-			clientsToUnregister = append(clientsToUnregister, client)
+			close(client.Send)
+			clientsToRemove = append(clientsToRemove, client)
 		}
 	}
 	h.mu.RUnlock()
 
-	// Unregister clients through proper channel (handles cleanup and stats)
-	for _, client := range clientsToUnregister {
-		select {
-		case h.Unregister <- client:
-		default:
-			// Unregister channel full, cleanup will happen eventually
-		}
-	}
-
-	// Update message stats under mutex
-	if messagesSent > 0 {
+	// Remove clients after iteration to avoid map modification during iteration
+	if len(clientsToRemove) > 0 {
 		h.mu.Lock()
-		h.Stats.MessagesSent += messagesSent
-		h.Stats.LastUpdate = time.Now()
+		for _, client := range clientsToRemove {
+			delete(h.Clients, client)
+		}
 		h.mu.Unlock()
 	}
+
+	// Update all stats under mutex for consistency
+	h.mu.Lock()
+	h.Stats.MessagesSent += messagesSent
+	h.Stats.LastUpdate = time.Now()
+	h.mu.Unlock()
 }
 
 // BroadcastToTopic broadcasts a message to all clients subscribed to a specific topic
@@ -244,19 +241,22 @@ func (h *Hub) BroadcastToTopic(topic string, message interface{}) {
 		case client.Send <- data:
 			messagesSent++
 		default:
-			// Client's send channel is full, close safely and mark for unregistration
-			client.Close()
+			// Client's send channel is full, mark for removal
+			close(client.Send)
 			clientsToRemove = append(clientsToRemove, client)
 		}
 	}
 
-	// Unregister clients through proper channel (handles cleanup and stats)
-	for _, client := range clientsToRemove {
-		select {
-		case h.Unregister <- client:
-		default:
-			// Unregister channel full, cleanup will happen eventually
+	// Remove disconnected clients after iteration
+	if len(clientsToRemove) > 0 {
+		h.mu.Lock()
+		for _, client := range clientsToRemove {
+			delete(h.Clients, client)
+			if topicClients, ok := h.Subscriptions[topic]; ok {
+				delete(topicClients, client)
+			}
 		}
+		h.mu.Unlock()
 	}
 
 	// Update all stats under mutex for consistency (avoid mixing atomic and mutex)

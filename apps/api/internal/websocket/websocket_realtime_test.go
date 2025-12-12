@@ -100,18 +100,19 @@ func TestRapidPriceUpdates(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var clients []*websocket.Conn
-			var receivedCounts []int64
-			var lastPrices []map[string]string
+			// Pre-allocate slices to avoid race conditions when goroutines access slice element addresses
+			clients := make([]*websocket.Conn, tt.numClients)
+			receivedCounts := make([]int64, tt.numClients)
+			lastPrices := make([]map[string]string, tt.numClients)
+			var lastPricesMu sync.Mutex // Protects lastPrices map writes
 
 			// Create clients
 			for i := 0; i < tt.numClients; i++ {
 				url := strings.Replace(suite.server.URL, "http", "ws", 1) + "/ws/prices"
 				conn, _, err := websocket.DefaultDialer.Dial(url, nil)
 				require.NoError(t, err)
-				clients = append(clients, conn)
-				receivedCounts = append(receivedCounts, 0)
-				lastPrices = append(lastPrices, make(map[string]string))
+				clients[i] = conn
+				lastPrices[i] = make(map[string]string)
 
 				// Subscribe to price updates
 				for _, symbol := range tt.symbols {
@@ -135,11 +136,13 @@ func TestRapidPriceUpdates(t *testing.T) {
 						if msg.Type == "price_update" {
 							atomic.AddInt64(&receivedCounts[clientIndex], 1)
 
-							// Track latest price for each symbol
+							// Track latest price for each symbol (protected by mutex)
 							if data, ok := msg.Data.(map[string]interface{}); ok {
 								if symbol, ok := data["symbol"].(string); ok {
 									if price, ok := data["price"].(string); ok {
+										lastPricesMu.Lock()
 										lastPrices[clientIndex][symbol] = price
+										lastPricesMu.Unlock()
 									}
 								}
 							}
@@ -189,18 +192,20 @@ func TestRapidPriceUpdates(t *testing.T) {
 			// Verify results
 			assert.True(t, updateDuration < tt.maxDuration, "Updates took too long: %v", updateDuration)
 
-			for i, count := range receivedCounts {
-				receivedCount := atomic.LoadInt64(&count)
+			for i := 0; i < len(receivedCounts); i++ {
+				receivedCount := atomic.LoadInt64(&receivedCounts[i])
 				minExpected := int64(float64(tt.numUpdates) * 0.8) // Allow 20% loss
 				assert.True(t, receivedCount >= minExpected,
 					"Client %d received too few updates: %d, expected at least %d",
 					i, receivedCount, minExpected)
 
-				// Verify that we received updates for subscribed symbols
+				// Verify that we received updates for subscribed symbols (protected read)
+				lastPricesMu.Lock()
 				for _, symbol := range tt.symbols {
 					assert.Contains(t, lastPrices[i], symbol,
 						"Client %d should have received updates for symbol %s", i, symbol)
 				}
+				lastPricesMu.Unlock()
 			}
 
 			t.Logf("Rapid price updates test completed: %d updates in %v, avg rate: %.2f updates/sec",
@@ -307,8 +312,8 @@ func TestSimultaneousPoolUpdates(t *testing.T) {
 
 	// Verify results
 	totalExpectedUpdates := numPools * updatesPerPool
-	for i, count := range receivedCounts {
-		receivedCount := atomic.LoadInt64(&count)
+	for i := 0; i < len(receivedCounts); i++ {
+		receivedCount := atomic.LoadInt64(&receivedCounts[i])
 		minExpected := int64(float64(totalExpectedUpdates) * 0.8) // Allow 20% loss
 		assert.True(t, receivedCount >= minExpected,
 			"Client %d received too few pool updates: %d, expected at least %d",
