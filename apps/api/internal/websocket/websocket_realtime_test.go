@@ -100,18 +100,18 @@ func TestRapidPriceUpdates(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var clients []*websocket.Conn
-			var receivedCounts []int64
-			var lastPrices []map[string]string
+			// Pre-allocate slices to avoid race conditions with goroutines
+			clients := make([]*websocket.Conn, tt.numClients)
+			receivedCounts := make([]int64, tt.numClients)
+			lastPrices := make([]map[string]string, tt.numClients)
 
 			// Create clients
 			for i := 0; i < tt.numClients; i++ {
 				url := strings.Replace(suite.server.URL, "http", "ws", 1) + "/ws/prices"
 				conn, _, err := websocket.DefaultDialer.Dial(url, nil)
 				require.NoError(t, err)
-				clients = append(clients, conn)
-				receivedCounts = append(receivedCounts, 0)
-				lastPrices = append(lastPrices, make(map[string]string))
+				clients[i] = conn
+				lastPrices[i] = make(map[string]string)
 
 				// Subscribe to price updates
 				for _, symbol := range tt.symbols {
@@ -218,8 +218,9 @@ func TestSimultaneousPoolUpdates(t *testing.T) {
 	const numPools = 5
 	const updatesPerPool = 50
 
-	var clients []*websocket.Conn
-	var receivedCounts []int64
+	// Pre-allocate slices to avoid race conditions with goroutines
+	clients := make([]*websocket.Conn, numClients)
+	receivedCounts := make([]int64, numClients)
 	var poolUpdates []map[string]interface{}
 	var mu sync.Mutex
 
@@ -228,8 +229,7 @@ func TestSimultaneousPoolUpdates(t *testing.T) {
 		url := strings.Replace(suite.server.URL, "http", "ws", 1) + "/ws/pools"
 		conn, _, err := websocket.DefaultDialer.Dial(url, nil)
 		require.NoError(t, err)
-		clients = append(clients, conn)
-		receivedCounts = append(receivedCounts, 0)
+		clients[i] = conn
 
 		// Subscribe to pool updates
 		for _, poolID := range []string{"pool_1", "pool_2", "pool_3", "pool_4", "pool_5"} {

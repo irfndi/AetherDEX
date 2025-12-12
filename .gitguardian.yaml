@@ -1,0 +1,5 @@
+# GitGuardian Configuration
+# Ignore secrets in external library submodules
+paths-ignore:
+  - "**/lib/**"
+  - "packages/contracts/lib/**"
