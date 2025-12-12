@@ -2,7 +2,7 @@ version: 2
 updates:
   # JavaScript/TypeScript dependencies for web interface (using Bun)
   - package-ecosystem: "npm"
-    directory: "/interface/web"
+    directory: "/apps/web"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10

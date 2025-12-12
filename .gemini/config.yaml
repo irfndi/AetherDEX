@@ -1,0 +1,96 @@
+# Gemini Code Assist Configuration for AetherDEX
+# This configuration customizes Gemini's behavior for the AetherDEX multi-chain DEX project
+
+# Project metadata
+project:
+  name: "AetherDEX"
+  description: "Multi-chain decentralized exchange with advanced features"
+  type: "blockchain"
+  languages:
+    - "solidity"
+    - "go"
+    - "typescript"
+    - "javascript"
+    - "yaml"
+    - "markdown"
+
+# Code review focus areas
+review:
+  focus_areas:
+    - "security"
+    - "gas_optimization"
+    - "defi_best_practices"
+    - "cross_chain_compatibility"
+    - "smart_contract_patterns"
+    - "performance"
+    - "maintainability"
+
+# Language-specific configurations
+languages:
+  solidity:
+    version: "^0.8.0"
+    frameworks:
+      - "foundry"
+      - "openzeppelin"
+      - "uniswap-v4"
+    focus:
+      - "reentrancy_protection"
+      - "access_control"
+      - "gas_efficiency"
+      - "upgrade_patterns"
+  
+  go:
+    version: "1.21+"
+    frameworks:
+      - "gin"
+      - "gorm"
+    focus:
+      - "error_handling"
+      - "concurrency"
+      - "api_security"
+  
+  typescript:
+    frameworks:
+      - "react"
+      - "next.js"
+      - "ethers.js"
+      - "wagmi"
+    focus:
+      - "type_safety"
+      - "async_patterns"
+      - "web3_integration"
+
+# Custom patterns to check
+patterns:
+  security:
+    - "Check for reentrancy vulnerabilities"
+    - "Validate access control modifiers"
+    - "Ensure proper input validation"
+    - "Review external contract interactions"
+  
+  defi:
+    - "Verify slippage protection"
+    - "Check for MEV vulnerabilities"
+    - "Validate oracle usage"
+    - "Review liquidity calculations"
+  
+  gas_optimization:
+    - "Suggest storage layout optimizations"
+    - "Identify redundant operations"
+    - "Review loop efficiency"
+    - "Check for unnecessary external calls"
+
+# Exclude patterns
+exclude:
+  files:
+    - "node_modules/**"
+    - "dist/**"
+    - "build/**"
+    - "out/**"
+    - "cache/**"
+    - "artifacts/**"
+  
+  patterns:
+    - "test fixtures"
+    - "mock data"
+    - "generated files"

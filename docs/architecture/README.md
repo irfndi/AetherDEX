@@ -88,11 +88,11 @@ AetherDEX accesses liquidity from diverse sources via its Liquidity Engine and P
 3.  **Protocol-Owned Liquidity**: Maintaining its own liquidity pools for core pairs or baseline swap capabilities.
 4.  **Direct Integrations**: Potential for direct connections with market makers or other large liquidity venues.
 
-*(See [Technical Details - Liquidity Sources](../technical/liquidity-aggregation.md) for more specifics).*
+*(See [Technical Details - Liquidity Sources](./technical-deep-dive.md#liquidity-sources-and-aggregation) for more specifics).*
 
 ## Cross-Chain Communication
 
-*(See [Technical Details - Interoperability](../technical/interoperability.md) for more specifics).*
+*(See [Interoperability Architecture](./interoperability.md) for more specifics).*
 
 Secure and reliable cross-chain operations are achieved through:
 

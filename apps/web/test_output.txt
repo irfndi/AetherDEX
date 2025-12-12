@@ -1,0 +1,760 @@
+$ vitest run test/swap.test.tsx
+
+ RUN  v2.1.9 /Users/irfandi/Coding/2025/AetherDEX/apps/web
+
+stderr | test/swap.test.tsx > SwapPage > calls connect when connect button clicked
+TypeError: Cannot read properties of undefined (reading '0')
+    at handleConnect (/Users/irfandi/Coding/2025/AetherDEX/apps/web/src/routes/trade/swap.tsx:54:27)
+    at executeDispatch (/Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/react-dom@19.2.1+6ccf2a00d98a8a5e/node_modules/react-dom/cjs/react-dom-client.development.js:19116:9)
+    at runWithFiberInDEV (/Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/react-dom@19.2.1+6ccf2a00d98a8a5e/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+    at processDispatchQueue (/Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/react-dom@19.2.1+6ccf2a00d98a8a5e/node_modules/react-dom/cjs/react-dom-client.development.js:19166:19)
+    at /Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/react-dom@19.2.1+6ccf2a00d98a8a5e/node_modules/react-dom/cjs/react-dom-client.development.js:19767:9
+    at batchedUpdates$1 (/Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/react-dom@19.2.1+6ccf2a00d98a8a5e/node_modules/react-dom/cjs/react-dom-client.development.js:3255:40)
+    at dispatchEventForPluginEventSystem (/Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/react-dom@19.2.1+6ccf2a00d98a8a5e/node_modules/react-dom/cjs/react-dom-client.development.js:19320:7)
+    at dispatchEvent (/Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/react-dom@19.2.1+6ccf2a00d98a8a5e/node_modules/react-dom/cjs/react-dom-client.development.js:23585:11)
+    at dispatchDiscreteEvent (/Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/react-dom@19.2.1+6ccf2a00d98a8a5e/node_modules/react-dom/cjs/react-dom-client.development.js:23553:11)
+    at HTMLDivElement.callTheUserObjectsOperation (/Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/jsdom@25.0.1+a744fd195f22f642/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30) {
+  stackStr: "TypeError: Cannot read properties of undefined (reading '0')\n" +
+    '    at handleConnect (/Users/irfandi/Coding/2025/AetherDEX/apps/web/src/routes/trade/swap.tsx:54:27)\n' +
+    '    at executeDispatch (/Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/react-dom@19.2.1+6ccf2a00d98a8a5e/node_modules/react-dom/cjs/react-dom-client.development.js:19116:9)\n' +
+    '    at runWithFiberInDEV (/Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/react-dom@19.2.1+6ccf2a00d98a8a5e/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)\n' +
+    '    at processDispatchQueue (/Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/react-dom@19.2.1+6ccf2a00d98a8a5e/node_modules/react-dom/cjs/react-dom-client.development.js:19166:19)\n' +
+    '    at /Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/react-dom@19.2.1+6ccf2a00d98a8a5e/node_modules/react-dom/cjs/react-dom-client.development.js:19767:9\n' +
+    '    at batchedUpdates$1 (/Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/react-dom@19.2.1+6ccf2a00d98a8a5e/node_modules/react-dom/cjs/react-dom-client.development.js:3255:40)\n' +
+    '    at dispatchEventForPluginEventSystem (/Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/react-dom@19.2.1+6ccf2a00d98a8a5e/node_modules/react-dom/cjs/react-dom-client.development.js:19320:7)\n' +
+    '    at dispatchEvent (/Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/react-dom@19.2.1+6ccf2a00d98a8a5e/node_modules/react-dom/cjs/react-dom-client.development.js:23585:11)\n' +
+    '    at dispatchDiscreteEvent (/Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/react-dom@19.2.1+6ccf2a00d98a8a5e/node_modules/react-dom/cjs/react-dom-client.development.js:23553:11)\n' +
+    '    at HTMLDivElement.callTheUserObjectsOperation (/Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/jsdom@25.0.1+a744fd195f22f642/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)',
+  nameStr: 'TypeError',
+  expected: 'undefined',
+  actual: 'undefined'
+}
+
+ ✓ test/swap.test.tsx > SwapPage > renders connect wallet button when not connected
+ ✓ test/swap.test.tsx > SwapPage > renders swap interface when connected
+ × test/swap.test.tsx > SwapPage > calls connect when connect button clicked
+   → expected "spy" to be called at least once
+ ✓ test/swap.test.tsx > SwapPage > updates input values and fetches quote
+ ✓ test/swap.test.tsx > SwapPage > executes swap transaction
+ × test/swap.test.tsx > SwapPage > opens token selector and selects a token
+   → Found multiple elements with the text: USDC
+
+Here are the matching elements:
+
+Ignored nodes: comments, script, style
+[36m<span[39m
+  [33mclass[39m=[32m"font-semibold"[39m
+[36m>[39m
+  [0mUSDC[0m
+[36m</span>[39m
+
+Ignored nodes: comments, script, style
+[36m<div[39m
+  [33mclass[39m=[32m"text-white font-medium"[39m
+[36m>[39m
+  [0mUSDC[0m
+[36m</div>[39m
+
+(If this is intentional, then use the `*AllBy*` variant of the query (like `queryAllByText`, `getAllByText`, or `findAllByText`)).
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"min-h-screen"[39m
+    [36m>[39m
+      [36m<header[39m
+        [33mclass[39m=[32m"sticky top-0 z-50 glass border-b border-white/10"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"container mx-auto px-6 py-4 flex items-center justify-between"[39m
+        [36m>[39m
+          [36m<nav[39m
+            [33mclass[39m=[32m"flex items-center gap-6"[39m
+          [36m/>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"px-6 py-2.5 bg-slate-800 rounded-xl font-semibold hover:bg-slate-700 transition-all border border-slate-700"[39m
+          [36m>[39m
+            [0m...[0m
+          [36m</button>[39m
+        [36m</div>[39m
+      [36m</header>[39m
+      [36m<main[39m
+        [33mclass[39m=[32m"container mx-auto px-6 py-12 flex items-center justify-center"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"w-full max-w-md"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"glass-card p-6 glow-aether"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"flex items-center justify-between mb-6"[39m
+            [36m>[39m
+              [36m<h2[39m
+                [33mclass[39m=[32m"text-xl font-semibold text-white"[39m
+              [36m>[39m
+                [0mSwap[0m
+              [36m</h2>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"p-2 hover:bg-white/10 rounded-lg transition"[39m
+              [36m>[39m
+                [36m<svg[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mclass[39m=[32m"lucide lucide-settings w-5 h-5 text-gray-400"[39m
+                  [33mfill[39m=[32m"none"[39m
+                  [33mheight[39m=[32m"24"[39m
+                  [33mstroke[39m=[32m"currentColor"[39m
+                  [33mstroke-linecap[39m=[32m"round"[39m
+                  [33mstroke-linejoin[39m=[32m"round"[39m
+                  [33mstroke-width[39m=[32m"2"[39m
+                  [33mviewBox[39m=[32m"0 0 24 24"[39m
+                  [33mwidth[39m=[32m"24"[39m
+                  [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+                [36m>[39m
+                  [36m<path[39m
+                    [33md[39m=[32m"M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"[39m
+                  [36m/>[39m
+                  [36m<circle[39m
+                    [33mcx[39m=[32m"12"[39m
+                    [33mcy[39m=[32m"12"[39m
+                    [33mr[39m=[32m"3"[39m
+                  [36m/>[39m
+                [36m</svg>[39m
+              [36m</button>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"bg-slate-800/50 rounded-2xl p-4 mb-2"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"flex items-center justify-between mb-2"[39m
+              [36m>[39m
+                [36m<span[39m
+                  [33mclass[39m=[32m"text-sm text-gray-400"[39m
+                [36m>[39m
+                  [0mSell[0m
+                [36m</span>[39m
+                [36m<span[39m
+                  [33mclass[39m=[32m"text-sm text-gray-400"[39m
+                [36m>[39m
+                  [0mBalance: 0.0[0m
+                [36m</span>[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"flex items-center gap-4"[39m
+              [36m>[39m
+                [36m<input[39m
+                  [33mclass[39m=[32m"flex-1 bg-transparent text-3xl font-semibold text-white outline-none"[39m
+                  [33mplaceholder[39m=[32m"0"[39m
+                  [33mtype[39m=[32m"text"[39m
+                  [33mvalue[39m=[32m""[39m
+                [36m/>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl transition"[39m
+                [36m>[39m
+                  [36m<div[39m
+                    [33mclass[39m=[32m"w-6 h-6 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full"[39m
+                  [36m/>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"font-semibold"[39m
+                  [36m>[39m
+                    [0mETH[0m
+                  [36m</span>[39m
+                  [36m<svg[39m
+                    [33maria-hidden[39m=[32m"true"[39m
+                    [33mclass[39m=[32m"lucide lucide-chevron-down w-4 h-4"[39m
+                    [33mfill[39m=[32m"none"[39m
+                    [33mheight[39m=[32m"24"[39m
+                    [33mstroke[39m=[32m"currentColor"[39m
+                    [33mstroke-linecap[39m=[32m"round"[39m
+                    [33mstroke-linejoin[39m=[32m"round"[39m
+                    [33mstroke-width[39m=[32m"2"[39m
+                    [33mviewBox[39m=[32m"0 0 24 24"[39m
+                    [33mwidth[39m=[32m"24"[39m
+                    [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+                  [36m>[39m
+                    [36m<path[39m
+                      [33md[39m=[32m"m6 9 6 6 6-6"[39m
+                    [36m/>[39m
+                  [36m</svg>[39m
+                [36m</button>[39m
+              [36m</div>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"flex justify-center -my-2 relative z-10"[39m
+            [36m>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"p-3 bg-slate-700 hover:bg-slate-600 rounded-xl border-4 border-slate-900 transition"[39m
+              [36m>[39m
+                [36m<svg[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mclass[39m=[32m"lucide lucide-arrow-down w-4 h-4"[39m
+                  [33mfill[39m=[32m"none"[39m
+                  [33mheight[39m=[32m"24"[39m
+                  [33mstroke[39m=[32m"currentColor"[39m
+                  [33mstroke-linecap[39m=[32m"round"[39m
+                  [33mstroke-linejoin[39m=[32m"round"[39m
+                  [33mstroke-width[39m=[32m"2"[39m
+                  [33mviewBox[39m=[32m"0 0 24 24"[39m
+                  [33mwidth[39m=[32m"24"[39m
+                  [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+                [36m>[39m
+                  [36m<path[39m
+                    [33md[39m=[32m"M12 5v14"[39m
+                  [36m/>[39m
+                  [36m<path[39m
+                    [33md[39m=[32m"m19 12-7 7-7-7"[39m
+                  [36m/>[39m
+                [36m</svg>[39m
+              [36m</button>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"bg-slate-800/50 rounded-2xl p-4 mt-2"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"flex items-center justify-between mb-2"[39m
+              [36m>[39m
+                [36m<span[39m
+                  [33mclass[39m=[32m"text-sm text-gray-400"[39m
+                [36m>[39m
+                  [0mBuy[0m
+                [36m</span>[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"flex items-center gap-4"[39m
+              [36m>[39m
+                [36m<div[39m
+                  [33mclass[39m=[32m"flex-1 flex items-center"[39m
+                [36m>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"text-3xl font-semibold text-white"[39m
+                  [36m>[39m
+                    [0m0[0m
+                  [36m</span>[39m
+                [36m</div>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"flex items-center gap-2 px-4 py-2 bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 rounded-xl transition"[39m
+                [36m>[39m
+                  [36m<div[39m
+                    [33mclass[39m=[32m"w-6 h-6 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full"[39m
+                  [36m/>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"font-semibold"[39m
+                  [36m>[39m
+                    [0mUSDC[0m
+                  [36m</span>[39m
+                  [36m<svg[39m
+                    [33maria-hidden[39m=[32m"true"[39m
+                    [33mclass[39m=[32m"lucide lucide-chevron-down w-4 h-4"[39m
+                    [33mfill[39m=[32m"none"[39m
+                    [33mheight[39m=[32m"24"[39m
+                    [33mstroke[39m=[32m"currentColor"[39m
+                    [33mstroke-linecap[39m=[32m"round"[39m
+                    [33mstroke-linejoin[39m=[32m"round"[39m
+                    [33mstroke-width[39m=[32m"2"[39m
+                    [33mviewBox[39m=[32m"0 0 24 24"[39m
+                    [33mwidth[39m=[32m"24"[39m
+                    [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+                  [36m>[39m
+                    [36m<path[39m
+                      [33md[39m=[32m"m6 9 6 6 6-6"[39m
+                    [36m/>[39m
+                  [36m</svg>[39m
+                [36m</button>[39m
+              [36m</div>[39m
+            [36m</div>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full mt-6 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-2xl font-semibold text-lg hover:opacity-90 transition-all glow-aether disabled:opacity-50"[39m
+              [33mdisabled[39m=[32m""[39m
+            [36m>[39m
+              [0mSwap[0m
+            [36m</button>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"glass-card w-full max-w-md p-6 m-4"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"flex items-center justify-between mb-6"[39m
+            [36m>[39m
+              [36m<h3[39m
+                [33mclass[39m=[32m"text-xl font-semibold text-white"[39m
+              [36m>[39m
+                [0mSelect [0m
+                [0msell[0m
+                [0m token[0m
+              [36m</h3>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"p-2 hover:bg-white/10 rounded-lg transition text-gray-400 hover:text-white"[39m
+              [36m>[39m
+                [0mClose[0m
+              [36m</button>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"space-y-2 max-h-96 overflow-y-auto"[39m
+            [36m>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"w-full flex items-center justify-between p-3 hover:bg-white/5 rounded-xl transition group"[39m
+              [36m>[39m
+                [36m<div[39m
+                  [33mclass[39m=[32m"flex items-center gap-3"[39m
+                [36m>[39m
+                  [36m<div[39m
+                    [33mclass[39m=[32m"w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full"[39m
+                  [36m/>[39m
+                  [36m<div[39m
+                    [33mclass[39m=[32m"text-left"[39m
+                  [36m>[39m
+                    [36m<div[39m
+                      [33mclass[39m=[32m"text-white font-medium"[39m
+                    [36m>[39m
+                      [0mETH[0m
+                    [36m</div>[39m
+                    [36m<div[39m
+                      [33mclass[39m=[32m"text-sm text-gray-400"[39m
+                    [36m>[39m
+                      [0mEthereum[0m
+                    [36m</div>[39m
+                  [36m</div>[39m
+                [36m</div>[39m
+                [36m<span[39m
+                  [33mclass[39m=[32m"text-white opacity-0 group-hover:opacity-100 transition"[39m
+                [36m>[39m
+                  [0mSelect[0m
+                [36m</span>[39m
+              [36m</button>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"w-full flex items-center justify-between p-3 hover:bg-white/5 rounded-xl transition group"[39m
+              [36m>[39m
+                [36m<div[39m
+                  [33mclass[39m=[32m"flex items-center gap-3"[39m
+                [36m>[39m
+                  [36m<div[39m
+                    [33mclass[39m=[32m"w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full"[39m
+                  [36m/>[39m
+                  [36m<div[39m
+                    [33mclass[39m=[32m"text-left"[39m
+                  [36m>[39m
+                    [36m<div[39m
+                      [33mclass[39m=[32m"text-white font-medium"[39m
+                    [36m>[39m
+                      [0mUSDC[0m
+                    [36m</div>[39m
+                    [36m<div[39m
+                      [33mclass[39m=[32m"text-sm text-gray-400"[39m
+                    [36m>[39m
+                      [0mUSD Coin[0m
+                    [36m</div>[39m
+                  [36m</div>[39m
+                [36m</div>[39m
+                [36m<span[39m
+                  [33mclass[39m=[32m"text-white opacity-0 group-hover:opacity-100 transition"[39m
+                [36m>[39m
+                  [0mSelect[0m
+                [36m</span>[39m
+              [36m</button>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+      [36m</main>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/swap.test.tsx > SwapPage > calls connect when connect button clicked
+AssertionError: expected "spy" to be called at least once
+ ❯ test/swap.test.tsx:74:29
+     72|         fireEvent.click(connectButton)
+     73| 
+     74|         expect(mockConnect).toHaveBeenCalled()
+       |                             ^
+     75|     })
+     76| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  test/swap.test.tsx > SwapPage > opens token selector and selects a token
+TestingLibraryElementError: Found multiple elements with the text: USDC
+
+Here are the matching elements:
+
+Ignored nodes: comments, script, style
+[36m<span[39m
+  [33mclass[39m=[32m"font-semibold"[39m
+[36m>[39m
+  [0mUSDC[0m
+[36m</span>[39m
+
+Ignored nodes: comments, script, style
+[36m<div[39m
+  [33mclass[39m=[32m"text-white font-medium"[39m
+[36m>[39m
+  [0mUSDC[0m
+[36m</div>[39m
+
+(If this is intentional, then use the `*AllBy*` variant of the query (like `queryAllByText`, `getAllByText`, or `findAllByText`)).
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"min-h-screen"[39m
+    [36m>[39m
+      [36m<header[39m
+        [33mclass[39m=[32m"sticky top-0 z-50 glass border-b border-white/10"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"container mx-auto px-6 py-4 flex items-center justify-between"[39m
+        [36m>[39m
+          [36m<nav[39m
+            [33mclass[39m=[32m"flex items-center gap-6"[39m
+          [36m/>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"px-6 py-2.5 bg-slate-800 rounded-xl font-semibold hover:bg-slate-700 transition-all border border-slate-700"[39m
+          [36m>[39m
+            [0m...[0m
+          [36m</button>[39m
+        [36m</div>[39m
+      [36m</header>[39m
+      [36m<main[39m
+        [33mclass[39m=[32m"container mx-auto px-6 py-12 flex items-center justify-center"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"w-full max-w-md"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"glass-card p-6 glow-aether"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"flex items-center justify-between mb-6"[39m
+            [36m>[39m
+              [36m<h2[39m
+                [33mclass[39m=[32m"text-xl font-semibold text-white"[39m
+              [36m>[39m
+                [0mSwap[0m
+              [36m</h2>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"p-2 hover:bg-white/10 rounded-lg transition"[39m
+              [36m>[39m
+                [36m<svg[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mclass[39m=[32m"lucide lucide-settings w-5 h-5 text-gray-400"[39m
+                  [33mfill[39m=[32m"none"[39m
+                  [33mheight[39m=[32m"24"[39m
+                  [33mstroke[39m=[32m"currentColor"[39m
+                  [33mstroke-linecap[39m=[32m"round"[39m
+                  [33mstroke-linejoin[39m=[32m"round"[39m
+                  [33mstroke-width[39m=[32m"2"[39m
+                  [33mviewBox[39m=[32m"0 0 24 24"[39m
+                  [33mwidth[39m=[32m"24"[39m
+                  [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+                [36m>[39m
+                  [36m<path[39m
+                    [33md[39m=[32m"M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"[39m
+                  [36m/>[39m
+                  [36m<circle[39m
+                    [33mcx[39m=[32m"12"[39m
+                    [33mcy[39m=[32m"12"[39m
+                    [33mr[39m=[32m"3"[39m
+                  [36m/>[39m
+                [36m</svg>[39m
+              [36m</button>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"bg-slate-800/50 rounded-2xl p-4 mb-2"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"flex items-center justify-between mb-2"[39m
+              [36m>[39m
+                [36m<span[39m
+                  [33mclass[39m=[32m"text-sm text-gray-400"[39m
+                [36m>[39m
+                  [0mSell[0m
+                [36m</span>[39m
+                [36m<span[39m
+                  [33mclass[39m=[32m"text-sm text-gray-400"[39m
+                [36m>[39m
+                  [0mBalance: 0.0[0m
+                [36m</span>[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"flex items-center gap-4"[39m
+              [36m>[39m
+                [36m<input[39m
+                  [33mclass[39m=[32m"flex-1 bg-transparent text-3xl font-semibold text-white outline-none"[39m
+                  [33mplaceholder[39m=[32m"0"[39m
+                  [33mtype[39m=[32m"text"[39m
+                  [33mvalue[39m=[32m""[39m
+                [36m/>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl transition"[39m
+                [36m>[39m
+                  [36m<div[39m
+                    [33mclass[39m=[32m"w-6 h-6 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full"[39m
+                  [36m/>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"font-semibold"[39m
+                  [36m>[39m
+                    [0mETH[0m
+                  [36m</span>[39m
+                  [36m<svg[39m
+                    [33maria-hidden[39m=[32m"true"[39m
+                    [33mclass[39m=[32m"lucide lucide-chevron-down w-4 h-4"[39m
+                    [33mfill[39m=[32m"none"[39m
+                    [33mheight[39m=[32m"24"[39m
+                    [33mstroke[39m=[32m"currentColor"[39m
+                    [33mstroke-linecap[39m=[32m"round"[39m
+                    [33mstroke-linejoin[39m=[32m"round"[39m
+                    [33mstroke-width[39m=[32m"2"[39m
+                    [33mviewBox[39m=[32m"0 0 24 24"[39m
+                    [33mwidth[39m=[32m"24"[39m
+                    [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+                  [36m>[39m
+                    [36m<path[39m
+                      [33md[39m=[32m"m6 9 6 6 6-6"[39m
+                    [36m/>[39m
+                  [36m</svg>[39m
+                [36m</button>[39m
+              [36m</div>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"flex justify-center -my-2 relative z-10"[39m
+            [36m>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"p-3 bg-slate-700 hover:bg-slate-600 rounded-xl border-4 border-slate-900 transition"[39m
+              [36m>[39m
+                [36m<svg[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mclass[39m=[32m"lucide lucide-arrow-down w-4 h-4"[39m
+                  [33mfill[39m=[32m"none"[39m
+                  [33mheight[39m=[32m"24"[39m
+                  [33mstroke[39m=[32m"currentColor"[39m
+                  [33mstroke-linecap[39m=[32m"round"[39m
+                  [33mstroke-linejoin[39m=[32m"round"[39m
+                  [33mstroke-width[39m=[32m"2"[39m
+                  [33mviewBox[39m=[32m"0 0 24 24"[39m
+                  [33mwidth[39m=[32m"24"[39m
+                  [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+                [36m>[39m
+                  [36m<path[39m
+                    [33md[39m=[32m"M12 5v14"[39m
+                  [36m/>[39m
+                  [36m<path[39m
+                    [33md[39m=[32m"m19 12-7 7-7-7"[39m
+                  [36m/>[39m
+                [36m</svg>[39m
+              [36m</button>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"bg-slate-800/50 rounded-2xl p-4 mt-2"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"flex items-center justify-between mb-2"[39m
+              [36m>[39m
+                [36m<span[39m
+                  [33mclass[39m=[32m"text-sm text-gray-400"[39m
+                [36m>[39m
+                  [0mBuy[0m
+                [36m</span>[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"flex items-center gap-4"[39m
+              [36m>[39m
+                [36m<div[39m
+                  [33mclass[39m=[32m"flex-1 flex items-center"[39m
+                [36m>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"text-3xl font-semibold text-white"[39m
+                  [36m>[39m
+                    [0m0[0m
+                  [36m</span>[39m
+                [36m</div>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"flex items-center gap-2 px-4 py-2 bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 rounded-xl transition"[39m
+                [36m>[39m
+                  [36m<div[39m
+                    [33mclass[39m=[32m"w-6 h-6 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full"[39m
+                  [36m/>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"font-semibold"[39m
+                  [36m>[39m
+                    [0mUSDC[0m
+                  [36m</span>[39m
+                  [36m<svg[39m
+                    [33maria-hidden[39m=[32m"true"[39m
+                    [33mclass[39m=[32m"lucide lucide-chevron-down w-4 h-4"[39m
+                    [33mfill[39m=[32m"none"[39m
+                    [33mheight[39m=[32m"24"[39m
+                    [33mstroke[39m=[32m"currentColor"[39m
+                    [33mstroke-linecap[39m=[32m"round"[39m
+                    [33mstroke-linejoin[39m=[32m"round"[39m
+                    [33mstroke-width[39m=[32m"2"[39m
+                    [33mviewBox[39m=[32m"0 0 24 24"[39m
+                    [33mwidth[39m=[32m"24"[39m
+                    [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+                  [36m>[39m
+                    [36m<path[39m
+                      [33md[39m=[32m"m6 9 6 6 6-6"[39m
+                    [36m/>[39m
+                  [36m</svg>[39m
+                [36m</button>[39m
+              [36m</div>[39m
+            [36m</div>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full mt-6 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-2xl font-semibold text-lg hover:opacity-90 transition-all glow-aether disabled:opacity-50"[39m
+              [33mdisabled[39m=[32m""[39m
+            [36m>[39m
+              [0mSwap[0m
+            [36m</button>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"glass-card w-full max-w-md p-6 m-4"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"flex items-center justify-between mb-6"[39m
+            [36m>[39m
+              [36m<h3[39m
+                [33mclass[39m=[32m"text-xl font-semibold text-white"[39m
+              [36m>[39m
+                [0mSelect [0m
+                [0msell[0m
+                [0m token[0m
+              [36m</h3>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"p-2 hover:bg-white/10 rounded-lg transition text-gray-400 hover:text-white"[39m
+              [36m>[39m
+                [0mClose[0m
+              [36m</button>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"space-y-2 max-h-96 overflow-y-auto"[39m
+            [36m>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"w-full flex items-center justify-between p-3 hover:bg-white/5 rounded-xl transition group"[39m
+              [36m>[39m
+                [36m<div[39m
+                  [33mclass[39m=[32m"flex items-center gap-3"[39m
+                [36m>[39m
+                  [36m<div[39m
+                    [33mclass[39m=[32m"w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full"[39m
+                  [36m/>[39m
+                  [36m<div[39m
+                    [33mclass[39m=[32m"text-left"[39m
+                  [36m>[39m
+                    [36m<div[39m
+                      [33mclass[39m=[32m"text-white font-medium"[39m
+                    [36m>[39m
+                      [0mETH[0m
+                    [36m</div>[39m
+                    [36m<div[39m
+                      [33mclass[39m=[32m"text-sm text-gray-400"[39m
+                    [36m>[39m
+                      [0mEthereum[0m
+                    [36m</div>[39m
+                  [36m</div>[39m
+                [36m</div>[39m
+                [36m<span[39m
+                  [33mclass[39m=[32m"text-white opacity-0 group-hover:opacity-100 transition"[39m
+                [36m>[39m
+                  [0mSelect[0m
+                [36m</span>[39m
+              [36m</button>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"w-full flex items-center justify-between p-3 hover:bg-white/5 rounded-xl transition group"[39m
+              [36m>[39m
+                [36m<div[39m
+                  [33mclass[39m=[32m"flex items-center gap-3"[39m
+                [36m>[39m
+                  [36m<div[39m
+                    [33mclass[39m=[32m"w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full"[39m
+                  [36m/>[39m
+                  [36m<div[39m
+                    [33mclass[39m=[32m"text-left"[39m
+                  [36m>[39m
+                    [36m<div[39m
+                      [33mclass[39m=[32m"text-white font-medium"[39m
+                    [36m>[39m
+                      [0mUSDC[0m
+                    [36m</div>[39m
+                    [36m<div[39m
+                      [33mclass[39m=[32m"text-sm text-gray-400"[39m
+                    [36m>[39m
+                      [0mUSD Coin[0m
+                    [36m</div>[39m
+                  [36m</div>[39m
+                [36m</div>[39m
+                [36m<span[39m
+                  [33mclass[39m=[32m"text-white opacity-0 group-hover:opacity-100 transition"[39m
+                [36m>[39m
+                  [0mSelect[0m
+                [36m</span>[39m
+              [36m</button>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+      [36m</main>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+ ❯ Object.getElementError ../../node_modules/.bun/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ getElementError ../../node_modules/.bun/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:20:35
+ ❯ getMultipleElementsFoundError ../../node_modules/.bun/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:23:10
+ ❯ ../../node_modules/.bun/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:55:13
+ ❯ ../../node_modules/.bun/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ test/swap.test.tsx:146:35
+    144| 
+    145|         // Select USDC
+    146|         const usdcOption = screen.getByText('USDC')
+       |                                   ^
+    147|         fireEvent.click(usdcOption)
+    148| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+⎯⎯⎯⎯⎯⎯ Unhandled Errors ⎯⎯⎯⎯⎯⎯
+
+Vitest caught 1 unhandled error during the test run.
+This might cause false positive tests. Resolve unhandled errors to make sure your tests are not affected.
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+TypeError: Cannot read properties of undefined (reading '0')
+ ❯ handleConnect src/routes/trade/swap.tsx:54:27
+     52| 
+     53|     const handleConnect = () => {
+     54|         const connector = connectors[0]
+       |                           ^
+     55|         if (connector) {
+     56|             connect({ connector })
+ ❯ executeDispatch ../../node_modules/.bun/react-dom@19.2.1+6ccf2a00d98a8a5e/node_modules/react-dom/cjs/react-dom-client.development.js:19116:9
+ ❯ runWithFiberInDEV ../../node_modules/.bun/react-dom@19.2.1+6ccf2a00d98a8a5e/node_modules/react-dom/cjs/react-dom-client.development.js:874:13
+ ❯ processDispatchQueue ../../node_modules/.bun/react-dom@19.2.1+6ccf2a00d98a8a5e/node_modules/react-dom/cjs/react-dom-client.development.js:19166:19
+ ❯ ../../node_modules/.bun/react-dom@19.2.1+6ccf2a00d98a8a5e/node_modules/react-dom/cjs/react-dom-client.development.js:19767:9
+ ❯ batchedUpdates$1 ../../node_modules/.bun/react-dom@19.2.1+6ccf2a00d98a8a5e/node_modules/react-dom/cjs/react-dom-client.development.js:3255:40
+ ❯ dispatchEventForPluginEventSystem ../../node_modules/.bun/react-dom@19.2.1+6ccf2a00d98a8a5e/node_modules/react-dom/cjs/react-dom-client.development.js:19320:7
+ ❯ dispatchEvent ../../node_modules/.bun/react-dom@19.2.1+6ccf2a00d98a8a5e/node_modules/react-dom/cjs/react-dom-client.development.js:23585:11
+ ❯ dispatchDiscreteEvent ../../node_modules/.bun/react-dom@19.2.1+6ccf2a00d98a8a5e/node_modules/react-dom/cjs/react-dom-client.development.js:23553:11
+ ❯ HTMLDivElement.callTheUserObjectsOperation ../../node_modules/.bun/jsdom@25.0.1+a744fd195f22f642/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30
+
+This error originated in "test/swap.test.tsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "calls connect when connect button clicked". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 4 passed (6)
+     Errors  1 error
+   Start at  15:14:12
+   Duration  2.76s (transform 162ms, setup 381ms, collect 521ms, tests 154ms, environment 856ms, prepare 301ms)
+
+{"numTotalTestSuites":2,"numPassedTestSuites":0,"numFailedTestSuites":2,"numPendingTestSuites":0,"numTotalTests":6,"numPassedTests":4,"numFailedTests":2,"numPendingTests":0,"numTodoTests":0,"snapshot":{"added":0,"failure":false,"filesAdded":0,"filesRemoved":0,"filesRemovedList":[],"filesUnmatched":0,"filesUpdated":0,"matched":0,"total":0,"unchecked":0,"uncheckedKeysByFile":[],"unmatched":0,"updated":0,"didUpdate":false},"startTime":1765354453661,"success":false,"testResults":[{"assertionResults":[{"ancestorTitles":["SwapPage"],"fullName":"SwapPage renders connect wallet button when not connected","status":"passed","title":"renders connect wallet button when not connected","duration":36.391417000000274,"failureMessages":[],"location":{"line":54,"column":5},"meta":{}},{"ancestorTitles":["SwapPage"],"fullName":"SwapPage renders swap interface when connected","status":"passed","title":"renders swap interface when connected","duration":58.81849999999986,"failureMessages":[],"location":{"line":60,"column":5},"meta":{}},{"ancestorTitles":["SwapPage"],"fullName":"SwapPage calls connect when connect button clicked","status":"failed","title":"calls connect when connect button clicked","duration":15.92687500000011,"failureMessages":["AssertionError: expected \"spy\" to be called at least once\n    at Proxy.<anonymous> (file:///Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/@vitest+expect@2.1.9/node_modules/@vitest/expect/dist/index.js:1448:13)\n    at Proxy.<anonymous> (file:///Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/@vitest+expect@2.1.9/node_modules/@vitest/expect/dist/index.js:972:17)\n    at Proxy.methodWrapper (file:///Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/chai@5.3.3/node_modules/chai/index.js:1686:25)\n    at /Users/irfandi/Coding/2025/AetherDEX/apps/web/test/swap.test.tsx:74:29\n    at file:///Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:146:14\n    at file:///Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:533:11\n    at runWithTimeout (file:///Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:39:7)\n    at runTest (file:///Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:1056:17)\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at runSuite (file:///Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:1205:15)"],"location":{"line":68,"column":5},"meta":{}},{"ancestorTitles":["SwapPage"],"fullName":"SwapPage updates input values and fetches quote","status":"passed","title":"updates input values and fetches quote","duration":9.846374999999625,"failureMessages":[],"location":{"line":77,"column":5},"meta":{}},{"ancestorTitles":["SwapPage"],"fullName":"SwapPage executes swap transaction","status":"passed","title":"executes swap transaction","duration":14.954082999999628,"failureMessages":[],"location":{"line":106,"column":5},"meta":{}},{"ancestorTitles":["SwapPage"],"fullName":"SwapPage opens token selector and selects a token","status":"failed","title":"opens token selector and selects a token","duration":17.355458999999883,"failureMessages":["TestingLibraryElementError: Found multiple elements with the text: USDC\n\nHere are the matching elements:\n\nIgnored nodes: comments, script, style\n\u001b[36m<span\u001b[39m\n  \u001b[33mclass\u001b[39m=\u001b[32m\"font-semibold\"\u001b[39m\n\u001b[36m>\u001b[39m\n  \u001b[0mUSDC\u001b[0m\n\u001b[36m</span>\u001b[39m\n\nIgnored nodes: comments, script, style\n\u001b[36m<div\u001b[39m\n  \u001b[33mclass\u001b[39m=\u001b[32m\"text-white font-medium\"\u001b[39m\n\u001b[36m>\u001b[39m\n  \u001b[0mUSDC\u001b[0m\n\u001b[36m</div>\u001b[39m\n\n(If this is intentional, then use the `*AllBy*` variant of the query (like `queryAllByText`, `getAllByText`, or `findAllByText`)).\n\nIgnored nodes: comments, script, style\n\u001b[36m<body>\u001b[39m\n  \u001b[36m<div>\u001b[39m\n    \u001b[36m<div\u001b[39m\n      \u001b[33mclass\u001b[39m=\u001b[32m\"min-h-screen\"\u001b[39m\n    \u001b[36m>\u001b[39m\n      \u001b[36m<header\u001b[39m\n        \u001b[33mclass\u001b[39m=\u001b[32m\"sticky top-0 z-50 glass border-b border-white/10\"\u001b[39m\n      \u001b[36m>\u001b[39m\n        \u001b[36m<div\u001b[39m\n          \u001b[33mclass\u001b[39m=\u001b[32m\"container mx-auto px-6 py-4 flex items-center justify-between\"\u001b[39m\n        \u001b[36m>\u001b[39m\n          \u001b[36m<nav\u001b[39m\n            \u001b[33mclass\u001b[39m=\u001b[32m\"flex items-center gap-6\"\u001b[39m\n          \u001b[36m/>\u001b[39m\n          \u001b[36m<button\u001b[39m\n            \u001b[33mclass\u001b[39m=\u001b[32m\"px-6 py-2.5 bg-slate-800 rounded-xl font-semibold hover:bg-slate-700 transition-all border border-slate-700\"\u001b[39m\n          \u001b[36m>\u001b[39m\n            \u001b[0m...\u001b[0m\n          \u001b[36m</button>\u001b[39m\n        \u001b[36m</div>\u001b[39m\n      \u001b[36m</header>\u001b[39m\n      \u001b[36m<main\u001b[39m\n        \u001b[33mclass\u001b[39m=\u001b[32m\"container mx-auto px-6 py-12 flex items-center justify-center\"\u001b[39m\n      \u001b[36m>\u001b[39m\n        \u001b[36m<div\u001b[39m\n          \u001b[33mclass\u001b[39m=\u001b[32m\"w-full max-w-md\"\u001b[39m\n        \u001b[36m>\u001b[39m\n          \u001b[36m<div\u001b[39m\n            \u001b[33mclass\u001b[39m=\u001b[32m\"glass-card p-6 glow-aether\"\u001b[39m\n          \u001b[36m>\u001b[39m\n            \u001b[36m<div\u001b[39m\n              \u001b[33mclass\u001b[39m=\u001b[32m\"flex items-center justify-between mb-6\"\u001b[39m\n            \u001b[36m>\u001b[39m\n              \u001b[36m<h2\u001b[39m\n                \u001b[33mclass\u001b[39m=\u001b[32m\"text-xl font-semibold text-white\"\u001b[39m\n              \u001b[36m>\u001b[39m\n                \u001b[0mSwap\u001b[0m\n              \u001b[36m</h2>\u001b[39m\n              \u001b[36m<button\u001b[39m\n                \u001b[33mclass\u001b[39m=\u001b[32m\"p-2 hover:bg-white/10 rounded-lg transition\"\u001b[39m\n              \u001b[36m>\u001b[39m\n                \u001b[36m<svg\u001b[39m\n                  \u001b[33maria-hidden\u001b[39m=\u001b[32m\"true\"\u001b[39m\n                  \u001b[33mclass\u001b[39m=\u001b[32m\"lucide lucide-settings w-5 h-5 text-gray-400\"\u001b[39m\n                  \u001b[33mfill\u001b[39m=\u001b[32m\"none\"\u001b[39m\n                  \u001b[33mheight\u001b[39m=\u001b[32m\"24\"\u001b[39m\n                  \u001b[33mstroke\u001b[39m=\u001b[32m\"currentColor\"\u001b[39m\n                  \u001b[33mstroke-linecap\u001b[39m=\u001b[32m\"round\"\u001b[39m\n                  \u001b[33mstroke-linejoin\u001b[39m=\u001b[32m\"round\"\u001b[39m\n                  \u001b[33mstroke-width\u001b[39m=\u001b[32m\"2\"\u001b[39m\n                  \u001b[33mviewBox\u001b[39m=\u001b[32m\"0 0 24 24\"\u001b[39m\n                  \u001b[33mwidth\u001b[39m=\u001b[32m\"24\"\u001b[39m\n                  \u001b[33mxmlns\u001b[39m=\u001b[32m\"http://www.w3.org/2000/svg\"\u001b[39m\n                \u001b[36m>\u001b[39m\n                  \u001b[36m<path\u001b[39m\n                    \u001b[33md\u001b[39m=\u001b[32m\"M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z\"\u001b[39m\n                  \u001b[36m/>\u001b[39m\n                  \u001b[36m<circle\u001b[39m\n                    \u001b[33mcx\u001b[39m=\u001b[32m\"12\"\u001b[39m\n                    \u001b[33mcy\u001b[39m=\u001b[32m\"12\"\u001b[39m\n                    \u001b[33mr\u001b[39m=\u001b[32m\"3\"\u001b[39m\n                  \u001b[36m/>\u001b[39m\n                \u001b[36m</svg>\u001b[39m\n              \u001b[36m</button>\u001b[39m\n            \u001b[36m</div>\u001b[39m\n            \u001b[36m<div\u001b[39m\n              \u001b[33mclass\u001b[39m=\u001b[32m\"bg-slate-800/50 rounded-2xl p-4 mb-2\"\u001b[39m\n            \u001b[36m>\u001b[39m\n              \u001b[36m<div\u001b[39m\n                \u001b[33mclass\u001b[39m=\u001b[32m\"flex items-center justify-between mb-2\"\u001b[39m\n              \u001b[36m>\u001b[39m\n                \u001b[36m<span\u001b[39m\n                  \u001b[33mclass\u001b[39m=\u001b[32m\"text-sm text-gray-400\"\u001b[39m\n                \u001b[36m>\u001b[39m\n                  \u001b[0mSell\u001b[0m\n                \u001b[36m</span>\u001b[39m\n                \u001b[36m<span\u001b[39m\n                  \u001b[33mclass\u001b[39m=\u001b[32m\"text-sm text-gray-400\"\u001b[39m\n                \u001b[36m>\u001b[39m\n                  \u001b[0mBalance: 0.0\u001b[0m\n                \u001b[36m</span>\u001b[39m\n              \u001b[36m</div>\u001b[39m\n              \u001b[36m<div\u001b[39m\n                \u001b[33mclass\u001b[39m=\u001b[32m\"flex items-center gap-4\"\u001b[39m\n              \u001b[36m>\u001b[39m\n                \u001b[36m<input\u001b[39m\n                  \u001b[33mclass\u001b[39m=\u001b[32m\"flex-1 bg-transparent text-3xl font-semibold text-white outline-none\"\u001b[39m\n                  \u001b[33mplaceholder\u001b[39m=\u001b[32m\"0\"\u001b[39m\n                  \u001b[33mtype\u001b[39m=\u001b[32m\"text\"\u001b[39m\n                  \u001b[33mvalue\u001b[39m=\u001b[32m\"\"\u001b[39m\n                \u001b[36m/>\u001b[39m\n                \u001b[36m<button\u001b[39m\n                  \u001b[33mclass\u001b[39m=\u001b[32m\"flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl transition\"\u001b[39m\n                \u001b[36m>\u001b[39m\n                  \u001b[36m<div\u001b[39m\n                    \u001b[33mclass\u001b[39m=\u001b[32m\"w-6 h-6 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full\"\u001b[39m\n                  \u001b[36m/>\u001b[39m\n                  \u001b[36m<span\u001b[39m\n                    \u001b[33mclass\u001b[39m=\u001b[32m\"font-semibold\"\u001b[39m\n                  \u001b[36m>\u001b[39m\n                    \u001b[0mETH\u001b[0m\n                  \u001b[36m</span>\u001b[39m\n                  \u001b[36m<svg\u001b[39m\n                    \u001b[33maria-hidden\u001b[39m=\u001b[32m\"true\"\u001b[39m\n                    \u001b[33mclass\u001b[39m=\u001b[32m\"lucide lucide-chevron-down w-4 h-4\"\u001b[39m\n                    \u001b[33mfill\u001b[39m=\u001b[32m\"none\"\u001b[39m\n                    \u001b[33mheight\u001b[39m=\u001b[32m\"24\"\u001b[39m\n                    \u001b[33mstroke\u001b[39m=\u001b[32m\"currentColor\"\u001b[39m\n                    \u001b[33mstroke-linecap\u001b[39m=\u001b[32m\"round\"\u001b[39m\n                    \u001b[33mstroke-linejoin\u001b[39m=\u001b[32m\"round\"\u001b[39m\n                    \u001b[33mstroke-width\u001b[39m=\u001b[32m\"2\"\u001b[39m\n                    \u001b[33mviewBox\u001b[39m=\u001b[32m\"0 0 24 24\"\u001b[39m\n                    \u001b[33mwidth\u001b[39m=\u001b[32m\"24\"\u001b[39m\n                    \u001b[33mxmlns\u001b[39m=\u001b[32m\"http://www.w3.org/2000/svg\"\u001b[39m\n                  \u001b[36m>\u001b[39m\n                    \u001b[36m<path\u001b[39m\n                      \u001b[33md\u001b[39m=\u001b[32m\"m6 9 6 6 6-6\"\u001b[39m\n                    \u001b[36m/>\u001b[39m\n                  \u001b[36m</svg>\u001b[39m\n                \u001b[36m</button>\u001b[39m\n              \u001b[36m</div>\u001b[39m\n            \u001b[36m</div>\u001b[39m\n            \u001b[36m<div\u001b[39m\n              \u001b[33mclass\u001b[39m=\u001b[32m\"flex justify-center -my-2 relative z-10\"\u001b[39m\n            \u001b[36m>\u001b[39m\n              \u001b[36m<button\u001b[39m\n                \u001b[33mclass\u001b[39m=\u001b[32m\"p-3 bg-slate-700 hover:bg-slate-600 rounded-xl border-4 border-slate-900 transition\"\u001b[39m\n              \u001b[36m>\u001b[39m\n                \u001b[36m<svg\u001b[39m\n                  \u001b[33maria-hidden\u001b[39m=\u001b[32m\"true\"\u001b[39m\n                  \u001b[33mclass\u001b[39m=\u001b[32m\"lucide lucide-arrow-down w-4 h-4\"\u001b[39m\n                  \u001b[33mfill\u001b[39m=\u001b[32m\"none\"\u001b[39m\n                  \u001b[33mheight\u001b[39m=\u001b[32m\"24\"\u001b[39m\n                  \u001b[33mstroke\u001b[39m=\u001b[32m\"currentColor\"\u001b[39m\n                  \u001b[33mstroke-linecap\u001b[39m=\u001b[32m\"round\"\u001b[39m\n                  \u001b[33mstroke-linejoin\u001b[39m=\u001b[32m\"round\"\u001b[39m\n                  \u001b[33mstroke-width\u001b[39m=\u001b[32m\"2\"\u001b[39m\n                  \u001b[33mviewBox\u001b[39m=\u001b[32m\"0 0 24 24\"\u001b[39m\n                  \u001b[33mwidth\u001b[39m=\u001b[32m\"24\"\u001b[39m\n                  \u001b[33mxmlns\u001b[39m=\u001b[32m\"http://www.w3.org/2000/svg\"\u001b[39m\n                \u001b[36m>\u001b[39m\n                  \u001b[36m<path\u001b[39m\n                    \u001b[33md\u001b[39m=\u001b[32m\"M12 5v14\"\u001b[39m\n                  \u001b[36m/>\u001b[39m\n                  \u001b[36m<path\u001b[39m\n                    \u001b[33md\u001b[39m=\u001b[32m\"m19 12-7 7-7-7\"\u001b[39m\n                  \u001b[36m/>\u001b[39m\n                \u001b[36m</svg>\u001b[39m\n              \u001b[36m</button>\u001b[39m\n            \u001b[36m</div>\u001b[39m\n            \u001b[36m<div\u001b[39m\n              \u001b[33mclass\u001b[39m=\u001b[32m\"bg-slate-800/50 rounded-2xl p-4 mt-2\"\u001b[39m\n            \u001b[36m>\u001b[39m\n              \u001b[36m<div\u001b[39m\n                \u001b[33mclass\u001b[39m=\u001b[32m\"flex items-center justify-between mb-2\"\u001b[39m\n              \u001b[36m>\u001b[39m\n                \u001b[36m<span\u001b[39m\n                  \u001b[33mclass\u001b[39m=\u001b[32m\"text-sm text-gray-400\"\u001b[39m\n                \u001b[36m>\u001b[39m\n                  \u001b[0mBuy\u001b[0m\n                \u001b[36m</span>\u001b[39m\n              \u001b[36m</div>\u001b[39m\n              \u001b[36m<div\u001b[39m\n                \u001b[33mclass\u001b[39m=\u001b[32m\"flex items-center gap-4\"\u001b[39m\n              \u001b[36m>\u001b[39m\n                \u001b[36m<div\u001b[39m\n                  \u001b[33mclass\u001b[39m=\u001b[32m\"flex-1 flex items-center\"\u001b[39m\n                \u001b[36m>\u001b[39m\n                  \u001b[36m<span\u001b[39m\n                    \u001b[33mclass\u001b[39m=\u001b[32m\"text-3xl font-semibold text-white\"\u001b[39m\n                  \u001b[36m>\u001b[39m\n                    \u001b[0m0\u001b[0m\n                  \u001b[36m</span>\u001b[39m\n                \u001b[36m</div>\u001b[39m\n                \u001b[36m<button\u001b[39m\n                  \u001b[33mclass\u001b[39m=\u001b[32m\"flex items-center gap-2 px-4 py-2 bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 rounded-xl transition\"\u001b[39m\n                \u001b[36m>\u001b[39m\n                  \u001b[36m<div\u001b[39m\n                    \u001b[33mclass\u001b[39m=\u001b[32m\"w-6 h-6 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full\"\u001b[39m\n                  \u001b[36m/>\u001b[39m\n                  \u001b[36m<span\u001b[39m\n                    \u001b[33mclass\u001b[39m=\u001b[32m\"font-semibold\"\u001b[39m\n                  \u001b[36m>\u001b[39m\n                    \u001b[0mUSDC\u001b[0m\n                  \u001b[36m</span>\u001b[39m\n                  \u001b[36m<svg\u001b[39m\n                    \u001b[33maria-hidden\u001b[39m=\u001b[32m\"true\"\u001b[39m\n                    \u001b[33mclass\u001b[39m=\u001b[32m\"lucide lucide-chevron-down w-4 h-4\"\u001b[39m\n                    \u001b[33mfill\u001b[39m=\u001b[32m\"none\"\u001b[39m\n                    \u001b[33mheight\u001b[39m=\u001b[32m\"24\"\u001b[39m\n                    \u001b[33mstroke\u001b[39m=\u001b[32m\"currentColor\"\u001b[39m\n                    \u001b[33mstroke-linecap\u001b[39m=\u001b[32m\"round\"\u001b[39m\n                    \u001b[33mstroke-linejoin\u001b[39m=\u001b[32m\"round\"\u001b[39m\n                    \u001b[33mstroke-width\u001b[39m=\u001b[32m\"2\"\u001b[39m\n                    \u001b[33mviewBox\u001b[39m=\u001b[32m\"0 0 24 24\"\u001b[39m\n                    \u001b[33mwidth\u001b[39m=\u001b[32m\"24\"\u001b[39m\n                    \u001b[33mxmlns\u001b[39m=\u001b[32m\"http://www.w3.org/2000/svg\"\u001b[39m\n                  \u001b[36m>\u001b[39m\n                    \u001b[36m<path\u001b[39m\n                      \u001b[33md\u001b[39m=\u001b[32m\"m6 9 6 6 6-6\"\u001b[39m\n                    \u001b[36m/>\u001b[39m\n                  \u001b[36m</svg>\u001b[39m\n                \u001b[36m</button>\u001b[39m\n              \u001b[36m</div>\u001b[39m\n            \u001b[36m</div>\u001b[39m\n            \u001b[36m<button\u001b[39m\n              \u001b[33mclass\u001b[39m=\u001b[32m\"w-full mt-6 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-2xl font-semibold text-lg hover:opacity-90 transition-all glow-aether disabled:opacity-50\"\u001b[39m\n              \u001b[33mdisabled\u001b[39m=\u001b[32m\"\"\u001b[39m\n            \u001b[36m>\u001b[39m\n              \u001b[0mSwap\u001b[0m\n            \u001b[36m</button>\u001b[39m\n          \u001b[36m</div>\u001b[39m\n        \u001b[36m</div>\u001b[39m\n        \u001b[36m<div\u001b[39m\n          \u001b[33mclass\u001b[39m=\u001b[32m\"fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm\"\u001b[39m\n        \u001b[36m>\u001b[39m\n          \u001b[36m<div\u001b[39m\n            \u001b[33mclass\u001b[39m=\u001b[32m\"glass-card w-full max-w-md p-6 m-4\"\u001b[39m\n          \u001b[36m>\u001b[39m\n            \u001b[36m<div\u001b[39m\n              \u001b[33mclass\u001b[39m=\u001b[32m\"flex items-center justify-between mb-6\"\u001b[39m\n            \u001b[36m>\u001b[39m\n              \u001b[36m<h3\u001b[39m\n                \u001b[33mclass\u001b[39m=\u001b[32m\"text-xl font-semibold text-white\"\u001b[39m\n              \u001b[36m>\u001b[39m\n                \u001b[0mSelect \u001b[0m\n                \u001b[0msell\u001b[0m\n                \u001b[0m token\u001b[0m\n              \u001b[36m</h3>\u001b[39m\n              \u001b[36m<button\u001b[39m\n                \u001b[33mclass\u001b[39m=\u001b[32m\"p-2 hover:bg-white/10 rounded-lg transition text-gray-400 hover:text-white\"\u001b[39m\n              \u001b[36m>\u001b[39m\n                \u001b[0mClose\u001b[0m\n              \u001b[36m</button>\u001b[39m\n            \u001b[36m</div>\u001b[39m\n            \u001b[36m<div\u001b[39m\n              \u001b[33mclass\u001b[39m=\u001b[32m\"space-y-2 max-h-96 overflow-y-auto\"\u001b[39m\n            \u001b[36m>\u001b[39m\n              \u001b[36m<button\u001b[39m\n                \u001b[33mclass\u001b[39m=\u001b[32m\"w-full flex items-center justify-between p-3 hover:bg-white/5 rounded-xl transition group\"\u001b[39m\n              \u001b[36m>\u001b[39m\n                \u001b[36m<div\u001b[39m\n                  \u001b[33mclass\u001b[39m=\u001b[32m\"flex items-center gap-3\"\u001b[39m\n                \u001b[36m>\u001b[39m\n                  \u001b[36m<div\u001b[39m\n                    \u001b[33mclass\u001b[39m=\u001b[32m\"w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full\"\u001b[39m\n                  \u001b[36m/>\u001b[39m\n                  \u001b[36m<div\u001b[39m\n                    \u001b[33mclass\u001b[39m=\u001b[32m\"text-left\"\u001b[39m\n                  \u001b[36m>\u001b[39m\n                    \u001b[36m<div\u001b[39m\n                      \u001b[33mclass\u001b[39m=\u001b[32m\"text-white font-medium\"\u001b[39m\n                    \u001b[36m>\u001b[39m\n                      \u001b[0mETH\u001b[0m\n                    \u001b[36m</div>\u001b[39m\n                    \u001b[36m<div\u001b[39m\n                      \u001b[33mclass\u001b[39m=\u001b[32m\"text-sm text-gray-400\"\u001b[39m\n                    \u001b[36m>\u001b[39m\n                      \u001b[0mEthereum\u001b[0m\n                    \u001b[36m</div>\u001b[39m\n                  \u001b[36m</div>\u001b[39m\n                \u001b[36m</div>\u001b[39m\n                \u001b[36m<span\u001b[39m\n                  \u001b[33mclass\u001b[39m=\u001b[32m\"text-white opacity-0 group-hover:opacity-100 transition\"\u001b[39m\n                \u001b[36m>\u001b[39m\n                  \u001b[0mSelect\u001b[0m\n                \u001b[36m</span>\u001b[39m\n              \u001b[36m</button>\u001b[39m\n              \u001b[36m<button\u001b[39m\n                \u001b[33mclass\u001b[39m=\u001b[32m\"w-full flex items-center justify-between p-3 hover:bg-white/5 rounded-xl transition group\"\u001b[39m\n              \u001b[36m>\u001b[39m\n                \u001b[36m<div\u001b[39m\n                  \u001b[33mclass\u001b[39m=\u001b[32m\"flex items-center gap-3\"\u001b[39m\n                \u001b[36m>\u001b[39m\n                  \u001b[36m<div\u001b[39m\n                    \u001b[33mclass\u001b[39m=\u001b[32m\"w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full\"\u001b[39m\n                  \u001b[36m/>\u001b[39m\n                  \u001b[36m<div\u001b[39m\n                    \u001b[33mclass\u001b[39m=\u001b[32m\"text-left\"\u001b[39m\n                  \u001b[36m>\u001b[39m\n                    \u001b[36m<div\u001b[39m\n                      \u001b[33mclass\u001b[39m=\u001b[32m\"text-white font-medium\"\u001b[39m\n                    \u001b[36m>\u001b[39m\n                      \u001b[0mUSDC\u001b[0m\n                    \u001b[36m</div>\u001b[39m\n                    \u001b[36m<div\u001b[39m\n                      \u001b[33mclass\u001b[39m=\u001b[32m\"text-sm text-gray-400\"\u001b[39m\n                    \u001b[36m>\u001b[39m\n                      \u001b[0mUSD Coin\u001b[0m\n                    \u001b[36m</div>\u001b[39m\n                  \u001b[36m</div>\u001b[39m\n                \u001b[36m</div>\u001b[39m\n                \u001b[36m<span\u001b[39m\n                  \u001b[33mclass\u001b[39m=\u001b[32m\"text-white opacity-0 group-hover:opacity-100 transition\"\u001b[39m\n                \u001b[36m>\u001b[39m\n                  \u001b[0mSelect\u001b[0m\n                \u001b[36m</span>\u001b[39m\n              \u001b[36m</button>\u001b[39m\n            \u001b[36m</div>\u001b[39m\n          \u001b[36m</div>\u001b[39m\n        \u001b[36m</div>\u001b[39m\n      \u001b[36m</main>\u001b[39m\n    \u001b[36m</div>\u001b[39m\n  \u001b[36m</div>\u001b[39m\n\u001b[36m</body>\u001b[39m\n    at Object.getElementError (/Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/config.js:37:19)\n    at getElementError (/Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:20:35)\n    at getMultipleElementsFoundError (/Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:23:10)\n    at /Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:55:13\n    at /Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:95:19\n    at /Users/irfandi/Coding/2025/AetherDEX/apps/web/test/swap.test.tsx:146:35\n    at file:///Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:146:14\n    at file:///Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:533:11\n    at runWithTimeout (file:///Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:39:7)\n    at runTest (file:///Users/irfandi/Coding/2025/AetherDEX/node_modules/.bun/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:1056:17)"],"location":{"line":126,"column":5},"meta":{}}],"startTime":1765354456248,"endTime":1765354456401.3555,"status":"failed","message":"","name":"/Users/irfandi/Coding/2025/AetherDEX/apps/web/test/swap.test.tsx"}]}
+error: script "test" exited with code 1

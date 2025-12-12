@@ -1,0 +1,68 @@
+name: autofix.ci
+
+on:
+  pull_request:
+  push:
+    branches: ["main", "master"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  autofix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          submodules: recursive
+
+      # Setup Bun for frontend dependencies
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@4bc047ad259df6fc24a6c9b0f9a0cb08cf17fbe5 # v2.0.1
+        with:
+          bun-version: latest
+
+      # Install dependencies for Biome
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      # Run Biome formatting and linting with auto-fix
+      - name: Lint with Oxlint
+        run: |
+          cd apps/web
+          bun run lint
+        continue-on-error: true
+
+      # Setup Go for backend formatting
+      - uses: actions/setup-go@41dfa10bad2bb2ae585af6ee5bb4d7d973ad74ed # v5.2.0
+        with:
+          go-version: '1.23'
+          cache-dependency-path: |
+            apps/api/go.sum
+
+      # Run Go formatting
+      - name: Format Go code
+        run: |
+          cd apps/api
+          go fmt ./...
+
+      # Setup Foundry for smart contract formatting
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@50d5a8956f2e319df19e6b57539d7e2acb9f8c1e # v1.5.0
+        with:
+          version: nightly
+
+      # Run Foundry formatting
+      - name: Format Solidity contracts
+        run: |
+          cd packages/contracts
+          forge fmt
+
+      # Run autofix.ci action to commit changes
+      # Using commit SHA ff86a557 (corresponds to v1 tag) for security
+      - uses: autofix-ci/action@ff86a557419858bb967097bfc916833f5647fa8c
