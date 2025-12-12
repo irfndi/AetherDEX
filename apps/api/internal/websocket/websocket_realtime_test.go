@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -728,7 +729,5 @@ func TestRealTimeDataIntegrity(t *testing.T) {
 
 // Helper function to parse float from string
 func parseFloat(s string) (float64, error) {
-	var f float64
-	_, err := fmt.Sscanf(s, "%f", &f)
-	return f, err
+	return strconv.ParseFloat(s, 64)
 }

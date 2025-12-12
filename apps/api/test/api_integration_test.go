@@ -314,7 +314,7 @@ func (suite *APIIntegrationTestSuite) handleLogin(c *gin.Context) {
 	}
 
 	token := gin.H{
-		"accessToken":  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+		"accessToken":  "test_access_token_for_integration_tests",
 		"refreshToken": "refresh_token_123",
 		"expiresIn":    3600,
 		"address":      req.Address,

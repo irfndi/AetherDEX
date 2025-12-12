@@ -2,6 +2,7 @@ package pool
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/irfndi/AetherDEX/apps/api/internal/models"
 	"github.com/shopspring/decimal"
@@ -31,7 +32,15 @@ type poolRepository struct {
 
 // NewPoolRepository creates a new pool repository
 func NewPoolRepository(db *gorm.DB) PoolRepository {
+	if db == nil {
+		panic("pool repository: db cannot be nil")
+	}
 	return &poolRepository{db: db}
+}
+
+// normalizeAddress converts address to lowercase for case-insensitive matching
+func normalizeAddress(addr string) string {
+	return strings.ToLower(strings.TrimSpace(addr))
 }
 
 // Create creates a new pool
@@ -105,6 +114,9 @@ func (r *poolRepository) Update(pool *models.Pool) error {
 	if pool == nil {
 		return errors.New("pool cannot be nil")
 	}
+	if pool.ID == 0 {
+		return errors.New("pool ID cannot be zero")
+	}
 	return r.db.Save(pool).Error
 }
 
@@ -118,6 +130,16 @@ func (r *poolRepository) Delete(id uint) error {
 
 // List retrieves pools with pagination
 func (r *poolRepository) List(limit, offset int) ([]*models.Pool, error) {
+	// Clamp pagination values to prevent unbounded reads
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	if offset < 0 {
+		offset = 0
+	}
 	var pools []*models.Pool
 	err := r.db.Limit(limit).Offset(offset).Find(&pools).Error
 	return pools, err

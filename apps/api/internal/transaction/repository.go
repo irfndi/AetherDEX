@@ -35,6 +35,9 @@ type transactionRepository struct {
 
 // NewTransactionRepository creates a new transaction repository
 func NewTransactionRepository(db *gorm.DB) TransactionRepository {
+	if db == nil {
+		panic("transaction repository: db cannot be nil")
+	}
 	return &transactionRepository{db: db}
 }
 
@@ -122,6 +125,16 @@ func (r *transactionRepository) Delete(id uint) error {
 
 // List retrieves transactions with pagination
 func (r *transactionRepository) List(limit, offset int) ([]*models.Transaction, error) {
+	// Clamp pagination values to prevent unbounded reads
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	if offset < 0 {
+		offset = 0
+	}
 	var transactions []*models.Transaction
 	err := r.db.Preload("User").Preload("Pool").Order("created_at DESC").
 		Limit(limit).Offset(offset).Find(&transactions).Error
@@ -160,6 +173,9 @@ func (r *transactionRepository) GetRecentTransactions(limit int) ([]*models.Tran
 
 // GetTransactionsByDateRange retrieves transactions within a date range
 func (r *transactionRepository) GetTransactionsByDateRange(start, end time.Time) ([]*models.Transaction, error) {
+	if end.Before(start) {
+		return nil, errors.New("end date cannot be before start date")
+	}
 	var transactions []*models.Transaction
 	err := r.db.Preload("User").Preload("Pool").
 		Where("created_at BETWEEN ? AND ?", start, end).
