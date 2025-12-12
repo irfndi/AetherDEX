@@ -109,6 +109,9 @@ func (r *transactionRepository) Update(transaction *models.Transaction) error {
 	if transaction == nil {
 		return errors.New("transaction cannot be nil")
 	}
+	if transaction.ID == 0 {
+		return errors.New("id cannot be zero")
+	}
 	return r.db.Save(transaction).Error
 }
 
