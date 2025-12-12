@@ -3,7 +3,13 @@ import { describe, it, expect, bench } from 'vitest'
 import { render } from '@testing-library/react'
 import { performance } from 'perf_hooks'
 import { TokenSelector } from '../components/features/trade/TokenSelector'
-import { createMockToken } from './setup'
+// import { createMockToken } from './setup'
+
+
+// Fallback mock function for createMockToken, until a real implementation is available
+function createMockToken({ address, symbol, name, price }) {
+  return { address, symbol, name, price }
+}
 
 // Mock SwapInterface component since it doesn't exist yet
 const SwapInterface = () => {
