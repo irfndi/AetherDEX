@@ -12,18 +12,14 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-	gorm "gorm.io/gorm"
 )
 
 // APIIntegrationTestSuite defines the test suite for API integration tests
 type APIIntegrationTestSuite struct {
 	suite.Suite
 	router *gin.Engine
-	db     *gorm.DB
-	rdb    *redis.Client
 }
 
 // SetupSuite runs before all tests in the suite

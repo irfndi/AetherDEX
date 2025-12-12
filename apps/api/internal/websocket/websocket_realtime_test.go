@@ -189,8 +189,8 @@ func TestRapidPriceUpdates(t *testing.T) {
 			// Verify results
 			assert.True(t, updateDuration < tt.maxDuration, "Updates took too long: %v", updateDuration)
 
-			for i, count := range receivedCounts {
-				receivedCount := atomic.LoadInt64(&count)
+			for i := 0; i < len(receivedCounts); i++ {
+				receivedCount := atomic.LoadInt64(&receivedCounts[i])
 				minExpected := int64(float64(tt.numUpdates) * 0.8) // Allow 20% loss
 				assert.True(t, receivedCount >= minExpected,
 					"Client %d received too few updates: %d, expected at least %d",
@@ -307,8 +307,8 @@ func TestSimultaneousPoolUpdates(t *testing.T) {
 
 	// Verify results
 	totalExpectedUpdates := numPools * updatesPerPool
-	for i, count := range receivedCounts {
-		receivedCount := atomic.LoadInt64(&count)
+	for i := 0; i < len(receivedCounts); i++ {
+		receivedCount := atomic.LoadInt64(&receivedCounts[i])
 		minExpected := int64(float64(totalExpectedUpdates) * 0.8) // Allow 20% loss
 		assert.True(t, receivedCount >= minExpected,
 			"Client %d received too few pool updates: %d, expected at least %d",

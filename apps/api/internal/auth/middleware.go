@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,6 +21,7 @@ type AuthMiddleware struct {
 	nonceMu       sync.RWMutex
 	nonceWindow   time.Duration
 	requiredRoles map[string][]string
+	cleanupOnce   sync.Once // Ensures nonce cleanup runs only once
 }
 
 // NewAuthMiddleware creates a new authentication middleware
@@ -193,8 +195,10 @@ func (am *AuthMiddleware) verifySignatureToken(token string) (string, error) {
 	am.nonceStore[nonce] = time.Now()
 	am.nonceMu.Unlock()
 
-	// Cleanup old nonces periodically
-	go am.cleanupExpiredNonces()
+	// Start cleanup goroutine only once to prevent goroutine leak
+	am.cleanupOnce.Do(func() {
+		go am.periodicNonceCleanup()
+	})
 
 	return address, nil
 }
@@ -256,6 +260,15 @@ func (am *AuthMiddleware) cleanupExpiredNonces() {
 	}
 }
 
+// periodicNonceCleanup runs cleanup periodically in a single goroutine
+func (am *AuthMiddleware) periodicNonceCleanup() {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		am.cleanupExpiredNonces()
+	}
+}
+
 // ValidateSignatureRequest validates signature request format
 func ValidateSignatureRequest(req AuthRequest) error {
 	// Validate address
@@ -305,20 +318,29 @@ func SecureCORS() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		origin := c.Request.Header.Get("Origin")
 
-		// Whitelist of allowed origins (in production, load from config)
-		allowedOrigins := []string{
-			"http://localhost:3000",
-			"https://aetherdex.io",
+		// Load allowed origins from environment, fallback to defaults
+		allowedOriginsEnv := os.Getenv("CORS_ALLOWED_ORIGINS")
+		var allowedOrigins []string
+		if allowedOriginsEnv != "" {
+			allowedOrigins = strings.Split(allowedOriginsEnv, ",")
+		} else {
+			// Default origins for development
+			allowedOrigins = []string{
+				"http://localhost:3000",
+				"https://aetherdex.io",
+			}
 		}
 
 		isAllowed := false
 		for _, allowed := range allowedOrigins {
-			if origin == allowed {
+			if origin == strings.TrimSpace(allowed) {
 				isAllowed = true
 				break
 			}
 		}
 
+		// Add Vary: Origin for proper caching when reflecting origin
+		c.Header("Vary", "Origin")
 		if isAllowed {
 			c.Header("Access-Control-Allow-Origin", origin)
 		}

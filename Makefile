@@ -129,9 +129,7 @@ bench-backend:
 	@echo "Running backend benchmarks..."
 	@docker compose run --rm api go test -bench=. -benchmem -run=^$
 
-perf-test:
-	@echo "Running performance tests..."
-	docker compose run --rm web bun run vitest run __tests__/performance.test.tsx
+# Removed duplicate target 'perf-test' - use 'test-performance-frontend' instead
 
 # Database operations
 db-migrate:

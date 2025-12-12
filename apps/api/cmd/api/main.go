@@ -42,7 +42,7 @@ func main() {
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		logrus.WithError(err).Warn("Failed to connect to database")
+		logrus.WithError(err).Fatal("Failed to connect to database")
 	}
 
 	// Redis connection
@@ -55,7 +55,7 @@ func main() {
 	// Test Redis connection
 	ctx := context.Background()
 	if err := rdb.Ping(ctx).Err(); err != nil {
-		logrus.WithError(err).Warn("Failed to connect to Redis")
+		logrus.WithError(err).Fatal("Failed to connect to Redis")
 	}
 
 	// Initialize Gin router

@@ -152,7 +152,7 @@ func (r *poolRepository) UpdateReserves(poolID string, reserve0, reserve1 decima
 // GetTopPoolsByTVL retrieves top pools by TVL
 func (r *poolRepository) GetTopPoolsByTVL(limit int) ([]*models.Pool, error) {
 	var pools []*models.Pool
-	err := r.db.Where("is_active = ?", true).Order("CAST(tvl AS DECIMAL) DESC").Limit(limit).Find(&pools).Error
+	err := r.db.Where("is_active = ?", true).Order("tvl DESC").Limit(limit).Find(&pools).Error
 	return pools, err
 }
 

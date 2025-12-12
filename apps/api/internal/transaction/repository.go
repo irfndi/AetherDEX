@@ -203,7 +203,7 @@ func (r *transactionRepository) GetPoolTransactionVolume(poolID string, since ti
 	}
 
 	err := r.db.Model(&models.Transaction{}).
-		Select("COALESCE(SUM(CAST(amount_in AS DECIMAL)), 0) as total_volume").
+		Select("COALESCE(SUM(amount_in), 0) as total_volume").
 		Where("pool_id = ? AND created_at >= ? AND status = ?", poolID, since, models.TransactionStatusConfirmed).
 		Scan(&result).Error
 
