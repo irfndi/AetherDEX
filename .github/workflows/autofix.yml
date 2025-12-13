@@ -65,4 +65,4 @@ jobs:
 
       # Run autofix.ci action to commit changes
       # Using commit SHA ff86a557 (corresponds to v1 tag) for security
-      - uses: autofix-ci/action@ff86a557419858bb967097bfc916833f5647fa8c
+      - uses: autofix-ci/action@635ffb0c9798bd160680f18fd73371e355b85f27
