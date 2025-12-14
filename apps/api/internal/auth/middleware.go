@@ -57,10 +57,11 @@ func (am *AuthMiddleware) startCleanupLoop() {
 // It should only be called once per AuthMiddleware instance.
 //
 // Usage example:
-//   am := NewAuthMiddleware()
-//   // ... use am in your application ...
-//   // On shutdown:
-//   am.Stop()
+//
+//	am := NewAuthMiddleware()
+//	// ... use am in your application ...
+//	// On shutdown:
+//	am.Stop()
 func (am *AuthMiddleware) Stop() {
 	close(am.stopCleanup)
 }
