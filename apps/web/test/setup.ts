@@ -38,7 +38,7 @@ export function createMockToken({ symbol, name, price }: MockTokenInput): Token 
     name,
     icon: null,
     balance: "1000.0",
-    price: price || 0
+    price: price ?? 0
   };
 }
 
