@@ -100,11 +100,15 @@ contract CrossChainLiquidityHook is
         bytes calldata
     ) external override returns (bytes4) {
         require(msg.sender == address(poolManager), "Only pool manager");
-        // Removed call to validateHookAddress
         // Only process non-zero liquidity changes
         if (params.liquidityDelta != 0) {
+            // Include fee and tickSpacing from pool key for destination chain
             _sendCrossChainLiquidityUpdate(
-                Currency.unwrap(key.currency0), Currency.unwrap(key.currency1), params.liquidityDelta
+                Currency.unwrap(key.currency0),
+                Currency.unwrap(key.currency1),
+                params.liquidityDelta,
+                key.fee,
+                key.tickSpacing
             );
         }
         return IHooks.afterAddLiquidity.selector;
@@ -166,30 +170,28 @@ contract CrossChainLiquidityHook is
         require(remoteHooks[srcChainId] != address(0), "Chain not configured");
         require(srcAddress == remoteHooks[srcChainId], "Invalid remote hook");
 
-        // Decode payload
-        // Assuming payload format: (address token0, address token1, int256 liquidityDelta)
-        // Note: The tokens here are from the perspective of the *source* chain
-        (address receivedToken0, address receivedToken1, int256 liquidityDelta) =
-            abi.decode(payload, (address, address, int256));
+        // Decode payload with fee and tickSpacing from source chain
+        // Payload format v2: (address token0, address token1, int256 liquidityDelta, uint24 fee, int24 tickSpacing)
+        (address receivedToken0, address receivedToken1, int256 liquidityDelta, uint24 fee, int24 tickSpacing) =
+            abi.decode(payload, (address, address, int256, uint24, int24));
         console.log("lzReceive: Decoded liquidityDelta=", liquidityDelta);
         console.log("lzReceive: Decoded receivedToken0=", receivedToken0);
         console.log("lzReceive: Decoded receivedToken1=", receivedToken1);
+        console.log("lzReceive: Decoded fee=", fee);
+        console.log("lzReceive: Decoded tickSpacing=", tickSpacing);
 
-        // Hardcoded fee and tickSpacing for this example hook logic
-        uint24 fee = 3000;
-        int24 tickSpacing = 60;
+        // Validate fee tier (must be between 0.01% and 100%)
+        require(fee > 0 && fee <= 10000, "Invalid fee tier");
+        // Validate tick spacing (must be positive and reasonable)
+        require(tickSpacing > 0 && tickSpacing <= 200, "Invalid tick spacing");
 
-        // Ensure local tokens match expected pool (optional safety check)
-        // require((receivedToken0 == localToken0 && receivedToken1 == localToken1) ||
-        //         (receivedToken0 == localToken1 && receivedToken1 == localToken0), "Token mismatch");
-
-        // Construct PoolKey using received token order and hook address
+        // Construct PoolKey using received token order and fee/tickSpacing from payload
         PoolKey memory key = PoolKey({
             hooks: IHooks(address(this)),
-            // --- FIXED: Use received tokens, ensuring order --- //
+            // Use received tokens, ensuring order
             currency0: Currency.wrap(receivedToken0 < receivedToken1 ? receivedToken0 : receivedToken1),
             currency1: Currency.wrap(receivedToken0 < receivedToken1 ? receivedToken1 : receivedToken0),
-            // TODO: Fee and tickSpacing should ideally come from payload or manager lookup
+            // Fee and tickSpacing from source chain payload (fixes cross-chain fee mismatch)
             fee: fee,
             tickSpacing: tickSpacing
         });
@@ -238,9 +240,17 @@ contract CrossChainLiquidityHook is
 
     /**
      * @notice Send liquidity updates to other chains
+     * @dev Payload includes fee and tickSpacing so destination chain uses correct pool parameters
      */
-    function _sendCrossChainLiquidityUpdate(address token0, address token1, int256 liquidityDelta) internal {
-        bytes memory payload = abi.encode(token0, token1, liquidityDelta);
+    function _sendCrossChainLiquidityUpdate(
+        address token0,
+        address token1,
+        int256 liquidityDelta,
+        uint24 fee,
+        int24 tickSpacing
+    ) internal {
+        // Payload v2: includes fee and tickSpacing for destination chain pool configuration
+        bytes memory payload = abi.encode(token0, token1, liquidityDelta, fee, tickSpacing);
 
         // Send update only to explicitly configured chains
         uint256 configuredCount = configuredChainIds.length;
@@ -273,23 +283,30 @@ contract CrossChainLiquidityHook is
 
     /**
      * @notice Estimate fees for cross-chain messaging
+     * @param chainId LayerZero chain ID to estimate fees for
+     * @param token0 First token in the pool
+     * @param token1 Second token in the pool
+     * @param liquidityDelta Liquidity change amount
+     * @param fee Pool fee tier
+     * @param tickSpacing Pool tick spacing
      */
     function estimateFees(
-        uint16 chainId, // Renamed from _chainId
+        uint16 chainId,
         address token0,
         address token1,
-        int256 liquidityDelta
+        int256 liquidityDelta,
+        uint24 fee,
+        int24 tickSpacing
     )
         external
         view
         returns (uint256 nativeFee, uint256 zroFee)
     {
-        bytes memory payload = abi.encode(token0, token1, liquidityDelta);
+        // Payload v2: includes fee and tickSpacing
+        bytes memory payload = abi.encode(token0, token1, liquidityDelta, fee, tickSpacing);
         bytes memory remoteAndLocalAddresses = abi.encodePacked(remoteHooks[chainId], address(this));
 
-        // Capture and return the estimated fees
         (nativeFee, zroFee) = lzEndpoint.estimateFees(chainId, address(this), payload, false, remoteAndLocalAddresses);
-        // No need for an explicit return statement here as the named return variables are automatically returned.
     }
 
     /**

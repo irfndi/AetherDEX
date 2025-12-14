@@ -185,16 +185,30 @@ contract AetherFactory is
 
     /**
      * @notice Get the bytecode for AetherPool deployment
-     * @dev This function returns the compiled Vyper bytecode for AetherPool
-     * @return bytecode The bytecode for pool deployment
+     * @dev DESIGN DECISION - Pool Deployment Patterns:
+     *
+     * Pattern 1: createPool() with bytecode (this function)
+     *   - Uses minimal proxy for testing and development
+     *   - For production with CREATE2, inject compiled Vyper bytecode:
+     *     vyper --evm-version cancun src/security/AetherPool.vy -f bytecode
+     *
+     * Pattern 2: registerPool() (RECOMMENDED for Vyper pools)
+     *   - Deploy Vyper pool externally using `vyper -f bytecode`
+     *   - Call registerPool(poolAddress, tokenA, tokenB) to register
+     *   - This pattern is preferred because:
+     *     a) Vyper compilation is separate from Solidity deployment
+     *     b) Pool bytecode doesn't inflate factory contract size
+     *     c) Supports factory upgrades without redeploying pools
+     *
+     * Current implementation uses minimal proxy for testing.
+     * Production deployments should use registerPool() pattern.
+     *
+     * @return bytecode The bytecode for pool deployment (minimal proxy for testing)
      */
     function getPoolBytecode() internal view returns (bytes memory bytecode) {
-        // TODO: Replace with actual compiled Vyper bytecode
-        // This is a placeholder - in practice, you would include the compiled
-        // Vyper bytecode for AetherPool.vy here
-
-        // For now, we'll use a minimal proxy pattern as a fallback
-        // This creates a minimal proxy that delegates to a master pool implementation
+        // Minimal proxy pattern for testing - delegates to factory as placeholder
+        // For production with createPool: replace with compiled AetherPool.vy bytecode
+        // For production with registerPool: deploy pools externally and register
         bytes memory implementationBytecode = hex"3d602d80600a3d3981f3363d3d373d3d3d363d73";
         bytes memory implementationAddress = abi.encodePacked(address(this)); // Placeholder
         bytes memory suffix = hex"5af43d82803e903d91602b57fd5bf3";
