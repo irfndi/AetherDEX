@@ -260,8 +260,8 @@ contract CrossChainLiquidityHook is
 
             bytes memory remoteAndLocalAddresses = abi.encodePacked(remoteHook, address(this));
 
-            // Emit event *before* the external call (Interaction), using original token order
-            emit CrossChainLiquidityEvent(chainId, token1, token0, liquidityDelta); // Effect (Event)
+            // Emit event *before* the external call (Interaction), matching payload token order
+            emit CrossChainLiquidityEvent(chainId, token0, token1, liquidityDelta); // Effect (Event)
 
             try lzEndpoint.send{value: 0}( // Interaction
                 chainId,

@@ -205,15 +205,11 @@ contract AetherFactory is
      *
      * @return bytecode The bytecode for pool deployment (minimal proxy for testing)
      */
-    function getPoolBytecode() internal view returns (bytes memory bytecode) {
-        // Minimal proxy pattern for testing - delegates to factory as placeholder
-        // For production with createPool: replace with compiled AetherPool.vy bytecode
-        // For production with registerPool: deploy pools externally and register
-        bytes memory implementationBytecode = hex"3d602d80600a3d3981f3363d3d373d3d3d363d73";
-        bytes memory implementationAddress = abi.encodePacked(address(this)); // Placeholder
-        bytes memory suffix = hex"5af43d82803e903d91602b57fd5bf3";
-
-        bytecode = abi.encodePacked(implementationBytecode, implementationAddress, suffix);
+    function getPoolBytecode() internal pure returns (bytes memory) {
+        // NOTE: createPool() is disabled until real pool bytecode is configured.
+        // The minimal proxy pattern below delegates to factory which doesn't implement IAetherPool.
+        // Use registerPool() instead: deploy Vyper pool externally then register.
+        revert("AetherFactory: pool bytecode not configured; use registerPool()");
     }
 
     /**

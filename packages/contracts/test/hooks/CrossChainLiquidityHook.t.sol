@@ -214,10 +214,9 @@ contract CrossChainLiquidityHookTest is Test {
     }
 
     function test_EstimateCrossChainMessageFees() public view {
-        bytes memory payload = abi.encode(address(token0), address(token1), int256(1000));
-
+        // Test hook's estimateFees with v2 signature (includes fee and tickSpacing)
         (uint256 nativeFee, uint256 zroFee) =
-            hook.lzEndpoint().estimateFees(REMOTE_CHAIN_ID, address(hook), payload, false, "");
+            hook.estimateFees(REMOTE_CHAIN_ID, address(token0), address(token1), int256(1000), uint24(3000), int24(60));
 
         assertGt(nativeFee, 0);
         assertEq(zroFee, 0);
