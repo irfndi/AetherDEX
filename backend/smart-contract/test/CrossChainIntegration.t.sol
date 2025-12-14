@@ -14,6 +14,7 @@ import {CrossChainLiquidityHook} from "../src/hooks/CrossChainLiquidityHook.sol"
 import {IAetherPool} from "../src/interfaces/IAetherPool.sol";
 import {MockPoolManager} from "./mocks/MockPoolManager.sol";
 import {MockLayerZeroEndpoint} from "./mocks/MockLayerZeroEndpoint.sol";
+import {MockAetherPool} from "./mocks/MockAetherPool.sol";
 import {MockChainNetworks} from "./mocks/MockChainNetworks.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {PoolKey, IPoolManager, BalanceDelta} from "../src/interfaces/IPoolManager.sol";
@@ -45,9 +46,10 @@ contract CrossChainIntegrationTest is Test {
         vm.label(address(srcToken1), "SrcToken1");
         MockPoolManager srcPoolManager = new MockPoolManager(address(0));
         MockLayerZeroEndpoint srcLzEndpoint = new MockLayerZeroEndpoint();
-        address srcPlaceholderPoolAddress = address(0x1); // Use placeholder address
         address srcHookToken0 = srcNativeToken < address(srcToken1) ? srcNativeToken : address(srcToken1);
         address srcHookToken1 = srcNativeToken < address(srcToken1) ? address(srcToken1) : srcNativeToken;
+        MockAetherPool srcPool = new MockAetherPool(srcHookToken0, srcHookToken1, 3000);
+        address srcPlaceholderPoolAddress = address(srcPool);
         CrossChainLiquidityHook srcHook =
             new CrossChainLiquidityHook(address(srcPoolManager), address(srcLzEndpoint), srcHookToken0, srcHookToken1);
         srcPoolManager.setHookAddress(address(srcHook));
@@ -63,9 +65,10 @@ contract CrossChainIntegrationTest is Test {
         vm.label(address(dstToken2), "DstToken2");
         MockPoolManager dstPoolManager = new MockPoolManager(address(0));
         MockLayerZeroEndpoint dstLzEndpoint = new MockLayerZeroEndpoint();
-        address dstPlaceholderPoolAddress = address(0x2); // Use different placeholder address
         address dstHookToken0 = dstNativeToken < address(dstToken2) ? dstNativeToken : address(dstToken2);
         address dstHookToken1 = dstNativeToken < address(dstToken2) ? address(dstToken2) : dstNativeToken;
+        MockAetherPool dstPool = new MockAetherPool(dstHookToken0, dstHookToken1, 3000);
+        address dstPlaceholderPoolAddress = address(dstPool);
         CrossChainLiquidityHook dstHook =
             new CrossChainLiquidityHook(address(dstPoolManager), address(dstLzEndpoint), dstHookToken0, dstHookToken1);
         dstPoolManager.setHookAddress(address(dstHook));
@@ -114,6 +117,16 @@ contract CrossChainIntegrationTest is Test {
         console.log("Initial Src Delta Amount1:", uint256(delta.amount1 * -1));
 
         // --- Act ---
+        // Setup for Destination Chain: Mint tokens to Hook and Approve Manager
+        // This is necessary because MockPoolManager will try to pull tokens from the hook (msg.sender)
+        vm.chainId(dstChain);
+        MockERC20(dstHookToken0).mint(address(dstHook), 1_000_000e18);
+        MockERC20(dstHookToken1).mint(address(dstHook), 1_000_000e18);
+        vm.startPrank(address(dstHook));
+        MockERC20(dstHookToken0).approve(address(dstPoolManager), type(uint256).max);
+        MockERC20(dstHookToken1).approve(address(dstPoolManager), type(uint256).max);
+        vm.stopPrank();
+
         // Simulate the LZ message reception on the destination chain
         // Construct the payload that would have been sent by the source hook
         // Payload uses token addresses from the *source* key
@@ -129,15 +142,16 @@ contract CrossChainIntegrationTest is Test {
 
         // --- Verification --- //
         // Assert that liquidity was added on the destination chain
-        // TODO: Current MockPoolManager doesn't call pool.mint() in modifyPosition.
-        // Cannot directly assert pool reserves/totalSupply change via the mock.
-        // Need to either:
-        // 1. Modify MockPoolManager to call pool.mint().
-        // 2. Emit an event from the hook or manager and use vm.expectEmit.
-        // PositionInfo memory posInfo = dstPoolManager.getPosition(LP, -887272, 887272); // Removed incorrect assertion
-        // assertEq(posInfo.liquidity, uint128(initialLiquidity), "Liquidity mismatch on destination chain");
+        // The MockPoolManager now calls pool.mint() which updates the MockAetherPool state.
 
-        // Optional: Check token balances if relevant
-        // assertEq(dstToken0.balanceOf(address(dstPool)), expectedDstReserve0, "dstToken0 reserve mismatch");
+        // Check total liquidity in the destination pool
+        // MockAetherPool tracks totalLiquidity
+        assertEq(dstPool.totalLiquidity(), uint256(initialLiquidity), "Liquidity mismatch on destination chain");
+
+        // Check that the pool received tokens
+        // For MockAetherPool mint, amount0 and amount1 are equal to liquidity amount (simplified logic)
+        // Verify balances of the pool
+        assertEq(MockERC20(dstHookToken0).balanceOf(address(dstPool)), uint256(initialLiquidity), "dstPool Token0 balance mismatch");
+        assertEq(MockERC20(dstHookToken1).balanceOf(address(dstPool)), uint256(initialLiquidity), "dstPool Token1 balance mismatch");
     }
 }

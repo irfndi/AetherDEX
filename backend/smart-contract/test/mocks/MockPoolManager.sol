@@ -219,7 +219,6 @@ contract MockPoolManager is IPoolManager {
 
             // 1. Call the actual pool's mint function to determine required token amounts
             //    The pool calculates amounts based on liquidity and reserves.
-            //    NOTE: The actual AetherPool.mint will revert here until implemented, which is expected in later tests.
             (uint256 requiredAmount0, uint256 requiredAmount1) = targetPool.mint(msg.sender, liquidityToAdd);
 
             // *** MOCK ASSERTION ***: Check if pool requested any tokens.
