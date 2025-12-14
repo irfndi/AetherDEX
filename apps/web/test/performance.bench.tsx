@@ -7,8 +7,8 @@ import { TokenSelector } from '../components/features/trade/TokenSelector'
 
 
 // Fallback mock function for createMockToken, until a real implementation is available
-function createMockToken({ address, symbol, name, price }: { address: string; symbol: string; name: string; price: string; }) {
-  return { address, symbol, name, price: parseFloat(price) };
+function createMockToken({ symbol, name, price }: { address: string; symbol: string; name: string; price: string; }) {
+  return { symbol, name, icon: null, balance: null, price: parseFloat(price) };
 }
 
 // Mock SwapInterface component since it doesn't exist yet
