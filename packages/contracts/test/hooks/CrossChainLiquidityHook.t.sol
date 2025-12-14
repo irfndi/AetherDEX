@@ -165,8 +165,8 @@ contract CrossChainLiquidityHookTest is Test {
     function test_CrossChainMessageReceive() public {
         address srcAddress = REMOTE_HOOK;
 
-        // Prepare payload
-        bytes memory payload = abi.encode(address(token0), address(token1), int256(1000));
+        // Prepare payload with v2 format: (token0, token1, liquidityDelta, fee, tickSpacing)
+        bytes memory payload = abi.encode(address(token0), address(token1), int256(1000), uint24(3000), int24(60));
         // Simulate call from endpoint
         vm.prank(address(mockEndpoint));
         hook.lzReceive(REMOTE_CHAIN_ID, srcAddress, 0, payload);
@@ -175,8 +175,9 @@ contract CrossChainLiquidityHookTest is Test {
     function test_RevertOnUnauthorizedMessageSender() public {
         address srcAddress = REMOTE_HOOK;
 
+        // Payload v2 format: (token0, token1, liquidityDelta, fee, tickSpacing)
         vm.expectRevert(); // Changed: Expect generic revert due to revert_strings = 'strip'
-        hook.lzReceive(REMOTE_CHAIN_ID, srcAddress, 0, abi.encode(address(token0), address(token1), int256(1000)));
+        hook.lzReceive(REMOTE_CHAIN_ID, srcAddress, 0, abi.encode(address(token0), address(token1), int256(1000), uint24(3000), int24(60)));
     }
 
     function test_CrossChainLiquidityRebalance() public {
