@@ -146,8 +146,8 @@ contract MockLayerZeroEndpointTest is Test {
     function test_CrossChainMessageDelivery() public {
         // Create test data
         PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(address(token0)),
-            currency1: Currency.wrap(address(token1)),
+            currency0: Currency.wrap(address(token0) < address(token1) ? address(token0) : address(token1)),
+            currency1: Currency.wrap(address(token0) < address(token1) ? address(token1) : address(token0)),
             fee: 3000,
             tickSpacing: 60,
             hooks: IHooks(address(0))
