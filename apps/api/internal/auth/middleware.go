@@ -20,15 +20,53 @@ type AuthMiddleware struct {
 	nonceMu       sync.RWMutex
 	nonceWindow   time.Duration
 	requiredRoles map[string][]string
+	stopCleanup   chan struct{}
+	stopOnce      sync.Once
 }
 
 // NewAuthMiddleware creates a new authentication middleware
 func NewAuthMiddleware() *AuthMiddleware {
-	return &AuthMiddleware{
+	am := &AuthMiddleware{
 		nonceStore:    make(map[string]time.Time),
 		nonceWindow:   5 * time.Minute,
 		requiredRoles: make(map[string][]string),
+		stopCleanup:   make(chan struct{}),
 	}
+
+	// Start background cleanup
+	go am.startCleanupLoop()
+
+	return am
+}
+
+// startCleanupLoop runs periodically to clean up expired nonces
+func (am *AuthMiddleware) startCleanupLoop() {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			am.cleanupExpiredNonces()
+		case <-am.stopCleanup:
+			return
+		}
+	}
+}
+
+// Stop must be called during application shutdown to prevent goroutine leaks.
+// It is safe to call Stop multiple times.
+//
+// Usage example:
+//
+//	am := NewAuthMiddleware()
+//	// ... use am in your application ...
+//	// On shutdown:
+//	am.Stop()
+func (am *AuthMiddleware) Stop() {
+	am.stopOnce.Do(func() {
+		close(am.stopCleanup)
+	})
 }
 
 // AuthRequest represents an authentication request
@@ -192,9 +230,6 @@ func (am *AuthMiddleware) verifySignatureToken(token string) (string, error) {
 	am.nonceMu.Lock()
 	am.nonceStore[nonce] = time.Now()
 	am.nonceMu.Unlock()
-
-	// Cleanup old nonces periodically
-	go am.cleanupExpiredNonces()
 
 	return address, nil
 }
