@@ -201,9 +201,9 @@ contract MockLayerZeroEndpointTest is Test {
             DST_CHAIN_ID,
             address(token0),
             address(token1),
-            1000,   // liquidityDelta
-            3000,   // fee (0.3%)
-            60      // tickSpacing
+            1000, // liquidityDelta
+            3000, // fee (0.3%)
+            60 // tickSpacing
         );
 
         assertEq(nativeFee, 0.01 ether, "Wrong native fee");

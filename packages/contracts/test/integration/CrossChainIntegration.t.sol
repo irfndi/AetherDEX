@@ -159,7 +159,7 @@ contract CrossChainIntegrationTest is Test {
             Currency.unwrap(contracts.srcKey.currency0),
             Currency.unwrap(contracts.srcKey.currency1),
             initialLiquidity,
-            contracts.srcKey.fee,       // fee from source pool
+            contracts.srcKey.fee, // fee from source pool
             contracts.srcKey.tickSpacing // tickSpacing from source pool
         );
 

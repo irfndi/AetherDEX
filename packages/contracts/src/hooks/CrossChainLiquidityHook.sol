@@ -297,11 +297,7 @@ contract CrossChainLiquidityHook is
         int256 liquidityDelta,
         uint24 fee,
         int24 tickSpacing
-    )
-        external
-        view
-        returns (uint256 nativeFee, uint256 zroFee)
-    {
+    ) external view returns (uint256 nativeFee, uint256 zroFee) {
         // Payload v2: includes fee and tickSpacing
         bytes memory payload = abi.encode(token0, token1, liquidityDelta, fee, tickSpacing);
         bytes memory remoteAndLocalAddresses = abi.encodePacked(remoteHooks[chainId], address(this));
