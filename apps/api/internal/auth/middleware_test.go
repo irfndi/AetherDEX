@@ -666,6 +666,19 @@ func (suite *AuthMiddlewareTestSuite) TestConcurrentNonceAccess() {
 	assert.Equal(suite.T(), 10, nonceCount)
 }
 
+// TestStop_MultipleCallsSafe tests that Stop can be called multiple times without panic
+func TestStop_MultipleCallsSafe(t *testing.T) {
+	am := NewAuthMiddleware()
+	
+	// Call Stop multiple times - should not panic
+	am.Stop()
+	am.Stop()
+	am.Stop()
+	
+	// If we get here without panic, the test passes
+	assert.True(t, true, "Stop should be safe to call multiple times")
+}
+
 // TestAuthMiddlewareTestSuite runs the test suite
 func TestAuthMiddlewareTestSuite(t *testing.T) {
 	suite.Run(t, new(AuthMiddlewareTestSuite))
