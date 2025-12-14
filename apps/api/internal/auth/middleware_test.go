@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -667,15 +668,31 @@ func (suite *AuthMiddlewareTestSuite) TestConcurrentNonceAccess() {
 }
 
 // TestStop_MultipleCallsSafe tests that Stop can be called multiple times without panic
+// and verifies that the cleanup goroutine terminates properly
 func TestStop_MultipleCallsSafe(t *testing.T) {
+	// Get initial goroutine count
+	initialGoroutines := runtime.NumGoroutine()
+
 	am := NewAuthMiddleware()
+
+	// Allow some time for the goroutine to start
+	time.Sleep(10 * time.Millisecond)
+
+	// Verify goroutine is running (count should have increased)
+	afterStart := runtime.NumGoroutine()
+	assert.Greater(t, afterStart, initialGoroutines, "Background goroutine should be running")
 
 	// Call Stop multiple times - should not panic
 	am.Stop()
 	am.Stop()
 	am.Stop()
 
-	// If we get here without panic, the test passes
+	// Wait for goroutine to terminate
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify goroutine has terminated (count should return to initial or close to it)
+	finalGoroutines := runtime.NumGoroutine()
+	assert.LessOrEqual(t, finalGoroutines, initialGoroutines, "Background goroutine should have terminated")
 }
 
 // TestAuthMiddlewareTestSuite runs the test suite
