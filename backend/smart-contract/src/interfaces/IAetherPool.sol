@@ -83,4 +83,16 @@ interface IAetherPool {
     /// @notice Returns the current fee for the pool.
     /// @return fee The current pool fee.
     function fee() external view returns (uint24 fee);
+
+    /// @notice Returns the reserve of token0.
+    /// @return reserve0 The reserve of token0.
+    function reserve0() external view returns (uint256 reserve0);
+
+    /// @notice Returns the reserve of token1.
+    /// @return reserve1 The reserve of token1.
+    function reserve1() external view returns (uint256 reserve1);
+
+    /// @notice Returns the total supply of liquidity tokens.
+    /// @return totalSupply The total supply of liquidity tokens.
+    function totalSupply() external view returns (uint256 totalSupply);
 }

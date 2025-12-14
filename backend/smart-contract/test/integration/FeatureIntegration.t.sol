@@ -127,6 +127,19 @@ contract MockPool is IAetherPool {
         }
         return liquidityOut;
     }
+
+    function reserve0() external pure returns (uint256) {
+        return 1000 ether; // Mock implementation
+    }
+
+    function reserve1() external pure returns (uint256) {
+        return 1000 ether; // Mock implementation
+    }
+
+    function totalSupply() external pure returns (uint256) {
+        return 2000 ether; // Mock implementation
+    }
+
     // Placeholder for initialize if needed by IPoolManager interactions
     function initialize(address /*_token0*/, address /*_token1*/, uint24 /*_fee*/) external override {
         // This function is required by IAetherPool.

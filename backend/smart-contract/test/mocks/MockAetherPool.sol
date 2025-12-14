@@ -13,6 +13,10 @@ contract MockAetherPool is IAetherPool {
     uint256 public totalLiquidity;
     mapping(address => uint256) public liquidityOf;
 
+    // Track reserves
+    uint256 public _reserve0;
+    uint256 public _reserve1;
+
     constructor(address _token0, address _token1, uint24 __fee) {
         initialize(_token0, _token1, __fee);
     }
@@ -55,12 +59,26 @@ contract MockAetherPool is IAetherPool {
         require(recipient != address(0), "INVALID_RECIPIENT");
         require(amount > 0, "ZERO_LIQUIDITY");
 
-        // Simplified mock mint: assume 1:1 token contribution for LP amount for simplicity
-        amount0 = uint256(amount); // Placeholder value
-        amount1 = uint256(amount); // Placeholder value
+        // Simplified mock mint: assume reserves are used to calculate amounts
+        // amount0 = (amount * reserve0) / totalLiquidity
+        if (totalLiquidity > 0) {
+            amount0 = (uint256(amount) * _reserve0) / totalLiquidity;
+            amount1 = (uint256(amount) * _reserve1) / totalLiquidity;
+        } else {
+            // Fallback for initial mint via mint() if happens
+             amount0 = uint256(amount);
+             amount1 = uint256(amount);
+        }
 
         totalLiquidity += amount;
         liquidityOf[recipient] += amount;
+
+        _reserve0 += amount0;
+        _reserve1 += amount1;
+
+        // Mock transfer from caller (Router) to pool: REMOVED
+        // AetherPool.vy mint() assumes tokens are transferred by caller (Router), it doesn't pull them.
+        // We simulate the reserve update here, but let the Router handle the transfer.
 
         emit Mint(msg.sender, recipient, amount0, amount1, amount);
         return (amount0, amount1);
@@ -71,12 +89,17 @@ contract MockAetherPool is IAetherPool {
         require(liquidity > 0, "ZERO_LIQUIDITY");
         require(liquidityOf[msg.sender] >= liquidity, "INSUFFICIENT_LIQUIDITY"); // Basic check
 
-        // Simplified mock burn: return 1:1 tokens for LP amount
-        amount0 = liquidity; // Placeholder value
-        amount1 = liquidity; // Placeholder value
+        // Simplified mock burn
+        if (totalLiquidity > 0) {
+            amount0 = (liquidity * _reserve0) / totalLiquidity;
+            amount1 = (liquidity * _reserve1) / totalLiquidity;
+        }
 
         totalLiquidity -= liquidity;
         liquidityOf[msg.sender] -= liquidity;
+
+        _reserve0 -= amount0;
+        _reserve1 -= amount1;
 
         emit Burn(msg.sender, to, amount0, amount1, liquidity);
         return (amount0, amount1);
@@ -92,7 +115,27 @@ contract MockAetherPool is IAetherPool {
         totalLiquidity = liquidity;
         liquidityOf[msg.sender] = liquidity; // Assign to caller
 
+        // Update reserves
+        _reserve0 += amount0Desired;
+        _reserve1 += amount1Desired;
+
+        // Mock token transfer behavior: pull tokens from sender
+        MockERC20(token0).transferFrom(msg.sender, address(this), amount0Desired);
+        MockERC20(token1).transferFrom(msg.sender, address(this), amount1Desired);
+
         emit Mint(msg.sender, msg.sender, amount0Desired, amount1Desired, liquidity);
         return liquidity;
+    }
+
+    function reserve0() external view returns (uint256) {
+        return _reserve0;
+    }
+
+    function reserve1() external view returns (uint256) {
+        return _reserve1;
+    }
+
+    function totalSupply() external view returns (uint256) {
+        return totalLiquidity;
     }
 }

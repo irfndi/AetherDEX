@@ -22,6 +22,49 @@ import {Errors} from "../libraries/Errors.sol";
 contract AetherRouter is BaseRouter {
     using SafeERC20 for IERC20;
 
+    // Helper functions for sqrt and min
+    function sqrt(uint256 y) internal pure returns (uint256 z) {
+        if (y > 3) {
+            z = y;
+            uint256 x = y / 2 + 1;
+            while (x < z) {
+                z = x;
+                x = (y / x + x) / 2;
+            }
+        } else if (y != 0) {
+            z = 1;
+        }
+    }
+
+    function min(uint256 x, uint256 y) internal pure returns (uint256 z) {
+        z = x < y ? x : y;
+    }
+
+    // Helper to calculate optimal amounts
+    function _calculateOptimalAmounts(
+        uint256 amountADesired,
+        uint256 amountBDesired,
+        uint256 amountAMin,
+        uint256 amountBMin,
+        uint256 reserveA,
+        uint256 reserveB
+    ) internal pure returns (uint256 amountA, uint256 amountB) {
+        if (reserveA == 0 && reserveB == 0) {
+            (amountA, amountB) = (amountADesired, amountBDesired);
+        } else {
+            uint256 amountBOptimal = (amountADesired * reserveB) / reserveA;
+            if (amountBOptimal <= amountBDesired) {
+                require(amountBOptimal >= amountBMin, "AetherRouter: INSUFFICIENT_B_AMOUNT");
+                (amountA, amountB) = (amountADesired, amountBOptimal);
+            } else {
+                uint256 amountAOptimal = (amountBDesired * reserveA) / reserveB;
+                require(amountAOptimal <= amountADesired);
+                require(amountAOptimal >= amountAMin, "AetherRouter: INSUFFICIENT_A_AMOUNT");
+                (amountA, amountB) = (amountAOptimal, amountBDesired);
+            }
+        }
+    }
+
     function addLiquidity(
         address pool,
         uint256 amountADesired,
@@ -32,26 +75,102 @@ contract AetherRouter is BaseRouter {
         uint256 deadline
     ) external nonReentrant checkDeadline(deadline) returns (uint256 amountA, uint256 amountB, uint256 liquidity) {
         require(pool != address(0), "InvalidPoolAddress");
-        uint256 forceReadDeadline = deadline; // Read 'deadline'
-        forceReadDeadline = forceReadDeadline; // "Use" the local variable to silence linter
-        // Parameter 'deadline' is used by the checkDeadline modifier
-        // TODO: Implement liquidity addition via PoolManager and IAetherPool.mint
-        // For now, we'll simulate the assignments and checks for parameters.
-        // IAetherPool actualMintCall = IAetherPool(pool);
-        // (amountA, amountB, liquidity) = actualMintCall.mint(to, amountADesired, amountBDesired); // Example, if mint returns all three
 
-        // Placeholder logic until PoolManager/mint is integrated:
-        amountA = amountADesired; // In a real scenario, amountA would come from the mint call
-        amountB = amountBDesired; // In a real scenario, amountB would come from the mint call
-        liquidity = 0; // Placeholder, should be from mint call
+        IAetherPool targetPool = IAetherPool(pool);
+        (address token0, address token1) = targetPool.tokens();
+        uint256 reserve0 = targetPool.reserve0();
+        uint256 reserve1 = targetPool.reserve1();
+        uint256 totalSupply = targetPool.totalSupply();
 
-        if (amountA < amountAMin) {
-            revert Errors.InsufficientAAmount();
+        // Calculate optimal amounts
+        (amountA, amountB) = _calculateOptimalAmounts(
+            amountADesired,
+            amountBDesired,
+            amountAMin,
+            amountBMin,
+            reserve0,
+            reserve1
+        );
+
+        // Transfer tokens to router first (user must approve router)
+        // Note: Tokens are token0 and token1 from pool perspective, but router inputs are A and B.
+        // We assume router input A matches pool token0 and B matches token1 or vice versa.
+        // But the input to addLiquidity doesn't specify which is which.
+        // Standard Uniswap Router takes (tokenA, tokenB, amountADesired, amountBDesired...) and finds the pair.
+        // Here we take (pool, amountADesired, amountBDesired).
+        // This implies amountADesired corresponds to token0 and amountBDesired to token1?
+        // Or we should assume the caller knows the order?
+        // Let's assume amountA -> token0, amountB -> token1 for the given pool.
+
+        // Transfer from user to router
+        IERC20(token0).safeTransferFrom(msg.sender, address(this), amountA);
+        IERC20(token1).safeTransferFrom(msg.sender, address(this), amountB);
+
+        if (totalSupply == 0) {
+            // Initial liquidity
+            // Approve pool to spend tokens only for initial liquidity
+            // Use forceApprove (or safeApprove with 0 reset) for USDT compatibility
+            IERC20(token0).forceApprove(pool, amountA);
+            IERC20(token1).forceApprove(pool, amountB);
+
+            liquidity = targetPool.addInitialLiquidity(amountA, amountB);
+        } else {
+            // Subsequent liquidity
+            // Calculate expected liquidity to mint
+            liquidity = min((amountA * totalSupply) / reserve0, (amountB * totalSupply) / reserve1);
+
+            // Cast to uint128 as mint expects uint128
+            require(liquidity <= type(uint128).max, "Liquidity overflow");
+
+            // Call mint
+            // Note: mint in AetherPool returns required amounts, but expects tokens to be transferred?
+            // Actually, MockPoolManager transfers tokens *after* calling mint.
+            // But AetherPool.vy mint implementation:
+            // "Assume the caller (PoolManager, msg.sender) has already transferred amount0/amount1 *to* the pool."
+            // Wait, this is conflicting.
+
+            // If I transfer tokens to the pool *before* calling mint, reserves in pool are NOT updated yet (balanceOf is updated).
+            // But AetherPool.vy mint does `reserve0 = _reserve0 + amount0`.
+            // It calculates amount0/amount1 from liquidity.
+
+            // If I use `mint`, I provide liquidity amount. The pool tells me how much token0/1 corresponds to it.
+            // I should transfer those amounts.
+
+            // So:
+            // 1. Calculate `liquidity` based on optimal amounts I have.
+            // 2. Call `mint(to, liquidity)`. It returns `reqAmount0`, `reqAmount1`.
+            // 3. `reqAmount0` should be close to `amountA`.
+            // 4. Transfer `reqAmount0` and `reqAmount1` to pool.
+
+            // Let's verify if `mint` expects tokens to be there or not.
+            // AetherPool.vy:
+            // `mint` does NOT call transferFrom. It assumes tokens are transferred.
+            // BUT it does NOT check balances. It TRUSTS the caller.
+            // So if I call `mint` then `transfer`, it should be fine as long as `mint` doesn't check balances.
+            // `mint` emits event and updates reserves.
+
+            (uint256 reqAmount0, uint256 reqAmount1) = targetPool.mint(to, uint128(liquidity));
+
+            // Ensure we have enough tokens (we should, since we calculated liquidity based on optimal amounts)
+            // There might be rounding errors.
+
+            // If reqAmount > amountA, we might fail if we transferred exact amountA from user.
+            // Usually we calculate liquidity = min(...). So reqAmount should be <= amountA.
+
+            // Transfer required amounts to pool
+            IERC20(token0).safeTransfer(pool, reqAmount0);
+            IERC20(token1).safeTransfer(pool, reqAmount1);
+
+            // Refund any excess to msg.sender
+            if (amountA > reqAmount0) {
+                IERC20(token0).safeTransfer(msg.sender, amountA - reqAmount0);
+                amountA = reqAmount0;
+            }
+            if (amountB > reqAmount1) {
+                IERC20(token1).safeTransfer(msg.sender, amountB - reqAmount1);
+                amountB = reqAmount1;
+            }
         }
-        if (amountB < amountBMin) {
-            revert Errors.InsufficientBAmount();
-        }
-        // require(liquidity >= liquidityMin, "AetherRouter: INSUFFICIENT_LIQUIDITY_MINTED"); // If liquidityMin were a param
     }
 
     function removeLiquidity(

@@ -182,6 +182,18 @@ contract MockPool is IAetherPool {
         return liquidityOut;
     }
 
+    function reserve0() external pure returns (uint256) {
+        return 1000 ether; // Mock implementation
+    }
+
+    function reserve1() external pure returns (uint256) {
+        return 1000 ether; // Mock implementation
+    }
+
+    function totalSupply() external pure returns (uint256) {
+        return 2000 ether; // Mock implementation
+    }
+
     // Implement other IAetherPool functions if they become necessary for tests, possibly with reverts or default values.
     // --- End IAetherPool Implementation ---
 }
