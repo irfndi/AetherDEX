@@ -676,7 +676,6 @@ func TestStop_MultipleCallsSafe(t *testing.T) {
 	am.Stop()
 	
 	// If we get here without panic, the test passes
-	assert.True(t, true, "Stop should be safe to call multiple times")
 }
 
 // TestAuthMiddlewareTestSuite runs the test suite
