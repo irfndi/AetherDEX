@@ -155,8 +155,11 @@ contract CrossChainLiquidityHookTest is Test {
         IPoolManager.ModifyPositionParams memory params =
             IPoolManager.ModifyPositionParams({tickLower: -100, tickUpper: 100, liquidityDelta: 1000});
 
+        address t0 = address(token0) < address(token1) ? address(token0) : address(token1);
+        address t1 = address(token0) < address(token1) ? address(token1) : address(token0);
+
         vm.expectEmit(); // Check signature only
-        emit CrossChainLiquidityEvent(REMOTE_CHAIN_ID, address(token0), address(token1), 1000);
+        emit CrossChainLiquidityEvent(REMOTE_CHAIN_ID, t0, t1, 1000);
 
         vm.prank(address(mockPoolManager));
         hook.afterModifyPosition(address(this), key, params, BalanceDelta(100, 200), "");
@@ -190,9 +193,12 @@ contract CrossChainLiquidityHookTest is Test {
         IPoolManager.ModifyPositionParams memory addParams =
             IPoolManager.ModifyPositionParams({tickLower: -100, tickUpper: 100, liquidityDelta: 1000});
 
+        address t0 = address(token0) < address(token1) ? address(token0) : address(token1);
+        address t1 = address(token0) < address(token1) ? address(token1) : address(token0);
+
         // --- ADDED: Expect the FIRST event --- //
         vm.expectEmit(false, false, false, true);
-        emit CrossChainLiquidityEvent(REMOTE_CHAIN_ID, address(token0), address(token1), 1000);
+        emit CrossChainLiquidityEvent(REMOTE_CHAIN_ID, t0, t1, 1000);
 
         vm.prank(address(mockPoolManager));
         hook.afterModifyPosition(address(this), key, addParams, BalanceDelta(100, 200), "");
@@ -204,8 +210,8 @@ contract CrossChainLiquidityHookTest is Test {
         vm.expectEmit(false, false, false, true);
         emit CrossChainLiquidityEvent(
             REMOTE_CHAIN_ID,
-            address(token0),
-            address(token1),
+            t0,
+            t1,
             -500 // Expect the delta from the second call
         );
 
