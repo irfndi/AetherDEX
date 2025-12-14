@@ -155,8 +155,11 @@ contract CrossChainLiquidityHookTest is Test {
         IPoolManager.ModifyPositionParams memory params =
             IPoolManager.ModifyPositionParams({tickLower: -100, tickUpper: 100, liquidityDelta: 1000});
 
+        address t0 = address(token0) < address(token1) ? address(token0) : address(token1);
+        address t1 = address(token0) < address(token1) ? address(token1) : address(token0);
+
         vm.expectEmit(); // Check signature only
-        emit CrossChainLiquidityEvent(REMOTE_CHAIN_ID, address(token0), address(token1), 1000);
+        emit CrossChainLiquidityEvent(REMOTE_CHAIN_ID, t0, t1, 1000);
 
         vm.prank(address(mockPoolManager));
         hook.afterModifyPosition(address(this), key, params, BalanceDelta(100, 200), "");
@@ -165,8 +168,8 @@ contract CrossChainLiquidityHookTest is Test {
     function test_CrossChainMessageReceive() public {
         address srcAddress = REMOTE_HOOK;
 
-        // Prepare payload
-        bytes memory payload = abi.encode(address(token0), address(token1), int256(1000));
+        // Prepare payload with v2 format: (token0, token1, liquidityDelta, fee, tickSpacing)
+        bytes memory payload = abi.encode(address(token0), address(token1), int256(1000), uint24(3000), int24(60));
         // Simulate call from endpoint
         vm.prank(address(mockEndpoint));
         hook.lzReceive(REMOTE_CHAIN_ID, srcAddress, 0, payload);
@@ -175,8 +178,14 @@ contract CrossChainLiquidityHookTest is Test {
     function test_RevertOnUnauthorizedMessageSender() public {
         address srcAddress = REMOTE_HOOK;
 
+        // Payload v2 format: (token0, token1, liquidityDelta, fee, tickSpacing)
         vm.expectRevert(); // Changed: Expect generic revert due to revert_strings = 'strip'
-        hook.lzReceive(REMOTE_CHAIN_ID, srcAddress, 0, abi.encode(address(token0), address(token1), int256(1000)));
+        hook.lzReceive(
+            REMOTE_CHAIN_ID,
+            srcAddress,
+            0,
+            abi.encode(address(token0), address(token1), int256(1000), uint24(3000), int24(60))
+        );
     }
 
     function test_CrossChainLiquidityRebalance() public {
@@ -184,9 +193,12 @@ contract CrossChainLiquidityHookTest is Test {
         IPoolManager.ModifyPositionParams memory addParams =
             IPoolManager.ModifyPositionParams({tickLower: -100, tickUpper: 100, liquidityDelta: 1000});
 
+        address t0 = address(token0) < address(token1) ? address(token0) : address(token1);
+        address t1 = address(token0) < address(token1) ? address(token1) : address(token0);
+
         // --- ADDED: Expect the FIRST event --- //
         vm.expectEmit(false, false, false, true);
-        emit CrossChainLiquidityEvent(REMOTE_CHAIN_ID, address(token0), address(token1), 1000);
+        emit CrossChainLiquidityEvent(REMOTE_CHAIN_ID, t0, t1, 1000);
 
         vm.prank(address(mockPoolManager));
         hook.afterModifyPosition(address(this), key, addParams, BalanceDelta(100, 200), "");
@@ -198,8 +210,8 @@ contract CrossChainLiquidityHookTest is Test {
         vm.expectEmit(false, false, false, true);
         emit CrossChainLiquidityEvent(
             REMOTE_CHAIN_ID,
-            address(token0),
-            address(token1),
+            t0,
+            t1,
             -500 // Expect the delta from the second call
         );
 
@@ -208,10 +220,9 @@ contract CrossChainLiquidityHookTest is Test {
     }
 
     function test_EstimateCrossChainMessageFees() public view {
-        bytes memory payload = abi.encode(address(token0), address(token1), int256(1000));
-
+        // Test hook's estimateFees with v2 signature (includes fee and tickSpacing)
         (uint256 nativeFee, uint256 zroFee) =
-            hook.lzEndpoint().estimateFees(REMOTE_CHAIN_ID, address(hook), payload, false, "");
+            hook.estimateFees(REMOTE_CHAIN_ID, address(token0), address(token1), int256(1000), uint24(3000), int24(60));
 
         assertGt(nativeFee, 0);
         assertEq(zroFee, 0);

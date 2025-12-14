@@ -154,8 +154,13 @@ contract CrossChainIntegrationTest is Test {
     }
 
     function _simulateCrossChainMessage(TestContracts memory contracts, int256 initialLiquidity) private {
+        // Payload v2 format: (token0, token1, liquidityDelta, fee, tickSpacing)
         bytes memory payload = abi.encode(
-            Currency.unwrap(contracts.srcKey.currency0), Currency.unwrap(contracts.srcKey.currency1), initialLiquidity
+            Currency.unwrap(contracts.srcKey.currency0),
+            Currency.unwrap(contracts.srcKey.currency1),
+            initialLiquidity,
+            contracts.srcKey.fee, // fee from source pool
+            contracts.srcKey.tickSpacing // tickSpacing from source pool
         );
 
         vm.chainId(dstChain);

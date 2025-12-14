@@ -2,7 +2,11 @@ import React from 'react'
 import { describe, it, expect, bench } from 'vitest'
 import { render } from '@testing-library/react'
 import { performance } from 'perf_hooks'
-import { TokenSelector } from '../components/features/trade/TokenSelector'
+import { TokenSelector, type Token } from '../components/features/trade/TokenSelector'
+import { createMockToken } from './setup'
+
+
+// Mock SwapInterface component since it doesn't exist yet
 const SwapInterface = () => {
   return (
     <div data-testid="swap-interface">
@@ -31,19 +35,17 @@ const measureMemoryUsage = () => {
 // Mock data for performance tests
 const mockTokens = Array.from({ length: 100 }, (_, i) =>
   createMockToken({
-    address: `0x${i.toString(16).padStart(40, '0')}`,
     symbol: `TOKEN${i}`,
     name: `Test Token ${i}`,
-    price: (Math.random() * 1000).toFixed(2)
+    price: Math.random() * 1000
   })
 )
 
 const largeMockTokens = Array.from({ length: 1000 }, (_, i) =>
   createMockToken({
-    address: `0x${i.toString(16).padStart(40, '0')}`,
     symbol: `TOKEN${i}`,
     name: `Test Token ${i}`,
-    price: (Math.random() * 1000).toFixed(2)
+    price: Math.random() * 1000
   })
 )
 

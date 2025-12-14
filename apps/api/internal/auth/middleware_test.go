@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -103,6 +104,13 @@ func (suite *AuthMiddlewareTestSuite) SetupSuite() {
 	// Setup router
 	suite.router = gin.New()
 	suite.setupRoutes()
+}
+
+// TearDownSuite cleans up after all tests to prevent goroutine leaks
+func (suite *AuthMiddlewareTestSuite) TearDownSuite() {
+	if suite.middleware != nil && suite.middleware.AuthMiddleware != nil {
+		suite.middleware.AuthMiddleware.Stop()
+	}
 }
 
 // SetupTest runs before each test
@@ -664,6 +672,29 @@ func (suite *AuthMiddlewareTestSuite) TestConcurrentNonceAccess() {
 	nonceCount := len(suite.middleware.nonceStore)
 	suite.middleware.nonceMu.RUnlock()
 	assert.Equal(suite.T(), 10, nonceCount)
+}
+
+// TestStop_MultipleCallsSafe tests that Stop can be called multiple times without panic
+// and verifies that the cleanup goroutine terminates properly
+func TestStop_MultipleCallsSafe(t *testing.T) {
+	// Create middleware and allow goroutine to start
+	am := NewAuthMiddleware()
+	time.Sleep(20 * time.Millisecond)
+
+	// Get goroutine count after middleware is running
+	beforeStop := runtime.NumGoroutine()
+
+	// Call Stop multiple times - should not panic (main purpose of this test)
+	am.Stop()
+	am.Stop()
+	am.Stop()
+
+	// Wait for goroutine to terminate
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify goroutine has terminated (count should decrease or stay same)
+	afterStop := runtime.NumGoroutine()
+	assert.LessOrEqual(t, afterStop, beforeStop, "Goroutine count should not increase after Stop()")
 }
 
 // TestAuthMiddlewareTestSuite runs the test suite

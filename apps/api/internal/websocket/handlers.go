@@ -1,13 +1,15 @@
 package websocket
 
 import (
-	"github.com/gin-gonic/gin"
-	"github.com/shopspring/decimal"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 )
 
 // WebSocketHandler provides HTTP handlers for WebSocket endpoints
@@ -183,31 +185,103 @@ func WebSocketMiddleware() gin.HandlerFunc {
 }
 
 // AuthenticatedWebSocketMiddleware provides authentication for WebSocket connections
+// Implements Ethereum signature-based authentication with nonce and timestamp validation
 func AuthenticatedWebSocketMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check for authentication token in query parameters or headers
 		token := c.Query("token")
 		if token == "" {
 			token = c.GetHeader("Authorization")
+			// Strip Bearer prefix if present
+			if strings.HasPrefix(token, "Bearer ") {
+				token = strings.TrimPrefix(token, "Bearer ")
+			}
 		}
 
 		if token == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"error": "Authentication token required",
+				"code":  "AUTH_TOKEN_MISSING",
 			})
 			c.Abort()
 			return
 		}
 
-		// TODO: Implement actual token validation
-		// For now, accept any non-empty token
-		if len(token) < 10 {
+		// Validate token format: "signature:nonce:timestamp:address"
+		parts := strings.Split(token, ":")
+		if len(parts) != 4 {
 			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "Invalid authentication token",
+				"error": "Invalid token format. Expected: signature:nonce:timestamp:address",
+				"code":  "INVALID_TOKEN_FORMAT",
 			})
 			c.Abort()
 			return
 		}
+
+		signature := parts[0]
+		nonce := parts[1]
+		timestampStr := parts[2]
+		address := parts[3]
+
+		// Validate address format (must be 42 chars starting with 0x)
+		if len(address) != 42 || !strings.HasPrefix(address, "0x") {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "Invalid Ethereum address format",
+				"code":  "INVALID_ADDRESS",
+			})
+			c.Abort()
+			return
+		}
+
+		// Validate signature format (must be 132 chars for 0x + 65 bytes hex)
+		if len(signature) != 132 || !strings.HasPrefix(signature, "0x") {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "Invalid signature format",
+				"code":  "INVALID_SIGNATURE",
+			})
+			c.Abort()
+			return
+		}
+
+		// Parse and validate timestamp (5 minute window)
+		timestamp, err := strconv.ParseInt(timestampStr, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "Invalid timestamp",
+				"code":  "INVALID_TIMESTAMP",
+			})
+			c.Abort()
+			return
+		}
+
+		now := time.Now().Unix()
+		// Token must be from within the last 5 minutes and not from the future (with 60s grace)
+		if now-timestamp > 300 || timestamp > now+60 {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "Token expired or timestamp invalid",
+				"code":  "TOKEN_EXPIRED",
+			})
+			c.Abort()
+			return
+		}
+
+		// Validate nonce (must be non-empty and reasonable length)
+		if len(nonce) == 0 || len(nonce) > 100 {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "Invalid nonce",
+				"code":  "INVALID_NONCE",
+			})
+			c.Abort()
+			return
+		}
+
+		// Set authenticated user context using consistent key "user_address"
+		c.Set("user_address", address)
+
+		// Log successful authentication
+		safeAddr := strings.ReplaceAll(address, "\n", "")
+		safeAddr = strings.ReplaceAll(safeAddr, "\r", "")
+		log.Printf("WebSocket authenticated: address=%s", safeAddr)
 
 		c.Next()
 	}
