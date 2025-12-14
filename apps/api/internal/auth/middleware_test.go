@@ -669,12 +669,12 @@ func (suite *AuthMiddlewareTestSuite) TestConcurrentNonceAccess() {
 // TestStop_MultipleCallsSafe tests that Stop can be called multiple times without panic
 func TestStop_MultipleCallsSafe(t *testing.T) {
 	am := NewAuthMiddleware()
-	
+
 	// Call Stop multiple times - should not panic
 	am.Stop()
 	am.Stop()
 	am.Stop()
-	
+
 	// If we get here without panic, the test passes
 }
 
