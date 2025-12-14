@@ -106,6 +106,13 @@ func (suite *AuthMiddlewareTestSuite) SetupSuite() {
 	suite.setupRoutes()
 }
 
+// TearDownSuite cleans up after all tests to prevent goroutine leaks
+func (suite *AuthMiddlewareTestSuite) TearDownSuite() {
+	if suite.middleware != nil && suite.middleware.AuthMiddleware != nil {
+		suite.middleware.AuthMiddleware.Stop()
+	}
+}
+
 // SetupTest runs before each test
 func (suite *AuthMiddlewareTestSuite) SetupTest() {
 	// Clear nonce store for each test (with proper locking)
