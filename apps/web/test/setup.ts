@@ -32,6 +32,15 @@ interface MockTokenInput {
   price?: number;
 }
 
+/**
+ * Factory function to create mock Token objects for testing.
+ *
+ * @param {Object} params - The token parameters.
+ * @param {string} params.symbol - The symbol of the token.
+ * @param {string} params.name - The name of the token.
+ * @param {number} [params.price=0] - The price of the token (optional, defaults to 0).
+ * @returns {Token} A mock Token object conforming to the TokenSelector interface.
+ */
 export function createMockToken({ symbol, name, price }: MockTokenInput): Token {
   return {
     symbol,
