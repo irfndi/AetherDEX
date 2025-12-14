@@ -53,7 +53,14 @@ func (am *AuthMiddleware) startCleanupLoop() {
 	}
 }
 
-// Stop stops the background cleanup goroutine
+// Stop must be called during application shutdown to prevent goroutine leaks.
+// It should only be called once per AuthMiddleware instance.
+//
+// Usage example:
+//   am := NewAuthMiddleware()
+//   // ... use am in your application ...
+//   // On shutdown:
+//   am.Stop()
 func (am *AuthMiddleware) Stop() {
 	close(am.stopCleanup)
 }
