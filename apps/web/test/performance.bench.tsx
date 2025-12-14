@@ -3,9 +3,6 @@ import { describe, it, expect, bench } from 'vitest'
 import { render } from '@testing-library/react'
 import { performance } from 'perf_hooks'
 import { TokenSelector } from '../components/features/trade/TokenSelector'
-import createMockToken from './setup'
-
-// Mock SwapInterface component since it doesn't exist yet
 const SwapInterface = () => {
   return (
     <div data-testid="swap-interface">
