@@ -21,6 +21,7 @@ type AuthMiddleware struct {
 	nonceWindow   time.Duration
 	requiredRoles map[string][]string
 	stopCleanup   chan struct{}
+	stopOnce      sync.Once
 }
 
 // NewAuthMiddleware creates a new authentication middleware
@@ -54,7 +55,7 @@ func (am *AuthMiddleware) startCleanupLoop() {
 }
 
 // Stop must be called during application shutdown to prevent goroutine leaks.
-// It should only be called once per AuthMiddleware instance.
+// It is safe to call Stop multiple times.
 //
 // Usage example:
 //
@@ -63,7 +64,9 @@ func (am *AuthMiddleware) startCleanupLoop() {
 //	// On shutdown:
 //	am.Stop()
 func (am *AuthMiddleware) Stop() {
-	close(am.stopCleanup)
+	am.stopOnce.Do(func() {
+		close(am.stopCleanup)
+	})
 }
 
 // AuthRequest represents an authentication request
