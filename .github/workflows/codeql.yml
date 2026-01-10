@@ -113,7 +113,7 @@ jobs:
 
       - name: Setup Bun
         if: matrix.language == 'javascript-typescript'
-        uses: oven-sh/setup-bun@4bc047ad259df6fc24a6c9b0f9a0cb08cf17fbe5 # v2.0.1
+        uses: oven-sh/setup-bun@b7a1c7ccf290d58743029c4f6903da283811b979 # v2.1.0
         with:
           bun-version: latest
 
