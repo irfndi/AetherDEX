@@ -1,0 +1,7 @@
+{
+  "$schema": "https://unpkg.com/@tanstack/router-cli/dist/esm/config.schema.json",
+  "routesDirectory": "./src/routes",
+  "generatedRouteTree": "./src/routeTree.gen.ts",
+  "routeFileIgnorePrefix": "-",
+  "quoteStyle": "double"
+}

@@ -11,6 +11,7 @@
       "**/out/**",
       "**/cache/**",
       "**/lib/**",
+      "**/routeTree.gen.ts",
       ".archive-contracts-2026/**"
     ]
   },
