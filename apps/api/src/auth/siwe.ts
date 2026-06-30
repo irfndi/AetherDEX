@@ -5,11 +5,11 @@
  * Composes with KVCacheService for all KV operations.
  */
 
+import { randomBytes } from "node:crypto"
 import { Effect } from "effect"
 import { SiweMessage, type SiweMessage as SiweMessageObj } from "siwe"
 import { verifyMessage } from "viem"
 import { KVCacheService, type SessionEntry } from "../services/kv"
-import { randomBytes } from "node:crypto"
 
 export interface NonceResponse {
   nonce: string
@@ -98,10 +98,7 @@ export function verifyAndCreateSession(
   })
 }
 
-export function getSession(
-  kv: KVNamespace,
-  token: string,
-): Effect.Effect<SessionEntry | null, Error, KVCacheService> {
+export function getSession(kv: KVNamespace, token: string): Effect.Effect<SessionEntry | null, Error, KVCacheService> {
   return Effect.gen(function* () {
     const svc = yield* KVCacheService
     const result = yield* svc.getSession(kv, token)

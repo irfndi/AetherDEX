@@ -6,7 +6,7 @@
  */
 
 import { Hono } from "hono"
-import { requireAuth, type AuthVariables } from "../auth/middleware"
+import { type AuthVariables, requireAuth } from "../auth/middleware"
 
 type Bindings = {
   DB: D1Database

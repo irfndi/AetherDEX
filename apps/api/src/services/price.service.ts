@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * AetherDEX Price Service
  * Multi-source price feed with fallback chain: KV → D1 → CoinGecko → DexScreener
@@ -139,11 +138,7 @@ function readD1Price(db: D1Database, tokenAddress: string): Effect.Effect<Option
       })
     },
     catch: () => Option.none<PriceData>(),
-  }).pipe(
-    Effect.catchAll(() =>
-      Effect.succeed(Option.none<PriceData>() as Option.Option<PriceData>),
-    ) as unknown as Effect.Effect<Option.Option<PriceData>, never, never>,
-  )
+  }) as Effect.Effect<Option.Option<PriceData>, never, never>
 }
 
 function writeD1Price(db: D1Database, data: PriceData): Effect.Effect<void, never> {

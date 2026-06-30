@@ -8,14 +8,14 @@
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { logger } from "hono/logger"
+import { auth } from "./auth/routes"
+import { OrderBookDO, WebSocketHubDO } from "./durable-objects"
 import { pools } from "./routes/pools"
-import { tokens } from "./routes/tokens"
 import { positions } from "./routes/positions"
 import { swap } from "./routes/swap"
-import { OrderBookDO, WebSocketHubDO } from "./durable-objects"
-import { processQueueBatch, type QueueMessage } from "./workers/queue-handler"
+import { tokens } from "./routes/tokens"
 import { handleScheduled } from "./workers/cron-handler"
-import { auth } from "./auth/routes"
+import { type QueueMessage, processQueueBatch } from "./workers/queue-handler"
 
 type Bindings = {
   DB: D1Database

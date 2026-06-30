@@ -1,8 +1,8 @@
-import { Hono } from "hono"
 import { Effect } from "effect"
-import { issueNonce, verifyAndCreateSession, deleteSession } from "./siwe"
-import { authMiddleware, requireAuth, type AuthVariables } from "./middleware"
+import { Hono } from "hono"
 import { KVCacheService } from "../services/kv"
+import { type AuthVariables, authMiddleware, requireAuth } from "./middleware"
+import { deleteSession, issueNonce, verifyAndCreateSession } from "./siwe"
 
 const auth = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
@@ -11,9 +11,9 @@ auth.use("*", authMiddleware)
 auth.post("/nonce", async (c) => {
   const kv = (c.env as { CACHE: KVNamespace }).CACHE
 
-  const result = await Effect.runPromise(
-    Effect.provide(issueNonce(kv), KVCacheService.Default),
-  ).catch((err) => ({ error: String(err) }))
+  const result = await Effect.runPromise(Effect.provide(issueNonce(kv), KVCacheService.Default)).catch((err) => ({
+    error: String(err),
+  }))
 
   if ("error" in result) {
     return c.json({ error: result.error }, 500)

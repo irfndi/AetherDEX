@@ -1,4 +1,3 @@
-/* @ts-nocheck */
 /**
  * AetherDEX Pool Service
  * Reads from D1 for indexed pool data + composes with on-chain V4 reads

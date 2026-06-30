@@ -21,10 +21,7 @@ export interface TradeArchiveMessage {
   month: number
 }
 
-export type QueueMessage =
-  | PriceRefreshMessage
-  | TradeSettlementMessage
-  | TradeArchiveMessage
+export type QueueMessage = PriceRefreshMessage | TradeSettlementMessage | TradeArchiveMessage
 
 interface QueueEnv {
   DB: D1Database
@@ -36,10 +33,7 @@ interface QueueEnv {
 /**
  * Process a batch of queue messages
  */
-export const processQueueBatch = async (
-  batch: MessageBatch<unknown>,
-  env: QueueEnv,
-): Promise<void> => {
+export const processQueueBatch = async (batch: MessageBatch<unknown>, env: QueueEnv): Promise<void> => {
   console.log(`Processing ${batch.messages.length} queue messages`)
 
   for (const message of batch.messages) {
@@ -80,35 +74,25 @@ async function handlePriceRefresh(
       const priceUsd = await fetchTokenPrice(token, env.CHAIN_ID)
 
       // Store in KV with 60s TTL
-      await env.CACHE.put(
-        `price:${token}`,
-        JSON.stringify({ tokenAddress: token, priceUsd, updatedAt: Date.now() }),
-        { expirationTtl: 60 },
-      )
+      await env.CACHE.put(`price:${token}`, JSON.stringify({ tokenAddress: token, priceUsd, updatedAt: Date.now() }), {
+        expirationTtl: 60,
+      })
     } catch (error) {
       console.error(`Failed to refresh price for ${token}:`, error)
     }
   }
 }
 
-async function handleTradeSettlement(
-  msg: TradeSettlementMessage,
-  env: { DB: D1Database },
-): Promise<void> {
+async function handleTradeSettlement(msg: TradeSettlementMessage, env: { DB: D1Database }): Promise<void> {
   console.log(`Settling trade ${msg.txHash}`)
 
   // Update transaction status in D1
-  await env.DB.prepare(
-    `UPDATE transactions SET status = 'confirmed', updated_at = ? WHERE tx_hash = ?`,
-  )
+  await env.DB.prepare(`UPDATE transactions SET status = 'confirmed', updated_at = ? WHERE tx_hash = ?`)
     .bind(Date.now(), msg.txHash)
     .run()
 }
 
-async function handleTradeArchive(
-  msg: TradeArchiveMessage,
-  env: { DB: D1Database; STORAGE: R2Bucket },
-): Promise<void> {
+async function handleTradeArchive(msg: TradeArchiveMessage, env: { DB: D1Database; STORAGE: R2Bucket }): Promise<void> {
   console.log(`Archiving trades for ${msg.year}-${msg.month}`)
 
   // Query D1 for trades in this month
@@ -143,24 +127,23 @@ async function handleTradeArchive(
   }
 
   // Convert to JSONL
-  const trades =
-    result.results
-      .map((row) =>
-        JSON.stringify({
-          txHash: row.tx_hash,
-          userAddress: row.user_address,
-          poolId: row.pool_id,
-          txType: row.tx_type,
-          tokenIn: row.token_in,
-          tokenOut: row.token_out,
-          amountIn: row.amount_in,
-          amountOut: row.amount_out,
-          amountUsd: row.amount_usd,
-          blockNumber: row.block_number,
-          blockTimestamp: row.block_timestamp,
-        }),
-      )
-      .join("\n") + "\n"
+  const trades = `${result.results
+    .map((row) =>
+      JSON.stringify({
+        txHash: row.tx_hash,
+        userAddress: row.user_address,
+        poolId: row.pool_id,
+        txType: row.tx_type,
+        tokenIn: row.token_in,
+        tokenOut: row.token_out,
+        amountIn: row.amount_in,
+        amountOut: row.amount_out,
+        amountUsd: row.amount_usd,
+        blockNumber: row.block_number,
+        blockTimestamp: row.block_timestamp,
+      }),
+    )
+    .join("\n")}\n`
 
   // Compress and upload to R2
   const blob = new Blob([trades], { type: "application/jsonl" })

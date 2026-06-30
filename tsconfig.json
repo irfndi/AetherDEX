@@ -24,12 +24,5 @@
     "incremental": true,
     "tsBuildInfoFile": "./.cache/tsbuildinfo"
   },
-  "exclude": [
-    "node_modules",
-    "dist",
-    ".wrangler",
-    "coverage",
-    "**/lib/**",
-    "apps/**"
-  ]
+  "exclude": ["node_modules", "dist", ".wrangler", "coverage", "**/lib/**", "apps/**"]
 }

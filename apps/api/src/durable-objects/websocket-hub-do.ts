@@ -51,10 +51,7 @@ export class WebSocketHubDO implements DurableObject {
     this.env = env
     // Auto-respond to ping messages without waking the DO from hibernation
     ctx.setWebSocketAutoResponse(
-      new WebSocketRequestResponsePair(
-        JSON.stringify({ type: "ping" }),
-        JSON.stringify({ type: "pong" }),
-      ),
+      new WebSocketRequestResponsePair(JSON.stringify({ type: "ping" }), JSON.stringify({ type: "pong" })),
     )
   }
 
@@ -103,7 +100,9 @@ export class WebSocketHubDO implements DurableObject {
 
   async webSocketMessage(ws: WebSocket, rawMessage: string | ArrayBuffer): Promise<void> {
     try {
-      const msg = JSON.parse(typeof rawMessage === "string" ? rawMessage : new TextDecoder().decode(rawMessage)) as SubscribeMessage
+      const msg = JSON.parse(
+        typeof rawMessage === "string" ? rawMessage : new TextDecoder().decode(rawMessage),
+      ) as SubscribeMessage
       const subscriber = this.subscribers.get(ws)
       if (!subscriber) return
 
@@ -132,7 +131,7 @@ export class WebSocketHubDO implements DurableObject {
     }
   }
 
-  async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
+  async webSocketClose(ws: WebSocket, code: number, reason: string, _wasClean: boolean): Promise<void> {
     this.subscribers.delete(ws)
     try {
       ws.close(code, reason)

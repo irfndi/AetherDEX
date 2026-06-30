@@ -2,17 +2,17 @@
  * AetherDEX typed query helpers
  */
 
-import { Effect } from "effect"
 import { SqlClient } from "@effect/sql"
+import { Effect } from "effect"
 import {
-  rowToToken,
-  rowToPool,
-  rowToTransaction,
-  rowToUser,
-  type Token,
   type Pool,
+  type Token,
   type Transaction,
   type User,
+  rowToPool,
+  rowToToken,
+  rowToTransaction,
+  rowToUser,
 } from "./schema"
 
 /* ============ TOKENS ============ */
@@ -89,7 +89,8 @@ export const upsertPool = (pool: Omit<Pool, "createdAt" | "updatedAt">) =>
 export const getTransactionsByUser = (userAddress: string, limit = 50) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient
-    const rows = yield* sql`SELECT * FROM transactions WHERE user_address = ${userAddress} ORDER BY block_timestamp DESC LIMIT ${limit}`
+    const rows =
+      yield* sql`SELECT * FROM transactions WHERE user_address = ${userAddress} ORDER BY block_timestamp DESC LIMIT ${limit}`
     return rows.map((r) => rowToTransaction(r as Record<string, unknown>))
   })
 

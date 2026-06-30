@@ -20,11 +20,7 @@ interface CronEnv {
 /**
  * Scheduled task — runs every 5 minutes
  */
-export const handleScheduled = async (
-  event: ScheduledEvent,
-  env: CronEnv,
-  ctx: ExecutionContext,
-): Promise<void> => {
+export const handleScheduled = async (event: ScheduledEvent, env: CronEnv, ctx: ExecutionContext): Promise<void> => {
   const cron = event.cron
   console.log(`Cron triggered: ${cron} at ${new Date(event.scheduledTime).toISOString()}`)
 
@@ -81,9 +77,9 @@ async function refreshTopPools(env: CronEnv): Promise<void> {
 
 async function enqueuePriceRefresh(env: CronEnv): Promise<void> {
   // Refresh verified tokens every 5 minutes
-  const tokens = await env.DB.prepare(
-    `SELECT address FROM tokens WHERE is_verified = 1 LIMIT 200`,
-  ).all<{ address: string }>()
+  const tokens = await env.DB.prepare("SELECT address FROM tokens WHERE is_verified = 1 LIMIT 200").all<{
+    address: string
+  }>()
 
   if (!tokens.results || tokens.results.length === 0) return
 

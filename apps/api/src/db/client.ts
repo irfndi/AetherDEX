@@ -2,9 +2,9 @@
  * AetherDEX D1 client setup with Effect SQL
  */
 
-import { Context, Layer } from "effect"
-import { SqlClient } from "@effect/sql"
+import type { SqlClient } from "@effect/sql"
 import { D1Client } from "@effect/sql-d1"
+import { Context, type Layer } from "effect"
 import type { WorkerEnv } from "../layers/WorkerEnv"
 
 export interface Db {
@@ -23,5 +23,4 @@ export const makeDbLayer = (db: D1Database): Layer.Layer<SqlClient.SqlClient, ne
 /**
  * Helper: get SQL client from D1 binding
  */
-export const getDbLayer = (env: WorkerEnv): Layer.Layer<SqlClient.SqlClient, never> =>
-  makeDbLayer(env.DB)
+export const getDbLayer = (env: WorkerEnv): Layer.Layer<SqlClient.SqlClient, never> => makeDbLayer(env.DB)
