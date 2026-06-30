@@ -8,6 +8,9 @@
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { logger } from "hono/logger"
+import { OrderBookDO, WebSocketHubDO } from "./durable-objects"
+import { processQueueBatch, type QueueMessage } from "./workers/queue-handler"
+import { handleScheduled } from "./workers/cron-handler"
 
 type Bindings = {
   DB: D1Database
@@ -15,8 +18,8 @@ type Bindings = {
   STORAGE: R2Bucket
   ORDER_BOOK: DurableObjectNamespace
   WEBSOCKET_HUB: DurableObjectNamespace
-  PRICE_QUEUE: Queue<{ tokens: string[] }>
-  SETTLE_QUEUE: Queue<{ txHash: string }>
+  PRICE_QUEUE: Queue
+  SETTLE_QUEUE: Queue
   CHAIN_ID: string
   ENVIRONMENT: string
 }
@@ -52,8 +55,6 @@ app.onError((err, c) => {
 
 // ─── Durable Object classes — imported from dedicated modules ─────────────────
 
-import { OrderBookDO, WebSocketHubDO } from "./durable-objects"
-
 export { OrderBookDO, WebSocketHubDO }
 
 // ─── Worker entry — combined Hono + DOs + Queue + Cron ────────────────────────
@@ -61,17 +62,17 @@ export { OrderBookDO, WebSocketHubDO }
 const worker = {
   fetch: app.fetch,
 
-  async queue(batch: MessageBatch<{ tokens: string[] }>, _env: Bindings) {
-    console.log(`Processing ${batch.messages.length} queue messages`)
-    for (const message of batch.messages) {
-      console.log("Queue message:", message.body)
-      message.ack()
-    }
+  async queue(batch: MessageBatch<QueueMessage>, env: Bindings) {
+    await processQueueBatch(batch as MessageBatch<unknown>, {
+      DB: env.DB,
+      CACHE: env.CACHE,
+      STORAGE: env.STORAGE,
+      CHAIN_ID: env.CHAIN_ID,
+    })
   },
 
-  async scheduled(event: ScheduledEvent, _env: Bindings, _ctx: ExecutionContext) {
-    console.log("Cron trigger:", event.cron, "at", new Date(event.scheduledTime).toISOString())
-    // Will be implemented in T19
+  async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
+    await handleScheduled(event, env, ctx)
   },
 }
 
