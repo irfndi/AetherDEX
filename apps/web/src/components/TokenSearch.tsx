@@ -87,7 +87,6 @@ export function TokenSearch({ onSelect, selectedToken, placeholder = "Search tok
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -98,7 +97,6 @@ export function TokenSearch({ onSelect, selectedToken, placeholder = "Search tok
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
-  // Debounced search
   const searchTokens = useCallback(async (searchQuery: string) => {
     if (!searchQuery.trim()) {
       setResults(DEFAULT_TOKENS)
