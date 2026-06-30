@@ -1,6 +1,7 @@
 import { Link, Outlet, createRootRoute } from "@tanstack/react-router"
 import { TanStackRouterDevtools } from "@tanstack/router-devtools"
 import { ThemeToggle } from "../components/ThemeToggle"
+import { WalletConnect } from "../components/WalletConnect"
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -27,7 +28,7 @@ function RootComponent() {
           </nav>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <div className="w-32" /> {/* placeholder for WalletConnect (T22) */}
+            <WalletConnect />
           </div>
         </div>
       </header>

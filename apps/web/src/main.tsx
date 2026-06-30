@@ -3,6 +3,7 @@ import { RouterProvider, createRouter } from "@tanstack/react-router"
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import { routeTree } from "./routeTree.gen"
+import { AppKitProvider } from "./wagmi"
 import "./index.css"
 
 const router = createRouter({ routeTree })
@@ -27,8 +28,10 @@ if (!rootEl) throw new Error("Root element not found")
 
 createRoot(rootEl).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
+    <AppKitProvider>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </AppKitProvider>
   </StrictMode>,
 )
