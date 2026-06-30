@@ -1,2 +1,7 @@
-// Vitest setup — currently a no-op
-// Add mocks here as needed (e.g. wagmi, TanStack Router)
+import "@testing-library/jest-dom/vitest"
+import { cleanup } from "@testing-library/react"
+import { afterEach } from "vitest"
+
+afterEach(() => {
+  cleanup()
+})
