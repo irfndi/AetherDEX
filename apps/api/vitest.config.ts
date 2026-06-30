@@ -1,15 +1,21 @@
-import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config"
 import { resolve } from "node:path"
+import { cloudflareTest } from "@cloudflare/vitest-pool-workers"
+import { defineConfig } from "vitest/config"
 
-export default defineWorkersConfig({
+export default defineConfig({
+  plugins: [
+    cloudflareTest({
+      wrangler: { configPath: resolve(__dirname, "./wrangler.jsonc") },
+      miniflare: {
+        compatibilityFlags: ["nodejs_compat"],
+      },
+    }),
+  ],
   test: {
     setupFiles: ["./test/setup.ts"],
-    poolOptions: {
-      workers: {
-        wrangler: { configPath: resolve(__dirname, "./wrangler.jsonc") },
-        miniflare: {
-          compatibilityFlags: ["nodejs_compat"],
-        },
+    server: {
+      deps: {
+        inline: ["siwe", "@reown/appkit", "@reown/appkit-adapter-wagmi"],
       },
     },
     coverage: {

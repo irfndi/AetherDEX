@@ -12,7 +12,13 @@
       "**/cache/**",
       "**/lib/**",
       "**/routeTree.gen.ts",
-      ".archive-contracts-2026/**"
+      ".archive-contracts-2026/**",
+      "**/test-results/**",
+      "**/playwright-report/**",
+      "**/worker-configuration.d.ts",
+      "**/.bun/**",
+      "**/*.t.sol",
+      "**/*.vy"
     ]
   },
   "formatter": {

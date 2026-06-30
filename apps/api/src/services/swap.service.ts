@@ -61,27 +61,25 @@ export const SwapService = Context.GenericTag<SwapService>("@aetherdex/SwapServi
 
 const makeSwapService = (): SwapService => ({
   getQuote: (params: SwapQuoteParams): Effect.Effect<SwapQuote, SwapQuoteError> =>
-    Effect.gen(function* () {
-      return {
-        poolId: "",
-        tokenIn: params.tokenIn,
-        tokenOut: params.tokenOut,
-        amountIn: params.amountIn,
-        amountOut: "0",
-        minAmountOut: "0",
-        priceImpact: 0,
-        fee: 3000,
-        gasEstimate: "200000",
-        expiresAt: Date.now() + 60_000,
-      }
-    }),
+    Effect.succeed({
+      poolId: "",
+      tokenIn: params.tokenIn,
+      tokenOut: params.tokenOut,
+      amountIn: params.amountIn,
+      amountOut: "0",
+      minAmountOut: "0",
+      priceImpact: 0,
+      fee: 3000,
+      gasEstimate: "200000",
+      expiresAt: Date.now() + 60_000,
+    }) as Effect.Effect<SwapQuote, SwapQuoteError>,
 
-  buildCalldata: (quote: SwapQuote, _recipient: string) =>
+  buildCalldata: (_quote: SwapQuote, _recipient: string) =>
     Effect.succeed({
       to: "",
       data: "0x",
       value: "0",
-    }),
+    }) as Effect.Effect<{ to: string; data: string; value: string }, never>,
 })
 
 // --- Live layer ---

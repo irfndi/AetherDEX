@@ -41,35 +41,30 @@ export const PriceService = Context.GenericTag<PriceService>("@aetherdex/PriceSe
 
 const makePriceService = (): PriceService => ({
   getPrice: (tokenAddress: string): Effect.Effect<PriceData, PriceFetchError> =>
-    Effect.gen(function* () {
-      // Stub: cache-first lookup, fall back to on-chain read (T17)
-      return {
-        tokenAddress,
-        priceUsd: 0,
-        source: "cache",
-        updatedAt: Date.now(),
-      }
-    }),
+    Effect.succeed({
+      tokenAddress,
+      priceUsd: 0,
+      source: "cache",
+      updatedAt: Date.now(),
+    }) as Effect.Effect<PriceData, PriceFetchError>,
 
   getPrices: (tokenAddresses: string[]): Effect.Effect<PriceData[], PriceFetchError> =>
-    Effect.gen(function* () {
-      return tokenAddresses.map((addr) => ({
+    Effect.succeed(
+      tokenAddresses.map((addr) => ({
         tokenAddress: addr,
         priceUsd: 0,
         source: "cache" as const,
         updatedAt: Date.now(),
-      }))
-    }),
+      })),
+    ) as Effect.Effect<PriceData[], PriceFetchError>,
 
   refreshPrice: (tokenAddress: string): Effect.Effect<PriceData, PriceFetchError> =>
-    Effect.gen(function* () {
-      return {
-        tokenAddress,
-        priceUsd: 0,
-        source: "dexscreener",
-        updatedAt: Date.now(),
-      }
-    }),
+    Effect.succeed({
+      tokenAddress,
+      priceUsd: 0,
+      source: "dexscreener",
+      updatedAt: Date.now(),
+    }) as Effect.Effect<PriceData, PriceFetchError>,
 })
 
 // --- Live layer ---
