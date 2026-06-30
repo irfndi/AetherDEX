@@ -1,0 +1,101 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "aetherdex-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-29",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+
+  // Observability
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1.0
+  },
+
+  // D1 Database — active pools, orders, users
+  // Run `bun run d1:create` and update database_id
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "aetherdex-main",
+      "database_id": "REPLACE_WITH_OUTPUT_FROM_d1:create",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  // Workers KV — hot cache (prices, sessions)
+  // Run `bun run kv:create` and update id
+  "kv_namespaces": [
+    {
+      "binding": "CACHE",
+      "id": "REPLACE_WITH_OUTPUT_FROM_kv:create"
+    }
+  ],
+
+  // R2 Bucket — trade history archives
+  // Run `bun run r2:create` and update bucket_name
+  "r2_buckets": [
+    {
+      "binding": "STORAGE",
+      "bucket_name": "aetherdex-storage"
+    }
+  ],
+
+  // Durable Objects — WebSocket state, per-pair order book
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ORDER_BOOK",
+        "class_name": "OrderBookDO"
+      },
+      {
+        "name": "WEBSOCKET_HUB",
+        "class_name": "WebSocketHubDO"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["OrderBookDO", "WebSocketHubDO"]
+    }
+  ],
+
+  // Background queues
+  "queues": {
+    "producers": [
+      { "queue": "price-refresh", "binding": "PRICE_QUEUE" },
+      { "queue": "trade-settlement", "binding": "SETTLE_QUEUE" }
+    ],
+    "consumers": [
+      {
+        "queue": "price-refresh",
+        "max_batch_size": 10,
+        "max_retries": 3,
+        "dead_letter_queue": "price-refresh-dlq"
+      }
+    ]
+  },
+
+  // Scheduled tasks
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
+
+  // Environment variables (non-secret)
+  "vars": {
+    "CHAIN_ID": "11155111", // Sepolia for now
+    "ENVIRONMENT": "development"
+  },
+
+  // Environments
+  "env": {
+    "staging": {
+      "name": "aetherdex-api-staging",
+      "vars": { "CHAIN_ID": "11155111", "ENVIRONMENT": "staging" }
+    },
+    "production": {
+      "name": "aetherdex-api-prod",
+      "vars": { "CHAIN_ID": "1", "ENVIRONMENT": "production" }
+    }
+  }
+}
