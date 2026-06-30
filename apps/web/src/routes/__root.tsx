@@ -19,7 +19,11 @@ function RootComponent() {
             <Link to="/swap" className="text-sm font-medium hover:text-primary [&.active]:text-primary">
               Swap
             </Link>
-            <Link to="/pools" className="text-sm font-medium hover:text-primary [&.active]:text-primary">
+            <Link
+              to="/pools"
+              search={{ sortBy: "tvl", filterToken: "" }}
+              className="text-sm font-medium hover:text-primary [&.active]:text-primary"
+            >
               Pools
             </Link>
             <Link to="/portfolio" className="text-sm font-medium hover:text-primary [&.active]:text-primary">
