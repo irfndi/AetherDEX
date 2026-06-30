@@ -1,5 +1,6 @@
 import { Link, Outlet, createRootRoute } from "@tanstack/react-router"
 import { TanStackRouterDevtools } from "@tanstack/router-devtools"
+import { ThemeToggle } from "../components/ThemeToggle"
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -8,16 +9,26 @@ export const Route = createRootRoute({
 function RootComponent() {
   return (
     <div className="min-h-screen bg-base-100">
-      <header className="border-b border-base-300">
-        <div className="container mx-auto flex items-center justify-between px-4 py-3">
+      <header className="navbar border-b border-base-300 bg-base-200">
+        <div className="container mx-auto flex items-center justify-between px-4">
           <Link to="/" className="text-xl font-bold text-primary">
             AetherDEX
           </Link>
           <nav className="flex gap-6">
-            <Link to="/" className="hover:text-primary">
+            <Link to="/swap" className="text-sm font-medium hover:text-primary [&.active]:text-primary">
               Swap
             </Link>
+            <Link to="/pools" className="text-sm font-medium hover:text-primary [&.active]:text-primary">
+              Pools
+            </Link>
+            <Link to="/portfolio" className="text-sm font-medium hover:text-primary [&.active]:text-primary">
+              Portfolio
+            </Link>
           </nav>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <div className="w-32" /> {/* placeholder for WalletConnect (T22) */}
+          </div>
         </div>
       </header>
       <main className="container mx-auto px-4 py-6">
