@@ -1,6 +1,0 @@
-#!/bin/sh
-# Run all Foundry tests with the correct flags and project root.
-
-echo "Running Foundry tests..."
-forge clean
-forge test --via-ir --root ./packages/contracts/ "$@"

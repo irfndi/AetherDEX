@@ -1,3 +1,0 @@
-#!/bin/sh
-# Run Foundry coverage with the correct flags and project root.
-forge coverage --via-ir --root ./packages/contracts/ "$@"
