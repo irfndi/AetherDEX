@@ -99,7 +99,7 @@ export function TokenSearch({ onSelect, selectedToken, placeholder = "Search tok
 
   const searchTokens = useCallback(async (searchQuery: string) => {
     if (!searchQuery.trim()) {
-      setResults(DEFAULT_TOKENS)
+      setResults([])
       setIsSearching(false)
       return
     }

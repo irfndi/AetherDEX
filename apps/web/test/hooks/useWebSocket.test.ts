@@ -1,4 +1,4 @@
-import { renderHook } from "@testing-library/react"
+import { renderHook, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { useWebSocket } from "../../src/hooks/useWebSocket"
 
@@ -36,17 +36,19 @@ describe("useWebSocket", () => {
   it("connects and sets isConnected on open", async () => {
     vi.stubGlobal("WebSocket", MockWebSocket)
     const { result } = renderHook(() => useWebSocket({ url: "ws://localhost:8080/ws/test" }))
-    await new Promise((r) => setTimeout(r, 50))
+    await waitFor(() => {
+      expect(result.current.isConnected).toBe(true)
+    })
     expect(MockWebSocket.instances.length).toBe(1)
-    expect(result.current.isConnected).toBe(true)
   })
 
   it("calls onOpen callback", async () => {
     vi.stubGlobal("WebSocket", MockWebSocket)
     const onOpen = vi.fn()
     renderHook(() => useWebSocket({ url: "ws://localhost:8080/ws/test", onOpen }))
-    await new Promise((r) => setTimeout(r, 50))
-    expect(onOpen).toHaveBeenCalledOnce()
+    await waitFor(() => {
+      expect(onOpen).toHaveBeenCalledOnce()
+    })
   })
 
   it("handles WebSocket constructor error", async () => {
@@ -59,16 +61,21 @@ describe("useWebSocket", () => {
       },
     )
     const { result } = renderHook(() => useWebSocket({ url: "ws://localhost:8080/ws/test" }))
-    await new Promise((r) => setTimeout(r, 50))
-    expect(result.current.error).toContain("Failed to connect")
+    await waitFor(() => {
+      expect(result.current.error).toContain("Failed to connect")
+    })
   })
 
   it("cleans up on unmount", async () => {
     vi.stubGlobal("WebSocket", MockWebSocket)
     const { unmount } = renderHook(() => useWebSocket({ url: "ws://localhost:8080/ws/test" }))
-    await new Promise((r) => setTimeout(r, 50))
+    await waitFor(() => {
+      expect(MockWebSocket.instances.length).toBe(1)
+    })
     unmount()
-    expect(MockWebSocket.instances[0]?.close).toHaveBeenCalled()
+    await waitFor(() => {
+      expect(MockWebSocket.instances[0]?.close).toHaveBeenCalled()
+    })
   })
 
   it("uses custom reconnect settings", async () => {
@@ -80,7 +87,8 @@ describe("useWebSocket", () => {
         reconnectInterval: 1000,
       }),
     )
-    await new Promise((r) => setTimeout(r, 50))
-    expect(MockWebSocket.instances.length).toBe(1)
+    await waitFor(() => {
+      expect(MockWebSocket.instances.length).toBe(1)
+    })
   })
 })
