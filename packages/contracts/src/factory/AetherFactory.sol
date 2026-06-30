@@ -79,13 +79,13 @@ contract AetherFactory is IAetherFactory, Ownable {
         // Revert if pool already exists (fee is non-zero in a valid PoolKey)
         if (poolKeys[poolId].fee != 0) revert Errors.PoolAlreadyExists();
 
-        // Initialize pool state in the V4 PoolManager singleton
-        int24 tick = poolManager.initialize(key, sqrtPriceX96);
-
-        // Store pool registry
+        // Store pool registry BEFORE external call (reentrancy protection — CEI pattern)
         poolKeys[poolId] = key;
         poolCreatedBy[msg.sender][poolId] = true;
         allPools.push(poolId);
+
+        // Initialize pool state in the V4 PoolManager singleton
+        int24 tick = poolManager.initialize(key, sqrtPriceX96);
 
         emit PoolCreated(poolId, msg.sender, token0, token1, fee, tickSpacing, sqrtPriceX96, tick);
     }
