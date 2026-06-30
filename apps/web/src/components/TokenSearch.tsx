@@ -104,7 +104,6 @@ export function TokenSearch({ onSelect, selectedToken, placeholder = "Search tok
       return
     }
 
-    // If it's a valid address, search by address
     if (isValidAddress(searchQuery)) {
       setIsSearching(true)
       try {
@@ -118,7 +117,6 @@ export function TokenSearch({ onSelect, selectedToken, placeholder = "Search tok
       return
     }
 
-      // Search by symbol or name
     setIsSearching(true)
     try {
       const filtered = DEFAULT_TOKENS.filter(
@@ -134,7 +132,6 @@ export function TokenSearch({ onSelect, selectedToken, placeholder = "Search tok
     }
   }, [])
 
-  // Debounce effect
   useEffect(() => {
     setIsSearching(true)
     const timer = setTimeout(() => {
