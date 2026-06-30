@@ -177,7 +177,7 @@ const makeSwapService = (deps: SwapServiceDeps): SwapService => {
       const feeTiers = [100, 500, 3000, 10000]
       const _tickSpacing = 60
 
-      const pool: {
+      let pool: {
         pool_id: string
         sqrt_price_x96: string
         liquidity: string
@@ -185,9 +185,9 @@ const makeSwapService = (deps: SwapServiceDeps): SwapService => {
       } | null = null
 
       for (const fee of feeTiers) {
-        const _poolId = yield* Effect.tryPromise({
+        const result = yield* Effect.tryPromise({
           try: async () => {
-            const result = await db
+            const row = await db
               .prepare(
                 "SELECT pool_id, sqrt_price_x96, liquidity, fee FROM pools WHERE token0_address = ? AND token1_address = ? AND fee = ?",
               )
@@ -198,14 +198,14 @@ const makeSwapService = (deps: SwapServiceDeps): SwapService => {
                 liquidity: string
                 fee: number
               }>()
-            return result
+            return row
           },
           catch: (e) => {
             throw new SwapQuoteError("no_pool", `D1 query failed: ${e instanceof Error ? e.message : String(e)}`)
           },
         })
-        if (pool) {
-          pool.fee = fee
+        if (result) {
+          pool = { ...result, fee }
           break
         }
       }
