@@ -8,9 +8,14 @@
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { logger } from "hono/logger"
+import { pools } from "./routes/pools"
+import { tokens } from "./routes/tokens"
+import { positions } from "./routes/positions"
+import { swap } from "./routes/swap"
 import { OrderBookDO, WebSocketHubDO } from "./durable-objects"
 import { processQueueBatch, type QueueMessage } from "./workers/queue-handler"
 import { handleScheduled } from "./workers/cron-handler"
+import { auth } from "./auth/routes"
 
 type Bindings = {
   DB: D1Database
@@ -41,7 +46,12 @@ app.use(
 // Health check
 app.get("/health", (c) => c.json({ status: "ok", service: "aetherdex-api", timestamp: Date.now() }))
 
-// Placeholder routes — will be implemented in T17/T18
+app.route("/api/v1/auth", auth)
+
+app.route("/api/v1", swap)
+app.route("/api/v1/pools", pools)
+app.route("/api/v1/tokens", tokens)
+app.route("/api/v1", positions)
 app.get("/api/v1/ping", (c) => c.json({ pong: true }))
 
 // 404
