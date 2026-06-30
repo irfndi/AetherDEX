@@ -3,4 +3,3 @@ cache/
 broadcast/
 docs/
 .env
-.env.example
