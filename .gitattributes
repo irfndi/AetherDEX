@@ -1,3 +1,6 @@
-
-# Use bd merge for beads JSONL files
-.beads/issues.jsonl merge=beads
+* text=auto eol=lf
+*.sol linguist-language=Solidity
+*.vy linguist-language=Vyper
+*.ts linguist-language=TypeScript
+*.tsx linguist-language=TypeScript
+*.go linguist-language=Go

@@ -1,79 +1,70 @@
-# Global
-.DS_Store
-*.swp
-*.swo
-.vscode/
-.idea/
-.env
-.env.*
-!.env.example
-npm-debug.log*
-yarn-debug.log*
-pnpm-debug.log*
-bun.lockb
-
-# Node / Monorepo
+# Dependencies
 node_modules/
+.pnpm-store/
+
+# Bun
+bun.lockb
+.bun/
+
+# Build outputs
 dist/
 build/
-out/
-.turbo/
-.vercel/
-
-# Frontend (apps/web)
 .next/
-apps/web/.next/
-apps/web/out/
-apps/web/build/
-apps/web/coverage/
-
-# Backend (apps/api)
-apps/api/bin/
-apps/api/*.out
-apps/api/*.html
-apps/api/*.test
-apps/api/coverage/
-apps/api/tmp/
-
-# Smart Contracts (packages/contracts)
-packages/contracts/out/
-packages/contracts/cache/
-packages/contracts/broadcast/
-packages/contracts/artifacts/
-packages/contracts/forge-cache/
-
-# Rust (if applicable)
-target/
-
-# Misc
-.pnp
-.pnp.js
+.turbo/
+out/
 coverage/
-.nyc_output/
+*.tsbuildinfo
 
-.pnpm-home/
-# Archived documentation
-/.archive/
+# Foundry
+packages/contracts/cache/
+packages/contracts/out/
+packages/contracts/broadcast/
 
-mcp.json
+# Wrangler
+.wrangler/
+.dev.vars
+
+# Cloudflare
+.cloudflare/
+
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
 
 # Logs
-logs
 *.log
+npm-debug.log*
+yarn-debug.log*
 yarn-error.log*
-dev-debug.log
-# Dependency directories
-# Environment variables
-# Editor directories and files
-.idea
-.vscode
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-# OS specific
+bun-debug.log*
 
-# Task files
-# tasks.json
-# tasks/ 
+# Editor
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+test-results/
+playwright-report/
+playwright/.cache/
+coverage/
+
+# Archives (preserve git history)
+.archive-contracts-2026/
+
+# Session state
+.omo/
+.ralph-loop.local.md
+
+# Temp
+tmp/
+temp/

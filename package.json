@@ -1,0 +1,40 @@
+{
+  "name": "aetherdex",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AetherDEX — lean spot DEX on Uniswap V4, deployed on Cloudflare stack",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --filter '*' dev",
+    "build": "bun run --filter '*' build",
+    "test": "bun run --filter '*' test",
+    "test:coverage": "bun run --filter '*' test:coverage",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "contracts:build": "cd packages/contracts && forge build",
+    "contracts:test": "cd packages/contracts && forge test",
+    "contracts:coverage": "cd packages/contracts && forge coverage",
+    "contracts:deploy:sepolia": "cd packages/contracts && forge script script/Deploy.s.sol --rpc-url sepolia --broadcast",
+    "api:dev": "bun --filter @aetherdex/api dev",
+    "api:deploy": "bun --filter @aetherdex/api deploy",
+    "web:dev": "bun --filter @aetherdex/web dev",
+    "web:build": "bun --filter @aetherdex/web build",
+    "web:deploy": "bun --filter @aetherdex/web deploy"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.0",
+    "typescript": "7.0.1-rc",
+    "@typescript/native-preview": "latest"
+  },
+  "engines": {
+    "bun": ">=1.2.0",
+    "node": ">=24.0.0"
+  },
+  "packageManager": "bun@canary"
+}
