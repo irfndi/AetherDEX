@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { Context, Effect, Layer } from "effect"
 import { type Address, type Hex, encodeFunctionData, getAddress } from "viem"
 
@@ -266,7 +265,7 @@ const makeSwapService = (deps: SwapServiceDeps): SwapService => {
   const buildCalldata = (
     quote: SwapQuote,
     recipient: string,
-  ): Effect.Effect<{ to: string; data: string; value: string }> =>
+  ): Effect.Effect<{ to: string; data: string; value: string }, never, never> =>
     Effect.gen(function* () {
       // Validate inputs
       if (!quote.poolId || quote.poolId === `0x${"0".repeat(64)}`) {
@@ -331,7 +330,7 @@ const makeSwapService = (deps: SwapServiceDeps): SwapService => {
         data,
         value: "0", // ERC-20 swap, no ETH value
       }
-    })
+    }).pipe(Effect.catchAll((err) => Effect.die(err)))
 
   return {
     getQuote,

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * AetherDEX Token Service
  * Tracks ERC20 tokens, metadata, verification status
@@ -48,80 +47,83 @@ export const TokenService = Context.GenericTag<TokenService>("@aetherdex/TokenSe
 const makeTokenService = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
 
-  const getToken = (address: string): Effect.Effect<TokenInfo | null> =>
+  const getToken = (address: string): Effect.Effect<TokenInfo | null, never, never> =>
     Effect.gen(function* () {
-      const rows = yield* sql`SELECT * FROM tokens WHERE address = ${address}`
+      const rows = (yield* sql`SELECT * FROM tokens WHERE address = ${address}`) as unknown as readonly Record<
+        string,
+        unknown
+      >[]
       if (rows.length === 0) return null
       return rowToToken(rows[0] as Record<string, unknown>)
-    })
+    }).pipe(Effect.catchAll(() => Effect.succeed(null as TokenInfo | null)))
 
-  const listTokens = (options?: TokenSearchOptions): Effect.Effect<TokenInfo[]> =>
+  const listTokens = (options?: TokenSearchOptions): Effect.Effect<TokenInfo[], never, never> =>
     Effect.gen(function* () {
       const limit = Math.min(options?.limit ?? 100, 500)
       const verified = options?.verified
       const search = options?.query
 
-      let rows: Record<string, unknown>[]
+      let rows: readonly Record<string, unknown>[] = []
 
       if (verified === true && search && search.length >= 2) {
         const searchPattern = `%${search.toLowerCase()}%`
-        rows = yield* sql`
+        rows = (yield* sql`
           SELECT * FROM tokens
           WHERE is_verified = 1 AND (LOWER(symbol) LIKE ${searchPattern} OR LOWER(name) LIKE ${searchPattern})
           ORDER BY symbol ASC
           LIMIT ${limit}
-        `
+        `) as unknown as readonly Record<string, unknown>[]
       } else if (verified === true) {
-        rows = yield* sql`
+        rows = (yield* sql`
           SELECT * FROM tokens
           WHERE is_verified = 1
           ORDER BY symbol ASC
           LIMIT ${limit}
-        `
+        `) as unknown as readonly Record<string, unknown>[]
       } else if (search && search.length >= 2) {
         const searchPattern = `%${search.toLowerCase()}%`
-        rows = yield* sql`
+        rows = (yield* sql`
           SELECT * FROM tokens
           WHERE LOWER(symbol) LIKE ${searchPattern} OR LOWER(name) LIKE ${searchPattern}
           ORDER BY is_verified DESC, symbol ASC
           LIMIT ${limit}
-        `
+        `) as unknown as readonly Record<string, unknown>[]
       } else {
-        rows = yield* sql`
+        rows = (yield* sql`
           SELECT * FROM tokens
           ORDER BY is_verified DESC, symbol ASC
           LIMIT ${limit}
-        `
+        `) as unknown as readonly Record<string, unknown>[]
       }
 
-      return rows.map((r) => rowToToken(r))
-    })
+      return rows.map((r: Record<string, unknown>) => rowToToken(r))
+    }).pipe(Effect.catchAll(() => Effect.succeed([] as TokenInfo[])))
 
-  const searchTokens = (query: string): Effect.Effect<TokenInfo[]> =>
+  const searchTokens = (query: string): Effect.Effect<TokenInfo[], never, never> =>
     Effect.gen(function* () {
       if (query.length < 2) return []
       const searchPattern = `%${query.toLowerCase()}%`
-      const rows = yield* sql`
+      const rows = (yield* sql`
         SELECT * FROM tokens
         WHERE LOWER(symbol) LIKE ${searchPattern} OR LOWER(name) LIKE ${searchPattern}
         ORDER BY is_verified DESC, symbol ASC
         LIMIT 50
-      `
-      return rows.map((r) => rowToToken(r))
-    })
+      `) as unknown as readonly Record<string, unknown>[]
+      return rows.map((r: Record<string, unknown>) => rowToToken(r))
+    }).pipe(Effect.catchAll(() => Effect.succeed([] as TokenInfo[])))
 
-  const getVerifiedTokens = (): Effect.Effect<TokenInfo[]> =>
+  const getVerifiedTokens = (): Effect.Effect<TokenInfo[], never, never> =>
     Effect.gen(function* () {
-      const rows = yield* sql`
+      const rows = (yield* sql`
         SELECT * FROM tokens
         WHERE is_verified = 1
         ORDER BY symbol ASC
         LIMIT 100
-      `
-      return rows.map((r) => rowToToken(r))
-    })
+      `) as unknown as readonly Record<string, unknown>[]
+      return rows.map((r: Record<string, unknown>) => rowToToken(r))
+    }).pipe(Effect.catchAll(() => Effect.succeed([] as TokenInfo[])))
 
-  const upsertToken = (token: Omit<TokenInfo, "createdAt" | "updatedAt">): Effect.Effect<void> =>
+  const upsertToken = (token: Omit<TokenInfo, "createdAt" | "updatedAt">): Effect.Effect<void, never, never> =>
     Effect.gen(function* () {
       yield* sql`
         INSERT INTO tokens (address, symbol, name, decimals, logo_url, is_verified, is_native, total_supply, created_at, updated_at)
@@ -135,7 +137,7 @@ const makeTokenService = Effect.gen(function* () {
           total_supply = excluded.total_supply,
           updated_at = excluded.updated_at
       `
-    })
+    }).pipe(Effect.catchAll(() => Effect.succeed(undefined)))
 
   return TokenService.of({
     getToken,

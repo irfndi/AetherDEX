@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * AetherDEX R2 storage service
  * Archives trade history to R2 (monthly JSONL.gz files)
@@ -61,7 +60,7 @@ export const gzip = async (data: string): Promise<Uint8Array> => {
  * Uses Response.body to avoid Blob/BlobPart type dependency
  */
 export const gunzip = async (data: Uint8Array): Promise<string> => {
-  const stream = new Response(data).body?.pipeThrough(new DecompressionStream("gzip"))
+  const stream = new Response(data as unknown as BodyInit).body?.pipeThrough(new DecompressionStream("gzip"))
   return await new Response(stream).text()
 }
 

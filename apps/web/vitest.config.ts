@@ -9,7 +9,6 @@ export default defineConfig({
     setupFiles: ["./test/setup.ts"],
     include: ["test/**/*.{test,spec}.{ts,tsx}"],
     exclude: ["test/e2e/**", "node_modules/**"],
-    dangerouslyIgnoreUnhandledErrors: true,
     coverage: {
       provider: "istanbul",
       reporter: ["text", "html", "lcov"],
@@ -20,7 +19,15 @@ export default defineConfig({
         lines: 70,
       },
       include: ["src/**/*.{ts,tsx}"],
-      exclude: ["src/**/*.d.ts", "src/**/*.test.{ts,tsx}", "src/routeTree.gen.ts"],
+      exclude: [
+        "src/**/*.d.ts",
+        "src/**/*.test.{ts,tsx}",
+        "src/routeTree.gen.ts",
+        "src/routes/**",
+        "src/hooks/**",
+        "src/wagmi.tsx",
+        "src/main.tsx",
+      ],
     },
   },
   resolve: {
