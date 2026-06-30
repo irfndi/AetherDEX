@@ -1,20 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.31;
 
-import { PoolKey } from "../types/PoolKey.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 /// @title IAetherPoolManager
-/// @notice Interface for the AetherDEX pool manager (wraps Uniswap V4 PoolManager)
+/// @notice Minimal interface for AetherDEX interaction with Uniswap V4 PoolManager
+/// @dev Delegates to the full IPoolManager for all pool operations
 interface IAetherPoolManager {
     /// @notice Initialize a new pool
-    function initialize(PoolKey memory key) external returns (int24 currentTick);
-
-    /// @notice Execute a swap
-    function swap(
-        PoolKey memory key,
-        bool zeroForOne,
-        int256 amountSpecified,
-        uint160 sqrtPriceLimitX96,
-        bytes calldata hookData
-    ) external returns (int256 amount0, int256 amount1);
+    function initialize(PoolKey memory key, uint160 sqrtPriceX96) external returns (int24 tick);
 }

@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.31;
 
-/// @title PoolKey
-/// @notice Identifies a pool in AetherDEX
-struct PoolKey {
-    address token0;
-    address token1;
-    uint24 fee;
-    int24 tickSpacing;
-}
+// Re-export v4-core's PoolKey for AetherDEX internal use.
+// All contracts should import PoolKey from this path for consistency.
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";

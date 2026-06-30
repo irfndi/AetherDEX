@@ -15,4 +15,6 @@ library Errors {
     error DeadlineExpired();
     error Unauthorized();
     error InvalidPath();
+    error InvalidAction();
+    error PoolIndexOutOfBounds();
 }
