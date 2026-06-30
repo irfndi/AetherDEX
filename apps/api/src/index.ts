@@ -50,19 +50,11 @@ app.onError((err, c) => {
   return c.json({ error: err.message }, 500)
 })
 
-// ─── Durable Object classes — implemented in T14 ──────────────────────────────
+// ─── Durable Object classes — imported from dedicated modules ─────────────────
 
-export class OrderBookDO {
-  async fetch(_request: Request): Promise<Response> {
-    return new Response("OrderBookDO not yet implemented", { status: 501 })
-  }
-}
+import { OrderBookDO, WebSocketHubDO } from "./durable-objects"
 
-export class WebSocketHubDO {
-  async fetch(_request: Request): Promise<Response> {
-    return new Response("WebSocketHubDO not yet implemented", { status: 501 })
-  }
-}
+export { OrderBookDO, WebSocketHubDO }
 
 // ─── Worker entry — combined Hono + DOs + Queue + Cron ────────────────────────
 
