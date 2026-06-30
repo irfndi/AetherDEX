@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router"
 import { AnimatePresence, motion } from "framer-motion"
 import { AlertCircle, ArrowDown, CheckCircle2, Settings2 } from "lucide-react"
 import { useEffect, useState } from "react"
-import { useAccount } from "wagmi"
+import { useAccount, useSendTransaction, useWaitForTransactionReceipt } from "wagmi"
 import { TokenChip } from "../components/TokenChip"
 import { type Token, TokenSearch } from "../components/TokenSearch"
 import { Button } from "../components/ui/Button"
@@ -31,8 +31,8 @@ type SwapState = "idle" | "building" | "signing" | "pending" | "success" | "erro
 const SLIPPAGE_OPTIONS = [0.1, 0.5, 1.0] as const
 
 function SwapPage() {
-  const { isConnected } = useAccount()
-  const { isAuthenticated, signIn, loading: authLoading } = useSiweAuth()
+  const { isConnected, address } = useAccount()
+  const { isAuthenticated, signIn, token: authToken, loading: authLoading } = useSiweAuth()
 
   const [tokenIn, setTokenIn] = useState<Token | null>(null)
   const [tokenOut, setTokenOut] = useState<Token | null>(null)
@@ -42,6 +42,14 @@ function SwapPage() {
   const [quoteLoading, setQuoteLoading] = useState(false)
   const [quoteError, setQuoteError] = useState<string | null>(null)
   const [swapState, setSwapState] = useState<SwapState>("idle")
+  const [txHash, setTxHash] = useState<`0x${string}` | undefined>(undefined)
+
+  const { sendTransactionAsync } = useSendTransaction()
+  const {
+    isLoading: isConfirming,
+    isSuccess: isConfirmed,
+    data: receipt,
+  } = useWaitForTransactionReceipt({ hash: txHash })
 
   const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8080/api/v1"
 
@@ -102,7 +110,7 @@ function SwapPage() {
   const handleSwap = async () => {
     if (!quote || !tokenIn || !tokenOut) return
 
-    if (!isConnected) return
+    if (!isConnected || !address) return
 
     if (!isAuthenticated) {
       await signIn()
@@ -110,34 +118,72 @@ function SwapPage() {
     }
 
     setSwapState("building")
+    setQuoteError(null)
     try {
       const buildRes = await fetch(`${apiUrl}/swap/build`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ quote, recipient: "SELF" }),
+        body: JSON.stringify({ quote, recipient: address }),
       })
-      if (!buildRes.ok) throw new Error("Failed to build swap")
+      if (!buildRes.ok) throw new Error("Failed to build swap calldata")
+      const calldata = await buildRes.json<{ to: string; data: string; value: string }>()
 
       setSwapState("signing")
+      const hash = await sendTransactionAsync({
+        to: calldata.to as `0x${string}`,
+        data: calldata.data as `0x${string}`,
+        value: BigInt(calldata.value || "0"),
+      })
 
-      // Actual on-chain send happens via wagmi writeContract (T22)
+      setTxHash(hash)
       setSwapState("pending")
-      await new Promise((r) => setTimeout(r, 1500))
-      setSwapState("success")
-      setTimeout(() => {
-        setSwapState("idle")
-        setAmountIn("")
-      }, 3000)
     } catch (err) {
       setSwapState("error")
       setQuoteError(err instanceof Error ? err.message : String(err))
     }
   }
 
+  useEffect(() => {
+    if (!(isConfirmed && swapState === "pending" && txHash && quote && tokenIn && tokenOut)) return
+
+    setSwapState("success")
+
+    if (authToken) {
+      fetch(`${apiUrl}/swap/record`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          txHash,
+          poolId: quote.poolId,
+          tokenIn: tokenIn.address,
+          tokenOut: tokenOut.address,
+          amountIn: quote.amountIn,
+          amountOut: quote.amountOut,
+          blockNumber: receipt?.blockNumber ? Number(receipt.blockNumber) : undefined,
+          blockTimestamp: receipt?.blockTimestamp ? Number(receipt.blockTimestamp) : undefined,
+        }),
+      }).catch(console.error)
+    }
+
+    const timer = setTimeout(() => {
+      setSwapState("idle")
+      setAmountIn("")
+      setTxHash(undefined)
+    }, 3000)
+
+    return () => clearTimeout(timer)
+  }, [isConfirmed, swapState, txHash, quote, tokenIn, tokenOut, authToken, receipt])
+
   const isQuoteValid = quote !== null && quoteError === null && !quoteLoading
   const needsAuth = isConnected && !isAuthenticated
 
   const swapButtonLabel = (() => {
+    if (swapState === "building") return "Building transaction\u2026"
+    if (swapState === "signing") return "Confirm in wallet\u2026"
+    if (swapState === "pending") return "Waiting for confirmation\u2026"
     if (swapState === "success") {
       return (
         <span className="flex items-center gap-2">
@@ -146,6 +192,7 @@ function SwapPage() {
         </span>
       )
     }
+    if (swapState === "error") return "Swap failed \u2014 try again"
     if (quoteLoading) return "Fetching quote\u2026"
     return `Swap ${tokenIn?.symbol ?? "?"} \u2192 ${tokenOut?.symbol ?? "?"}`
   })()
@@ -305,8 +352,14 @@ function SwapPage() {
                 size="lg"
                 fullWidth
                 onClick={() => handleSwap()}
-                disabled={!isQuoteValid || swapState === "signing" || swapState === "pending"}
-                loading={swapState === "building" || swapState === "signing" || swapState === "pending"}
+                disabled={
+                  !isQuoteValid ||
+                  swapState === "building" ||
+                  swapState === "signing" ||
+                  swapState === "pending" ||
+                  isConfirming
+                }
+                loading={swapState === "building" || swapState === "signing" || swapState === "pending" || isConfirming}
               >
                 {swapButtonLabel}
               </Button>

@@ -3,10 +3,10 @@
  * Quote generation, calldata building, swap recording
  */
 
+import { Effect, Layer } from "effect"
 import { Hono } from "hono"
-import { Effect } from "effect"
-import { requireAuth, type AuthVariables } from "../auth/middleware"
-import { SwapService, SwapServiceLive, type SwapQuote } from "../services/swap.service"
+import { type AuthVariables, requireAuth } from "../auth/middleware"
+import { type SwapQuote, SwapService, SwapServiceDeps, SwapServiceLive } from "../services/swap.service"
 
 const swap = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
@@ -24,13 +24,10 @@ swap.get("/quote", async (c) => {
   const tokenIn = c.req.query("tokenIn")
   const tokenOut = c.req.query("tokenOut")
   const amountIn = c.req.query("amountIn")
-  const slippageTolerance = parseFloat(c.req.query("slippage") ?? "0.5") / 100
+  const slippageTolerance = Number.parseFloat(c.req.query("slippage") ?? "0.5") / 100
 
   if (!tokenIn || !tokenOut || !amountIn) {
-    return c.json(
-      { error: "Missing required query params: tokenIn, tokenOut, amountIn" },
-      400,
-    )
+    return c.json({ error: "Missing required query params: tokenIn, tokenOut, amountIn" }, 400)
   }
 
   if (!ETH_ADDRESS_RE.test(tokenIn) || !ETH_ADDRESS_RE.test(tokenOut)) {
@@ -38,6 +35,11 @@ swap.get("/quote", async (c) => {
   }
 
   try {
+    const depsLayer = Layer.succeed(SwapServiceDeps, {
+      db: c.env.DB as D1Database,
+      routerAddress: "0x0000000000000000000000000000000000000000",
+      factoryAddress: "0x0000000000000000000000000000000000000000",
+    })
     const program = Effect.gen(function* () {
       const swapService = yield* SwapService
       return yield* swapService.getQuote({
@@ -47,7 +49,7 @@ swap.get("/quote", async (c) => {
         slippageTolerance,
       })
     })
-    const quote = await Effect.runPromise(Effect.provide(program, SwapServiceLive))
+    const quote = await Effect.runPromise(Effect.provide(program, SwapServiceLive.pipe(Layer.provide(depsLayer))))
     return c.json(quote)
   } catch (err) {
     return c.json({ error: String(err) }, 500)
@@ -79,11 +81,16 @@ swap.post("/build", async (c) => {
   const { quote, recipient } = body
 
   try {
+    const depsLayer = Layer.succeed(SwapServiceDeps, {
+      db: c.env.DB as D1Database,
+      routerAddress: "0x0000000000000000000000000000000000000000",
+      factoryAddress: "0x0000000000000000000000000000000000000000",
+    })
     const program = Effect.gen(function* () {
       const swapService = yield* SwapService
       return yield* swapService.buildCalldata(quote, recipient)
     })
-    const calldata = await Effect.runPromise(Effect.provide(program, SwapServiceLive))
+    const calldata = await Effect.runPromise(Effect.provide(program, SwapServiceLive.pipe(Layer.provide(depsLayer))))
     return c.json(calldata)
   } catch (err) {
     return c.json({ error: String(err) }, 500)
@@ -123,12 +130,13 @@ swap.post("/record", requireAuth, async (c) => {
   }
 
   try {
-    await db.prepare(
-      `INSERT INTO transactions
+    await db
+      .prepare(
+        `INSERT INTO transactions
        (tx_hash, user_address, pool_id, tx_type, token_in, token_out, amount_in, amount_out, amount_usd, block_number, block_timestamp, status, created_at)
        VALUES (?, ?, ?, 'swap', ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
        ON CONFLICT(tx_hash) DO NOTHING`,
-    )
+      )
       .bind(
         body.txHash,
         session.userAddress,

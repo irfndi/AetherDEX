@@ -24,7 +24,7 @@ export type AuthVariables = {
 export async function authMiddleware(
   c: Context<{ Variables: AuthVariables }>,
   next: Next,
-): Promise<Response | void> {
+): Promise<Response | undefined> {
   const authHeader = c.req.header("Authorization")
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     await next()
@@ -53,16 +53,14 @@ export async function authMiddleware(
   }
 
   await next()
+  return
 }
 
 /**
  * Guard: returns 401 if no authenticated session is attached.
  * Mount after authMiddleware on routes that require authentication.
  */
-export async function requireAuth(
-  c: Context<{ Variables: AuthVariables }>,
-  next: Next,
-): Promise<Response> {
+export async function requireAuth(c: Context<{ Variables: AuthVariables }>, next: Next): Promise<Response> {
   const session = c.get("session")
   if (!session) {
     return c.json({ error: "Authentication required" }, 401)
