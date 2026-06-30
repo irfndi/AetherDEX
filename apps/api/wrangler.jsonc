@@ -8,7 +8,7 @@
   // Observability
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 1.0
+    "head_sampling_rate": 1.0, // 100% sampling for low-traffic DEX
   },
 
   // D1 Database — active pools, orders, users
