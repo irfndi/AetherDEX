@@ -17,7 +17,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
 
       - uses: foundry-rs/foundry-toolchain@v1
       - uses: actions/setup-node@v4
@@ -105,6 +104,10 @@ jobs:
           bun-version: canary
       - name: Install deps
         run: bun install --frozen-lockfile
+      - name: Generate route tree
+        working-directory: apps/web
+        run: bunx @tanstack/router-cli generate
+
       - name: Typecheck
         working-directory: apps/web
         run: bun run typecheck
