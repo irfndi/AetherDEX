@@ -1,0 +1,38 @@
+name: "CodeQL Advanced"
+
+paths:
+  - "apps/**"
+  - "packages/contracts/src/**"
+  - "packages/contracts/test/**"
+
+paths-ignore:
+  - "**/routeTree.gen.ts"
+  - "**/dist/**"
+  - "**/build/**"
+  - "**/.next/**"
+  - "**/node_modules/**"
+  - "**/coverage/**"
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/*.spec.ts"
+  - "**/test/**"
+  - "**/tests/**"
+  - "**/__tests__/**"
+  - "**/mocks/**"
+  - "**/__mocks__/**"
+  - "**/.archive-contracts-2026/**"
+  - "**/.claude/**"
+  - "**/.cache/**"
+  - "**/lib/**"
+  - "**/out/**"
+  - "**/broadcast/**"
+  - "**/forge-cache/**"
+  - "**/forge-coverage/**"
+  - "**/slither-report*.json"
+  - "**/bun.lock"
+  - "**/package-lock.json"
+  - "**/yarn.lock"
+
+queries:
+  - uses: security-extended
+  - uses: security-and-quality
