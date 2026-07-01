@@ -15,8 +15,6 @@ jobs:
     name: Contracts (Foundry)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
 
       - uses: foundry-rs/foundry-toolchain@v1
       - uses: actions/setup-node@v4

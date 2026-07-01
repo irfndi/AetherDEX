@@ -6,6 +6,7 @@ pragma solidity ^0.8.31;
 library Errors {
     error ZeroAddress();
     error ZeroAmount();
+    error InvalidAmount();
     error InvalidPair();
     error InvalidFee();
     error PoolAlreadyExists();

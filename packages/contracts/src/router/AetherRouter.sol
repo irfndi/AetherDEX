@@ -121,7 +121,7 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
 
         // Revert on uint128 overflow rather than silently clamping.
         // Silent clamping breaks slippage protection and the user's minAmountOut check.
-        if (amountOut > type(uint128).max) revert("AetherRouter: amountOut overflows uint128");
+        if (amountOut > type(uint128).max) revert Errors.InvalidAmount();
 
         // Slippage check
         if (amountOut < params.minAmountOut) {
