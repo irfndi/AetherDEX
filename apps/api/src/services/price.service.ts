@@ -128,7 +128,8 @@ function readD1Price(db: D1Database, tokenAddress: string): Effect.Effect<Option
         .bind(tokenAddress)
         .first<{ price_usd: number; updated_at: number }>()
       if (!row) return Option.none<PriceData>()
-      const age = Date.now() - row.updated_at * 1000
+      const rowUpdatedAtMs = row.updated_at > 1e12 ? row.updated_at : row.updated_at * 1000
+      const age = Date.now() - rowUpdatedAtMs
       if (age > D1_FRESHNESS_MS) return Option.none<PriceData>()
       return Option.some({
         tokenAddress,

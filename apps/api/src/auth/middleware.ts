@@ -26,7 +26,7 @@ export async function authMiddleware(
   next: Next,
 ): Promise<Response | undefined> {
   const authHeader = c.req.header("Authorization")
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  if (!authHeader?.startsWith("Bearer ")) {
     await next()
     return
   }

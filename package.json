@@ -23,9 +23,12 @@
     "web:build": "bun --filter @aetherdex/web build",
     "web:deploy": "bun --filter @aetherdex/web deploy"
   },
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "devDependencies": {
-    "@biomejs/biome": "^1.9.0",
+    "@biomejs/biome": "^2.5.1",
     "@typescript/native-preview": "latest",
     "typescript": "7.0.1-rc",
     "vitest": "^4.1.9"
@@ -35,5 +38,7 @@
     "node": ">=24.0.0"
   },
   "packageManager": "bun@canary",
-  "trustedDependencies": ["@biomejs/biome"]
+  "trustedDependencies": [
+    "@biomejs/biome"
+  ]
 }

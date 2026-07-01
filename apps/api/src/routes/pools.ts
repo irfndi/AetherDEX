@@ -23,8 +23,8 @@ type SortDirection = "asc" | "desc"
  * Query params: limit, offset, sortBy (tvl|volume|fees|created), sortDirection, filterToken
  */
 pools.get("/", async (c) => {
-  const limit = Math.min(Number.parseInt(c.req.query("limit") ?? "50"), 200)
-  const offset = Number.parseInt(c.req.query("offset") ?? "0")
+  const limit = Math.min(Number.parseInt(c.req.query("limit") ?? "50", 10), 200)
+  const offset = Number.parseInt(c.req.query("offset") ?? "0", 10)
   const sortBy = (c.req.query("sortBy") ?? "tvl") as SortField
   const sortDirection = (c.req.query("sortDirection") ?? "desc") as SortDirection
   const filterToken = c.req.query("filterToken")

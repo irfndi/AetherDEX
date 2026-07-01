@@ -1,11 +1,14 @@
-import { WagmiAdapter } from "@reown/appkit-adapter-wagmi"
 import { base, baseSepolia, mainnet, sepolia } from "@reown/appkit/networks"
 import { createAppKit } from "@reown/appkit/react"
+import { WagmiAdapter } from "@reown/appkit-adapter-wagmi"
 import type { ReactNode } from "react"
-import { type Config, WagmiProvider, cookieStorage, createStorage } from "wagmi"
+import { type Config, cookieStorage, createStorage, WagmiProvider } from "wagmi"
 
 // Get a Reown project ID from https://cloud.reown.com
-const projectId = import.meta.env.VITE_REOWN_PROJECT_ID ?? "YOUR_PROJECT_ID_HERE"
+const projectId = import.meta.env.VITE_REOWN_PROJECT_ID
+if (!projectId) {
+  throw new Error("VITE_REOWN_PROJECT_ID is required. Get one at https://cloud.reown.com")
+}
 
 const networks = [mainnet, sepolia, base, baseSepolia] as unknown as [
   Parameters<typeof createAppKit>[0]["networks"][number],

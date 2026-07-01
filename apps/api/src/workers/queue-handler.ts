@@ -159,8 +159,24 @@ async function handleTradeArchive(msg: TradeArchiveMessage, env: { DB: D1Databas
 }
 
 async function fetchTokenPrice(tokenAddress: string, chainId: string): Promise<number> {
-  // Stub — actual implementation uses CoinGecko/Chainlink/Pyth
-  // Will be replaced with real fetch in T17/T18
-  console.log(`Price fetch stub for ${tokenAddress} on chain ${chainId}`)
-  return 0
+  try {
+    const res = await fetch(
+      `https://api.coingecko.com/api/v3/simple/token_price/ethereum?contract_addresses=${tokenAddress}&vs_currencies=usd`,
+    )
+    if (!res.ok) {
+      console.error(`CoinGecko returned ${res.status} for ${tokenAddress}`)
+      return 0
+    }
+    const data = (await res.json()) as Record<string, { usd?: number }>
+    const entry = data[tokenAddress.toLowerCase()]
+    const price = entry?.usd
+    if (typeof price !== "number" || price <= 0) {
+      console.error(`No valid price from CoinGecko for ${tokenAddress}`)
+      return 0
+    }
+    return price
+  } catch (err) {
+    console.error(`fetchTokenPrice failed for ${tokenAddress}:`, err)
+    return 0
+  }
 }

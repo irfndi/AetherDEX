@@ -128,11 +128,15 @@ contract AetherHook is IHooks, Ownable {
         uint256 amount1 = accruedFees1[poolId];
         if (amount0 == 0 && amount1 == 0) revert Errors.ZeroAmount();
 
+        // CEI: zero accounting first.
         accruedFees0[poolId] = 0;
         accruedFees1[poolId] = 0;
 
-        // NOTE: Actual token transfer requires being inside a PoolManager.unlock() context.
-        // The owner should call this within an unlockCallback that calls poolManager.take().
+        // NOTE: Actual token transfer must happen inside the poolManager.unlock() callback
+        // so the hook can call poolManager.take() to pull tokens from the pool manager's
+        // transient balance. This function only resets the accounting — the owner must
+        // call withdrawFees in a callback that transfers the actual tokens. Emit the
+        // event for off-chain indexers; the actual token movement happens in the callback.
         emit FeesWithdrawn(poolId, treasury, amount0, amount1);
     }
 

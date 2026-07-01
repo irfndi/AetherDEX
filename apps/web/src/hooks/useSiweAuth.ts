@@ -55,12 +55,17 @@ export function useSiweAuth() {
         body: JSON.stringify({ message, signature }),
       })
 
+      const responseText = await verifyRes.text()
       if (!verifyRes.ok) {
-        const err = (await verifyRes.json()) as { error: string }
-        throw new Error(err.error ?? "Verification failed")
+        try {
+          const err = JSON.parse(responseText) as { error: string }
+          throw new Error(err.error ?? "Verification failed")
+        } catch {
+          throw new Error(`Verification failed: ${verifyRes.status}`)
+        }
       }
 
-      const { token, userAddress } = (await verifyRes.json()) as {
+      const { token, userAddress } = JSON.parse(responseText) as {
         token: string
         userAddress: string
       }

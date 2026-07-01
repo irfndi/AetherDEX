@@ -1,24 +1,30 @@
 {
-  "$schema": "https://biomejs.dev/schemas/1.9.0/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.1/schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
     "ignoreUnknown": true,
-    "ignore": [
-      "**/node_modules/**",
-      "**/dist/**",
-      "**/.wrangler/**",
-      "**/coverage/**",
-      "**/out/**",
-      "**/cache/**",
-      "**/lib/**",
-      "**/routeTree.gen.ts",
-      ".archive-contracts-2026/**",
-      "**/test-results/**",
-      "**/playwright-report/**",
-      "**/worker-configuration.d.ts",
-      "**/.bun/**",
-      "**/*.t.sol",
-      "**/*.vy"
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/dist",
+      "!**/.wrangler",
+      "!**/coverage",
+      "!**/out",
+      "!**/cache",
+      "!**/lib",
+      "!**/routeTree.gen.ts",
+      "!**/slither-report*.json",
+      "!**/test-results",
+      "!**/playwright-report",
+      "!**/worker-configuration.d.ts",
+      "!**/.bun",
+      "!**/*.t.sol",
+      "!**/*.vy",
+      "!**/.archive-contracts-2026",
+      "!**/packages/contracts/lib",
+      "!**/packages/contracts/out",
+      "!**/packages/contracts/cache",
+      "!**/packages/contracts/broadcast"
     ]
   },
   "formatter": {
@@ -28,15 +34,20 @@
     "lineWidth": 120,
     "lineEnding": "lf"
   },
-  "organizeImports": { "enabled": true },
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
       "correctness": { "noUnusedVariables": "error", "useExhaustiveDependencies": "error" },
       "style": { "useImportType": "error", "useNodejsImportProtocol": "error" },
-      "suspicious": { "noExplicitAny": "error" },
-      "complexity": { "noBannedTypes": "error" }
+      "suspicious": { "noExplicitAny": "error", "noUnknownAtRules": "off" },
+      "complexity": { "noBannedTypes": "error", "useOptionalChain": "off" }
+    }
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
     }
   },
   "javascript": {

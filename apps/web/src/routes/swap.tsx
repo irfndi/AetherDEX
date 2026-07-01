@@ -51,7 +51,10 @@ function SwapPage() {
     data: receipt,
   } = useWaitForTransactionReceipt({ hash: txHash })
 
-  const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8080/api/v1"
+  const apiUrl = import.meta.env.VITE_API_URL
+  if (!apiUrl) {
+    throw new Error("VITE_API_URL environment variable is required")
+  }
 
   // Fetch quote when tokens + amount change (400ms debounce)
   useEffect(() => {
@@ -126,9 +129,12 @@ function SwapPage() {
         body: JSON.stringify({ quote, recipient: address }),
       })
       if (!buildRes.ok) throw new Error("Failed to build swap calldata")
-      const calldata = await buildRes.json<{ to: string; data: string; value: string }>()
+      const calldata = (await buildRes.json()) as { to: string; data: string; value: string }
 
       setSwapState("signing")
+      if (!/^0x[a-fA-F0-9]{40}$/.test(calldata.to)) {
+        throw new Error(`Invalid router address from API: ${calldata.to}`)
+      }
       const hash = await sendTransactionAsync({
         to: calldata.to as `0x${string}`,
         data: calldata.data as `0x${string}`,

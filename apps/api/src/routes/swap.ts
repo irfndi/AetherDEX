@@ -35,10 +35,13 @@ swap.get("/quote", async (c) => {
   }
 
   try {
+    if (!c.env.ROUTER_ADDRESS || !c.env.FACTORY_ADDRESS) {
+      return c.json({ error: "Server misconfigured: missing ROUTER_ADDRESS or FACTORY_ADDRESS" }, 500)
+    }
     const depsLayer = Layer.succeed(SwapServiceDeps, {
       db: c.env.DB as D1Database,
-      routerAddress: "0x0000000000000000000000000000000000000000",
-      factoryAddress: "0x0000000000000000000000000000000000000000",
+      routerAddress: c.env.ROUTER_ADDRESS,
+      factoryAddress: c.env.FACTORY_ADDRESS,
     })
     const program = Effect.gen(function* () {
       const swapService = yield* SwapService
@@ -81,10 +84,13 @@ swap.post("/build", async (c) => {
   const { quote, recipient } = body
 
   try {
+    if (!c.env.ROUTER_ADDRESS || !c.env.FACTORY_ADDRESS) {
+      return c.json({ error: "Server misconfigured: missing ROUTER_ADDRESS or FACTORY_ADDRESS" }, 500)
+    }
     const depsLayer = Layer.succeed(SwapServiceDeps, {
       db: c.env.DB as D1Database,
-      routerAddress: "0x0000000000000000000000000000000000000000",
-      factoryAddress: "0x0000000000000000000000000000000000000000",
+      routerAddress: c.env.ROUTER_ADDRESS,
+      factoryAddress: c.env.FACTORY_ADDRESS,
     })
     const program = Effect.gen(function* () {
       const swapService = yield* SwapService

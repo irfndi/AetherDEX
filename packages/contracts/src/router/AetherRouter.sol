@@ -118,7 +118,10 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
 
         // Compute output amount from delta
         amountOut = params.zeroForOne ? uint256(int256(delta.amount1())) : uint256(int256(delta.amount0()));
-        if (amountOut > type(uint128).max) amountOut = type(uint128).max;
+
+        // Revert on uint128 overflow rather than silently clamping.
+        // Silent clamping breaks slippage protection and the user's minAmountOut check.
+        if (amountOut > type(uint128).max) revert("AetherRouter: amountOut overflows uint128");
 
         // Slippage check
         if (amountOut < params.minAmountOut) {

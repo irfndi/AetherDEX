@@ -1,5 +1,5 @@
 import { Context, Effect, Layer } from "effect"
-import { type Address, type Hex, encodeFunctionData, getAddress } from "viem"
+import { type Address, encodeFunctionData, getAddress, type Hex } from "viem"
 
 // --- Types ---
 
@@ -162,6 +162,9 @@ const makeSwapService = (deps: SwapServiceDeps): SwapService => {
   const getQuote = (params: SwapQuoteParams): Effect.Effect<SwapQuote, SwapQuoteError> =>
     Effect.gen(function* () {
       // 1. Validate inputs
+      if (!/^\d+$/.test(params.amountIn)) {
+        return yield* Effect.fail(new SwapQuoteError("invalid_amount", "amountIn must be a positive integer string"))
+      }
       const amountIn = BigInt(params.amountIn)
       if (amountIn <= 0n) {
         return yield* Effect.fail(new SwapQuoteError("invalid_amount", "amountIn must be positive"))
@@ -271,7 +274,7 @@ const makeSwapService = (deps: SwapServiceDeps): SwapService => {
       if (!quote.poolId || quote.poolId === `0x${"0".repeat(64)}`) {
         return yield* Effect.fail(new SwapQuoteError("invalid_amount", "Invalid poolId — get a quote first"))
       }
-      if (!recipient || !recipient.startsWith("0x")) {
+      if (!recipient?.startsWith("0x")) {
         return yield* Effect.fail(new SwapQuoteError("invalid_amount", "Invalid recipient address"))
       }
 

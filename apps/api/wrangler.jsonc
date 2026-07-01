@@ -83,7 +83,9 @@
 
   // Environment variables (non-secret)
   "vars": {
-    "CHAIN_ID": "11155111", // Sepolia for now
+    "CHAIN_ID": "11155111",
+    "ROUTER_ADDRESS": "",
+    "FACTORY_ADDRESS": "", // Sepolia for now
     "ENVIRONMENT": "development"
   },
 

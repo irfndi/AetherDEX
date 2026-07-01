@@ -15,7 +15,7 @@ import { positions } from "./routes/positions"
 import { swap } from "./routes/swap"
 import { tokens } from "./routes/tokens"
 import { handleScheduled } from "./workers/cron-handler"
-import { type QueueMessage, processQueueBatch } from "./workers/queue-handler"
+import { processQueueBatch, type QueueMessage } from "./workers/queue-handler"
 
 type Bindings = {
   DB: D1Database
@@ -126,10 +126,10 @@ app.get("/api/v1/ping", (c) => c.json({ pong: true }))
 // 404
 app.notFound((c) => c.json({ error: "Not found", path: c.req.path }, 404))
 
-// Error handler
+// Error handler — don't leak internal error details to clients
 app.onError((err, c) => {
   console.error("API error:", err)
-  return c.json({ error: err.message }, 500)
+  return c.json({ error: "Internal server error" }, 500)
 })
 
 // ─── Durable Object classes — imported from dedicated modules ─────────────────

@@ -19,7 +19,7 @@ const tokens = new Hono<{ Bindings: Bindings }>()
  * GET /api/v1/tokens?verified=true&search=eth&limit=100
  */
 tokens.get("/", async (c) => {
-  const limit = Math.min(Number.parseInt(c.req.query("limit") ?? "100"), 500)
+  const limit = Math.min(Number.parseInt(c.req.query("limit") ?? "100", 10), 500)
   const verified = c.req.query("verified") === "true"
   const search = c.req.query("search")
 

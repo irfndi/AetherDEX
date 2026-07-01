@@ -15,6 +15,23 @@ interface TokenSearchProps {
   placeholder?: string
 }
 
+const ALLOWED_IMAGE_HOSTS = new Set([
+  "raw.githubusercontent.com",
+  "assets.coingecko.com",
+  "tokens.1inch.io",
+  "cdn.dexscreener.com",
+])
+
+function isSafeImageUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== "https:") return false
+    return ALLOWED_IMAGE_HOSTS.has(parsed.hostname)
+  } catch {
+    return false
+  }
+}
+
 const DEFAULT_TOKENS: Token[] = [
   {
     address: "0x0000000000000000000000000000000000000000",
@@ -45,19 +62,11 @@ const DEFAULT_TOKENS: Token[] = [
   },
 ]
 
-function TokenListItem({
-  token,
-  isSelected,
-  onSelect,
-}: {
-  token: Token
-  isSelected: boolean
-  onSelect: () => void
-}) {
+function TokenListItem({ token, isSelected, onSelect }: { token: Token; isSelected: boolean; onSelect: () => void }) {
   return (
     <li key={token.address}>
       <button type="button" className={`flex items-center gap-3 ${isSelected ? "active" : ""}`} onClick={onSelect}>
-        {token.logoURI ? (
+        {token.logoURI && isSafeImageUrl(token.logoURI) ? (
           <img src={token.logoURI} alt={token.symbol} className="h-6 w-6 rounded-full" />
         ) : (
           <div className="avatar placeholder">

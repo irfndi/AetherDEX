@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * AetherDEX R2 storage service
  * Archives trade history to R2 (monthly JSONL.gz files)

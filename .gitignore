@@ -68,3 +68,4 @@ coverage/
 # Temp
 tmp/
 temp/
+slither-report*.json

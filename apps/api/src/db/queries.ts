@@ -4,16 +4,7 @@
 
 import { SqlClient } from "@effect/sql"
 import { Effect } from "effect"
-import {
-  type Pool,
-  type Token,
-  type Transaction,
-  type User,
-  rowToPool,
-  rowToToken,
-  rowToTransaction,
-  rowToUser,
-} from "./schema"
+import { type Pool, rowToPool, rowToToken, rowToTransaction, rowToUser, type Token, type Transaction } from "./schema"
 
 /* ============ TOKENS ============ */
 
