@@ -38,7 +38,7 @@
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@cloudflare/vitest-pool-workers": "^0.17.0",
-    "@types/node": "^24.13.2",
+    "@types/node": "^26.1.0",
     "@typescript/native-preview": "7.0.0-dev.20260629.1",
     "@vitest/coverage-istanbul": "4.1.9",
     "typescript": "7.0.1-rc",
