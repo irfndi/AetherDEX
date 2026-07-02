@@ -15,7 +15,7 @@ jobs:
     name: Contracts (Foundry)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
 
       - uses: foundry-rs/foundry-toolchain@v1
@@ -64,7 +64,7 @@ jobs:
     name: Backend (Workers + Effect)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
@@ -95,7 +95,7 @@ jobs:
     name: Frontend (Vite + React)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
