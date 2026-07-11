@@ -30,7 +30,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.5.1",
     "@typescript/native-preview": "latest",
-    "typescript": "7.0.1-rc",
+    "typescript": "7.0.2",
     "vitest": "^4.1.9"
   },
   "engines": {
