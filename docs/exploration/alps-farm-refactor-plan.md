@@ -16,9 +16,9 @@
 
 The strategic finding of this exploration is a **structural advantage AetherDEX already holds**:
 
-> Alps' own docs state *"v4 has no TP/SL: v4 core ships no price oracle, so there is nothing safe for a keeper to verify triggers against."* AetherDEX's `AetherHook.sol` **already implements a 1024-slot TWAP oracle with in-band observations**. This means AetherDEX can offer **V4-native autonomous LP tooling (TP/SL, auto-recenter) that Alps explicitly cannot build on v4** — turning Alps' stated limitation into AetherDEX's differentiator.
+> Alps' own docs state *"v4 has no TP/SL: v4 core ships no price oracle, so there is nothing safe for a keeper to verify triggers against."* AetherDEX's `AetherHook.sol` **already records a 1024-slot observation buffer with in-band observations** — the storage substrate a keeper-safe oracle needs. **Caveat: the present read path (`getCurrentTwap`) is *not* yet a true time-weighted average** — it returns a cumulative delta over *sample counts*, not divided by *elapsed time* — so completing a correct TWAP (see §9 **G2.5**) is explicit Phase-0 / pre-Phase-2 work. Once corrected, AetherDEX can offer **V4-native autonomous LP tooling (TP/SL, auto-recenter) that Alps explicitly cannot build on v4** — turning Alps' stated limitation into AetherDEX's differentiator.
 
-Because the two projects share nearly the entire modern TypeScript DeFi stack (wagmi v3 + viem v2 + Reown AppKit + Hono + TanStack Query + Foundry), adopting Alpine patterns is **low-friction**: it is overwhelmingly UI + service-layer + keeper work, not a stack rewrite.
+Because the two projects share nearly the entire modern TypeScript DeFi stack (wagmi v3 + viem v2 + Reown AppKit + Hono + TanStack Query + Foundry), adopting Alpine patterns rests on **compatible foundations — but it is a non-trivial migration, not a 1:1 port**: it requires the missing Uniswap SDKs, a correct quote engine, wiring the bypassed Effect services + unrouted WebSockets, and the parallel Bun/TS/Effect-v4 modernization (§10). The stack is shared; the work is real.
 
 **Recommendation (proposed, pending owner decision):** re-prioritize the Wave 3+ roadmap toward an "Alpine-style LP terminal" positioning — keep the lean spot-DEX core, but make **concentrated-liquidity UX and v4-native automation** the headline, monetized with a flat 0.1% immutable fee. **In parallel, run Workstream P (§10): modernize the toolchain to Bun canary + stable TypeScript 7 + all-latest deps, and adopt Effect v4 as the actually-used backend paradigm.** See Section 9 for the phased plan, Section 10 for the parallel toolchain + Effect v4 workstream, and Section 11 for the forks that require a decision.
 
@@ -50,7 +50,7 @@ The hackathon repo is the valuable reference: it is inspectable source for the k
 
 | Feature | What it does | V4 relevance |
 |---|---|---|
-| **Visual range setting** | Liquidity depth histogram rendered as a "mountain"; drag handles to set a concentrated range; live-price pill follows the cursor; ranges **snap to valid ticks** per fee tier. | Fully portable to v4. |
+| **Visual range setting** | Liquidity depth histogram rendered as a "mountain"; drag handles to set a concentrated range; live-price pill follows the cursor; ranges **snap to valid ticks via the pool's `tickSpacing`** (a distinct v4 PoolKey parameter, *not* the fee tier). | Portable to v4 **provided the adapter/router preserves `tickSpacing`**. |
 | **Single-sided deposits (zap)** | One token in → router computes an out-of-range position in the correct orientation. No ratio math, no leftover dust. | Fully portable to v4. |
 | **Auto-balancing zap** | For ranges straddling market price, the router auto-swaps to the correct Uniswap orientation before minting. | Fully portable to v4. |
 | **One-click rebalance** | Close → collect fees → re-mint a recentered single-sided range in one guided flow. New range computed from **live price at execution time**, fees compound, no swap needed (single-sided). | Fully portable to v4. |
@@ -60,7 +60,7 @@ The hackathon repo is the valuable reference: it is inspectable source for the k
 | **PnL & History** | Cost-basis reconstruction from on-chain events; realized PnL with hourly candle valuation. **Stored in the browser, not the server.** | Portable (different storage model — see §11, fork 5). |
 | **Volume alerts** | Toast + chime + Telegram when any tracked pool trades > \$1M in 5 min. | Portable via existing DO WebSocket. |
 | **Telegram bot** | Read-only position tracking, range alerts, volume spikes, shareable PnL cards. | Optional add-on. |
-| **Impact page** | Tracks all pools launched through Alps and their live TVL. | Portable (marketing/growth). |
+| **Impact page** | Tracks all pools launched through Alps and their live TVL. | **Out of AetherDEX scope** (locked: no standalone analytics — link to DexScreener). |
 | **Folio (portfolio)** | Aggregated view of all your positions. | Portable. |
 
 ### 3.2 Hackathon (yanisepfl/alps — autonomous vault, Base)
@@ -76,13 +76,13 @@ The hackathon repo is the valuable reference: it is inspectable source for the k
 
 ---
 
-## 4. Tech-Stack Alignment — Why Migration Is Low-Friction
+## 4. Tech-Stack Alignment — Compatible Foundations, Non-Trivial Migration
 
 | Dimension | Alps.farm (prod) | yanisepfl/alps (hackathon) | **AetherDEX (current)** | Fit |
 |---|---|---|---|---|
-| Frontend framework | Next.js (App Router) | Next.js 15 + React 19 | **Vite 7 + React 19** | Different bundler, same React 19 |
+| Frontend framework | Next.js (App Router) | Next.js 15 + React 19 | **Vite 8 + React 19** | Different bundler, same React 19 |
 | Wallet | Reown AppKit + wagmi v3 + viem v2 | Reown AppKit + wagmi v3 + viem v2 | **Wagmi v3 + Reown AppKit + viem v2** | **Identical** |
-| Data fetching | TanStack Query | TanStack Query | **TanStack Query configured (not yet used in routes)** | **Identical** |
+| Data fetching | TanStack Query | TanStack Query | **TanStack Query (in use in route components; some routes still on raw `fetch`)** | **Identical** |
 | API server | Read-only server | Bun + Hono | **Cloudflare Workers + Hono + Effect** | **Same routing (Hono)** |
 | Persistence | None server-side (browser) | SQLite (WAL) | **D1 + R2 + KV + Durable Objects** | AetherDEX is *more* capable |
 | Auth | SIWE | SIWE → JWT | **SIWE (built)** | **Identical** |
@@ -90,7 +90,7 @@ The hackathon repo is the valuable reference: it is inspectable source for the k
 | Contracts | Solidity (verified, immutable) | Foundry/Solidity (ERC4626 + adapters) | **Foundry + Solidity 0.8.31 + V4-core + OZ v5** | **Same toolchain** |
 | Chain lib | viem v2 | viem v2 + Uniswap v3/v4 SDK | **viem v2** (no Uniswap SDK yet) | Add `@uniswap/v3-sdk` + `@uniswap/v4-sdk` |
 
-**Conclusion:** The only *new* dependencies AetherDEX would need are `@uniswap/v3-sdk` and `@uniswap/v4-sdk` (for correct tick math — see §6.2, gap #3). Everything else maps 1:1. The work is **porting patterns, not migrating stacks.**
+**Conclusion:** The only *new* dependencies AetherDEX needs are `@uniswap/v3-sdk` and `@uniswap/v4-sdk` (for correct tick math — see §6.2, gap #3). Most of the stack maps across, but this is **compatible foundations + a non-trivial migration** — closing the Effect-bypass, WebSocket-routing, quote-correctness, position-ownership, and modernization gaps (§6.2, §10) is genuine work, not a zero-cost drop-in.
 
 ---
 
@@ -153,8 +153,8 @@ Independent catalog of the codebase (`bg_58a9fd22`). Legend: **COMPLETE** = prod
 | `/portfolio` | **PLACEHOLDER** | Static text only; no positions/balances/history. |
 
 - `PriceTicker` connects to `/ws/prices/` — **that endpoint does not exist yet**.
-- TanStack Query is configured but routes use raw `fetch` + `useState`/`useEffect`.
-- No Add/Remove Liquidity UI, no Playwright E2E, minimal Framer Motion usage.
+- TanStack Query is configured and used in some route components (e.g. `/charts/*` via `PoolStats`), but other routes still use raw `fetch` + `useState`/`useEffect`.
+- No Add/Remove Liquidity UI. A **Playwright E2E suite exists** (`apps/web/playwright.config.ts` + `test:e2e` nav/swap/visual specs, `test:e2e` script) — coverage is **partial**, not absent. Minimal Framer Motion usage.
 
 ### 6.2 Backend (`apps/api/`) — ~80%
 
@@ -170,8 +170,8 @@ Independent catalog of the codebase (`bg_58a9fd22`). Legend: **COMPLETE** = prod
 
 | Contract | Status | Notes |
 |---|---|---|
-| `AetherHook` (349 LOC) | COMPLETE | Protocol fee capture (`afterSwap`), **1024-slot TWAP observation circular buffer**, Ownable admin, hook-permission validation. |
-| `AetherRouter` (386 LOC) | COMPLETE | `swapExactIn/Out`, `addLiquidity`, `removeLiquidity` via unlock/callback; SafeERC20, ReentrancyGuard, slippage + deadline checks. |
+| `AetherHook` (349 LOC) | **FUNCTIONAL** | Fee *accounting* only — `afterSwap` increments `accruedFees0/1` but **no fee is actually charged or transferred yet** (`withdrawFees` only clears the counters); fee **settlement** is required work (Phase 4). **1024-slot observation circular buffer** (TWAP *read path* needs fixing — see §9 G2.5). **Ownable** admin incl. a mutable `setProtocolFee` setter. Hook-permission validation. |
+| `AetherRouter` (386 LOC) | **FUNCTIONAL** | `swapExactIn/Out`, `addLiquidity`, `removeLiquidity` via unlock/callback; SafeERC20, ReentrancyGuard, slippage + deadline checks. **Caveat:** positions are currently **router-held** (`modifyLiquidity` called from the router) with **no per-user ownership check** on removal — compatible with the locked **non-custodial NFT model** only after migrating to PositionManager NFTs or authenticated position accounting (required before Phase-1 liquidity UX). |
 | `AetherFactory` (111 LOC) | COMPLETE | Pool creation via `poolManager.initialize()`, registry, CEI, deterministic PoolId. |
 | `AetherHookAddressMiner` | COMPLETE | CREATE2 salt miner for hook address flags. |
 
@@ -209,7 +209,7 @@ Independent catalog of the codebase (`bg_58a9fd22`). Legend: **COMPLETE** = prod
 
 ### 7.3 Architecturally aligned — adopt as practice
 
-- **Immutable / trust-minimized contracts** (AetherRouter already leans this way; formalize: no admin mint, fixed fee).
+- **Immutable / trust-minimized contracts — a *target*, not the current state.** Today `AetherHook` is **Ownable** with a mutable `setProtocolFee` setter and `AetherRouter` holds positions itself. Alps' production contracts already meet this bar; AetherDEX gets there only via concrete contract changes — **remove the fee setter and redeploy** to make the 0.1% rate immutable (Phase 4), plus the **position-ownership migration** to a non-custodial NFT model (Phase 1). Do not describe the on-chain fee/contracts as immutable until those changes land.
 - **Non-custodial tx assembly in-browser, server reads chain only.**
 - **SIWE nonce + TTL** (already built).
 - **Hono + Effect + DO/KV/R2** realtime (already built; just wire the routes).
@@ -232,13 +232,13 @@ Independent catalog of the codebase (`bg_58a9fd22`). Legend: **COMPLETE** = prod
 
 Alps positions "autonomous LP" as its brand, yet its **autonomy is limited to v3** (TP/SL keeper needs an oracle v4 lacks). AetherDEX already owns the missing primitive:
 
-```
+```text
 Alps v4   = zap + fee lane only        (no TP/SL, no auto-recenter)
 AetherDEX = zap + fee lane + AetherHook TWAP oracle
             ⇒ can add: v4 TP/SL, v4 auto-recenter keeper, range-drift policies
 ```
 
-A marketing-grade claim follows naturally and is **defensible**: *"AetherDEX is the first DEX to bring autonomous (TP/SL + auto-recenter) concentrated-liquidity management to Uniswap v4 — the feature Alps reserves for v3."* This is a reason to exist beyond "another DEX."
+A marketing-grade claim follows naturally, **with scoping (defensible only once G2.5 lands and dated competitor research is added)**: *"AetherDEX is among the first DEXes, to our knowledge, to bring autonomous (TP/SL + auto-recenter) concentrated-liquidity management to Uniswap v4 — the feature Alps reserves for v3."* This is a reason to exist beyond "another DEX."
 
 ---
 
@@ -246,11 +246,17 @@ A marketing-grade claim follows naturally and is **defensible**: *"AetherDEX is 
 
 This reframes the existing AGENTS.md "Wave 3+" backlog around the Alpine LP thesis rather than discarding it. Phases assume owner signs off on §11 forks.
 
-### Phase 0 — Foundation quick wins (unblock realtime + correctness)
+### Phase 0 — Foundation & validation gate (unblock realtime + correctness)
+
+> **Phase 0 is a foundation and validation gate, not low-risk work.** G2 replaces the core quote math, G3 changes the backend architecture, and G5 deploys + validates end-to-end.
+> **Exit criteria:** (1) unit + integration tests cover the new quote engine — **including cross-tick cases** — and the Effect-routed paths; (2) the corrected TWAP read path (G2.5) passes time-weighted + fuzz tests; (3) contracts + bindings deploy to **Sepolia**; (4) an **end-to-end** swap/quote validation passes against the deployed contracts.
+> **Rollback:** the new quote engine and Effect routing ship behind the existing routes (feature-flag / env) so the prior path is restorable; deployment bindings are env-config (revertible). **Do not start Phase-1 liquidity UX until this gate is green** (see §13).
+
 - **[G1] Wire the WebSocket DOs**: add Hono `/ws/*` upgrade routes to `WebSocketHubDO` / `OrderBookDO`. (~5–10 LOC each; unblocks `PriceTicker`.)
-- **[G2] Fix the quote engine**: replace constant-product approximation with real V4 tick math via `@uniswap/v4-sdk` (`TickMath`, `LiquidityAmounts`). **Critical — current quote is wrong for CL.**
+- **[G2] Fix the quote engine**: replace constant-product approximation with real V4 tick math via `@uniswap/v4-sdk` (`TickMath`, `LiquidityAmounts`). **For swaps crossing an initialized tick this is not exact from current price + aggregate liquidity alone — it also needs initialized-tick state (`liquidityNet`) — so G2 reads from an on-chain quoter / `StateView` (or ingests tick state) rather than the current-price-only D1 row, since the full indexer lands in Phase 3.** **Critical — current quote is wrong for CL.**
+- **[G2.5] Make the TWAP real (pre-automation gate)**: `AetherHook` already records a 1024-slot observation buffer, but `getCurrentTwap` returns a cumulative delta over *sample counts*, not a *time-weighted* average. Fix the accumulator + read path to weight by **elapsed time** (observation timestamps) and to **normalize swap direction** (reciprocal prices for reverse-direction swaps); add time-weighted + fuzz tests — **before** any Phase-2 TP/SL/auto-recenter logic relies on it.
 - **[G3] Route HTTP through Effect services**: make pools/tokens routes use `PoolService`/`TokenService` instead of raw D1. Aligns with intended architecture.
-- **[G4] Wire `TokenSearch` to `/tokens`** (drop the 4-token hardcode) and fetch real balances.
+- **[G4] Wire `TokenSearch` to the Uniswap default token list** (drop the 4-token hardcode). Per the scope lock — *"Custom token lists → use Uniswap default list"* — token search sources the **canonical Uniswap default token list** (`https://tokens.uniswap.org`), fetched and validated (schema + address checksums); real balances are then fetched on-chain for that list. It must **NOT** be wired to a custom AetherDEX-maintained D1 `tokens` table seeded by `migrations/0002_seed_data.sql` — that would re-introduce the dropped "custom token lists" feature. If a D1 `tokens` table is kept, it is strictly a *cache of the Uniswap default list*, never a separately curated list.
 - **[G5] Deploy bindings**: replace placeholder D1/KV/Router/Factory ids; deploy contracts to Sepolia for end-to-end validation.
 
 ### Phase 1 — Concentrated-liquidity UX (the Alpine core)
@@ -261,20 +267,24 @@ This reframes the existing AGENTS.md "Wave 3+" backlog around the Alpine LP thes
 - **Portfolio / Folio** page: positions + PnL (start with D1 + on-chain event parse).
 
 ### Phase 2 — V4-native automation (the differentiator)
-- **TP/SL contract module** on top of `AetherHook` TWAP: owner-only proceeds, spot+TWAP dual trigger, slippage cap, expiry.
-- **Keeper**: Cloudflare Cron + Queue policy engine (port yanisepfl 5-policy logic: range-drift, anti-whipsaw, volatility, idle-reserve, cap-pressure).
+
+> **Depends on** the Phase-0 TWAP fix (G2.5) being real and validated, and on the router position-ownership migration (Phase 1).
+
+- **TP/SL contract module** on top of the corrected `AetherHook` TWAP: owner-only proceeds, spot+TWAP dual trigger, slippage cap, expiry.
+- **On-chain verification gate (required before any fund-moving action)**: the keeper reconciles position state **on-chain** (closes/transfers/range) via a quoter / `StateView` before executing — it **never trusts client-supplied D1 data** (today `routes/positions.ts` inserts client-supplied pool/tick/liquidity and never reconciles on-chain). **Unattended at-scale automation additionally requires the Phase-3 indexer; until then Phase-2 automation is reconciliation-gated per action.**
+- **Keeper**: Cloudflare Cron + Queue policy engine (port yanisepfl 5-policy logic: range-drift, anti-whipsaw, volatility, idle-reserve, cap-pressure). **Includes a funded transaction-signer / relayer model** — a securely-keyed signer (Workers secret), a chain **RPC binding**, a **gas-funding budget**, and an authorization policy for which orders may execute. *(New work: no RPC binding / signer / relayer exists today — CF Cron/Queue scheduling alone cannot submit a transaction.)*
 - **Auto-recenter** for out-of-range v4 positions.
 
 ### Phase 3 — Engagement + correctness
 - **Volume-spike alerts** (DO + threshold check; optional Telegram bot, read-only).
 - **Playground / paper LP** simulator.
-- **On-chain indexer** (block cursor + event log) replacing seeded D1 data — prerequisite for trustworthy PnL/automation at scale.
+- **On-chain indexer** (block cursor + event log) replacing seeded D1 data — **prerequisite for trustworthy PnL and for *unattended* automation at scale** (indexing / on-chain verification must precede any fund-moving automation that runs unattended).
 - **MEV protection** (in-scope, currently missing) + rate limiting + circuit breaker.
 
 ### Phase 4 — Monetization (gated by §11 decisions)
 - **Immutable 0.1% fee** on deposit/pool-creation in `AetherHook`/`AetherRouter`.
 - **Optional token flywheel**: if owner approves a token, weekly buyback-and-burn; otherwise route fees to treasury.
-- **Impact page** (growth/marketing).
+- ~~**Impact page**~~ — **out of scope** (locked scope drops standalone analytics pages; link to DexScreener instead). Requires an explicit owner scope change before inclusion.
 
 ---
 
@@ -363,7 +373,7 @@ These were the open forks:
 | Area | Risk | Mitigation |
 |---|---|---|
 | Oracle manipulation | TWAP-based TP/SL triggers could be gamed on low-liquidity pools | Dual spot+TWAP trigger (Alps' approach), minimum-observation/liquidity gates, conservative windows |
-| Keeper economics | Off-chain keeper must be funded/gas-managed; failed executions strand orders | CF Cron/Queues are cheap; add execution retries + order expiry |
+| Keeper economics | Off-chain keeper must be funded/gas-managed; failed executions strand orders | Design a **funded signer/relayer authorization model** in Phase 2 (secure key handling, RPC binding, chain-gas budget) — CF Cron/Queue retries are cheap but **cannot submit a transaction without a funded signer**; add execution retries + order expiry on top |
 | New chain risk | Robinhood Chain (launched Jul 2026) has unproven longevity | Treat as one target; keep multi-chain core |
 | Reference code maturity | `yanisepfl/alps` is hackathon-grade; production alps.farm is closed-source | Port *patterns*, rewrite to AetherDEX standards; do not vendor hackathon code wholesale |
 | Audit surface | TP/SL + router handling user funds need formal review | AetherDEX already targets Slither + Echidna + 90% coverage; fund-handling contracts get external audit |
@@ -378,7 +388,7 @@ These were the open forks:
 
 Before any large re-scope:
 
-> **Execute Phase 0 (G1–G5).** It is low-risk, completes things already half-built (wire the DOs, fix the quote, deploy bindings, use the Effect services), and — most importantly — **validates the V4 tick-math + TWAP plumbing** that the entire Alpine-pivot thesis depends on. Only after Phase 0 proves the foundation should the owner commit to the Phase 1–4 re-scope.
+> **Execute Phase 0 (G1–G2.5–G5) as a validation gate.** It completes things already half-built (wire the DOs, fix the quote, correct the TWAP read path, deploy bindings, use the Effect services), and — most importantly — **validates the V4 tick-math + TWAP plumbing** that the entire Alpine-pivot thesis depends on. Only after Phase 0 proves the foundation should the owner commit to the Phase 1–4 re-scope.
 
 Concretely, the smallest high-value PR after this exploration is: **wire the WebSocket DOs and replace the approximate quote with `@uniswap/v4-sdk` tick math**, since both are prerequisites and unblock everything downstream.
 

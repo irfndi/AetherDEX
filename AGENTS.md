@@ -20,8 +20,8 @@
 - **Custody:** **Non-custodial aggregator.** Users keep their position NFTs; we build/sign txs in-browser + run an off-chain keeper + index data. **No ERC4626 vault.**
 - **Automation:** **Off-chain keeper** on Cloudflare Workers (Cron + Queues). Principle: **mutable policy off-chain, immutable safety invariants on-chain** — strategy changes never need a redeploy.
 - **Chains:** **Robinhood Chain first** (beachhead), then Ethereum + L2s.
-- **Revenue:** flat **immutable 0.1% protocol fee → treasury multisig. No native token for now** (zero capital outlay; token deferred).
-- **Data:** PnL/history **D1-indexed, server-side via Workers.**
+- **Revenue:** flat **0.1% protocol fee → treasury multisig** — the *locked rate*; made **immutable on-chain** by removing the admin `setProtocolFee` setter and redeploying the contracts (a Phase-4 contract change — until then the deployed hook's fee is owner-adjustable). **No native token for now** (zero capital outlay; token deferred).
+- **Data:** PnL/history **D1-indexed, server-side via Workers.** The schema must be **chain-qualified** (composite keys carry `chain_id`) **before a second chain is indexed** — token addresses / deterministic V4 pool-ids / tx hashes collide across chains, so multi-chain ingest needs `chain_id` in keys + filters (or a DB per chain).
 - **API contract:** typed end-to-end via **`@effect/rpc`** (shared Schema; server via `@hono/effect`, client via TanStack-Query resolver).
 - **Frontend:** full **TanStack Suite** (Router + Query via @effect/rpc + Form + Table + Virtual as needed), all at latest.
 
@@ -204,7 +204,7 @@ bun run contracts:deploy:sepolia
 
 ### CI/CD
 - Workstream C (separate PR, after the toolchain migration) modernizes CI to be **green-gated** (no `continue-on-error` masks), with coverage thresholds enforced (70% backend / 70% frontend / 90% contracts) and `ci-status` as the required gate.
-- **Security hardening:** Slither is installed and gated on high/medium; an Echidna fuzz job runs; actions are pinned to SHAs; each job sets least-privilege `permissions`; branch protection on `main` requires `ci-status`.
+- **Security hardening — target, delivered by Workstream C (a separate PR; not yet live on `main`):** Slither installed and gated on high/medium; an Echidna fuzz job; actions pinned to SHAs; least-privilege `permissions` per job; branch protection on `main` requiring `ci-status`. **Until Workstream C merges, these controls do not run in CI** (Slither is currently `command -v`-gated and never actually runs; there is no Echidna job; actions are tag-referenced).
 - E2E (Playwright) + Cloudflare Pages preview-deploy are wired into CI early; test types + coverage breadth expand across later phases.
 - Dependency automation via Renovate (see Dependencies above).
 
@@ -236,7 +236,7 @@ bun run contracts:deploy:sepolia
 
 ### Why a flat 0.1% fee to treasury (no token) for now?
 - Zero capital outlay: users pay fees on their own txs; we never fund a token launch, seed liquidity, or execute buybacks.
-- Robust + secure: immutable on-chain fee rate + treasury multisig; no market ops, no buyback logic, no securities exposure.
+- Robust + secure: a **locked** 0.1% on-chain fee rate (made **immutable** by removing the admin setter + redeploying in Phase 4) + treasury multisig; no market ops, no buyback logic, no securities exposure.
 - A token + buyback-burn is a future option once there is traction and capital appetite.
 
 ### Why Uniswap V4 directly (not custom Vyper pool)?
@@ -337,14 +337,16 @@ bun run contracts:deploy:sepolia
 
 ## Security
 
-- Test coverage >90% for contracts (Slither + Echidna in CI)
+> Items marked **(target)** are phased work — Workstream C for CI hardening (Slither/Echidna), Phase 3 for MEV / rate-limit / circuit-breaker — not all live on `main` yet.
+
+- Test coverage >90% for contracts (Slither + Echidna in CI — **target**; gated once Workstream C lands)
 - Test coverage >70% for backend (Vitest with @cloudflare/vitest-pool-workers)
 - Test coverage >70% for frontend (Vitest + Playwright)
 - SIWE auth (Sign-In with Ethereum), no passwords
 - Nonce in Workers KV with 5-minute TTL
 - Security headers via Hono middleware (CSP, HSTS, X-Frame-Options)
-- Rate limiting on /swap endpoints
-- Circuit breaker for high-value operations
+- Rate limiting on /swap endpoints — **Phase 3 target** (not yet implemented; see plan gap #5)
+- Circuit breaker for high-value operations — **Phase 3 target** (not yet implemented; see plan gap #5)
 - Audit required before mainnet deployment (post-testnet validation)
 
 ## Pre-mainnet Checklist
