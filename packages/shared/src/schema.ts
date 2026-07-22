@@ -18,18 +18,18 @@ export const PoolSchema = Schema.Struct({
   updatedAt: Schema.Number,
 })
 
-export type Pool = typeof PoolSchema.Type
+export type Pool = Schema.Schema.Type<typeof PoolSchema>
 
 export const ListPoolsPayloadSchema = Schema.Struct({
   limit: Schema.optional(Schema.Number),
   offset: Schema.optional(Schema.Number),
 })
 
-export type ListPoolsPayload = typeof ListPoolsPayloadSchema.Type
+export type ListPoolsPayload = Schema.Schema.Type<typeof ListPoolsPayloadSchema>
 
 export const PoolListResponseSchema = Schema.Struct({
   pools: Schema.Array(PoolSchema),
   count: Schema.Number,
 })
 
-export type PoolListResponse = typeof PoolListResponseSchema.Type
+export type PoolListResponse = Schema.Schema.Type<typeof PoolListResponseSchema>
