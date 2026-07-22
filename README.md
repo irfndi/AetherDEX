@@ -1,16 +1,16 @@
 # AetherDEX
 
-A lean spot DEX built on Uniswap V4, deployed on Cloudflare stack.
+A non-custodial **autonomous concentrated-liquidity platform** on Uniswap V4 — visual-range LP, single-sided zaps, one-click rebalance, and V4-native TP/SL (via the `AetherHook` TWAP oracle). Robinhood-Chain-first, multi-chain (Ethereum + L2s), deployed entirely on the Cloudflare stack.
 
 ## Architecture
 
-- **Frontend** (`apps/web/`): Vite + React 19 + TanStack Router + Wagmi + DaisyUI
-- **Backend** (`apps/api/`): Cloudflare Workers + Hono + Effect TS + D1/R2/KV/Durable Objects
+- **Frontend** (`apps/web/`): Vite + React 19 + TanStack Suite (Router/Query/Form/Table/Virtual) + `@effect/rpc` client + Wagmi + DaisyUI
+- **Backend** (`apps/api/`): Cloudflare Workers + Hono + Effect TS v4 + `@effect/rpc` + D1/R2/KV/Durable Objects
 - **Contracts** (`packages/contracts/`): Solidity hooks on Uniswap V4-core + Foundry
 
 ## Stack
 
-- Bun (canary) + tsgo (TypeScript 7.0 RC)
+- Bun (canary) + TypeScript 7 (native `tsc`)
 - Biome for linting/formatting
 - Vitest for unit tests, Playwright for E2E
 - Cloudflare: Workers, D1, R2, KV, Durable Objects, Queues, Pages
@@ -48,6 +48,6 @@ bun run test:coverage
 
 ## Scope
 
-Lean spot DEX: Swap + Concentrated Liquidity + Token Search + Real-time Charts + Wallet Connect + Slippage/MEV protection.
+Autonomous concentrated-liquidity platform (Alpine-style): spot swap, visual-range concentrated liquidity, single-sided zaps, one-click rebalance, V4-native TP/SL, token search, real-time charts, wallet connect (SIWE), slippage/MEV protection. Non-custodial; off-chain keeper for automation. See the exploration plan (PR #301) for the full thesis + roadmap.
 
 See AGENTS.md for full agent context.
