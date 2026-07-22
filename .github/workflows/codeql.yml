@@ -6,7 +6,14 @@ on:
   pull_request:
     branches: [main, develop]
   schedule:
-    - cron: "0 6 * * 1"  # Weekly Monday 6am UTC
+    - cron: "0 6 * * 1" # Weekly Monday 6am UTC
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   analyze:
@@ -20,14 +27,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [javascript-typescript]
+        # javascript-typescript: apps + tooling. actions: scans .github/workflows +
+        # .github/actions for GitHub Actions injection / unsafe-expression issues.
+        language: [javascript-typescript, actions]
     steps:
-      - uses: actions/checkout@v7
-      - uses: github/codeql-action/init@v4
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false # this job needs no authenticated git ops (artipacked)
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4
         with:
           languages: ${{ matrix.language }}
+          build-mode: none # interpreted languages + actions are extracted without a build
           config-file: ./.github/codeql-config.yml
-      - uses: github/codeql-action/analyze@v4
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4
         with:
           category: "/language:${{ matrix.language }}"
           upload: always

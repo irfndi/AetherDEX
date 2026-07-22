@@ -1,0 +1,63 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    "schedule:weekly"
+  ],
+  "enabledManagers": ["bun", "npm", "github-actions"],
+  "labels": ["dependencies"],
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "Renovate Dependency Dashboard",
+  "prHourlyLimit": 4,
+  "prConcurrentLimit": 10,
+  "semanticCommits": "enabled",
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "deps",
+  "commitMessageAction": "update",
+  "platformCommit": "enabled",
+  "rangeStrategy": "bump",
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/.archive-contracts-2026/**",
+    "**/.cache/**",
+    "**/.wrangler/**",
+    "packages/contracts/lib/**",
+    "packages/contracts/out/**",
+    "packages/contracts/cache/**"
+  ],
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"],
+    "commitMessagePrefix": "fix(security):"
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"],
+    "commitMessageAction": "maintain",
+    "description": "Weekly regenerate of the single root bun.lock to pick up transitive updates in one PR."
+  },
+  "packageRules": [
+    {
+      "description": "ALL bun workspace updates -> one PR so the single root bun.lock is regenerated once (no per-directory PR storms). npm extracts the package.json manifests; bun handles bun.lock - both feed this group.",
+      "matchManagers": ["bun", "npm"],
+      "matchUpdateTypes": ["major", "minor", "patch", "pin", "digest", "replacement", "rollback"],
+      "matchFileNames": ["bun.lock", "package.json", "apps/**/package.json", "packages/**/package.json"],
+      "groupName": "bun dependencies",
+      "semanticCommitScope": "deps"
+    },
+    {
+      "description": "All GitHub Actions version bumps (incl. SHA-pinned) -> one PR.",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["major", "minor", "patch", "pin", "digest", "replacement"],
+      "groupName": "github actions",
+      "semanticCommitScope": "ci"
+    },
+    {
+      "description": "Bun runtime is intentionally 'canary' (packageManager field) - Renovate must not bump it.",
+      "matchManagers": ["bun"],
+      "matchPackageNames": ["bun"],
+      "enabled": false
+    }
+  ]
+}

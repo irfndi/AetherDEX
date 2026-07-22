@@ -1,0 +1,61 @@
+name: Renovate
+
+# Self-hosted Renovate. Owns ALL dependency automation that Dependabot previously
+# attempted (npm/bun + github-actions), grouped per lockfile in renovate.json so the
+# single root bun.lock is regenerated once per PR (no conflicting PR storms).
+on:
+  schedule:
+    - cron: "0 5 * * 1" # Weekly Monday 5am UTC
+  workflow_dispatch:
+    inputs:
+      dryRun:
+        description: "Dry run: log what would change without opening/updating PRs"
+        required: false
+        default: false
+        type: boolean
+      logLevel:
+        description: "Renovate log level"
+        required: false
+        default: "info"
+        type: choice
+        options: [debug, info, warn, error]
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false # never interrupt an in-flight Renovate run
+
+permissions:
+  contents: read
+
+jobs:
+  renovate:
+    name: Renovate (self-hosted)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # Renovate authenticates via RENOVATE_TOKEN (below), not the checkout token, so
+          # don't leave the default token persisted in .git/config (artipacked hardening).
+          persist-credentials: false
+
+      # Runs Renovate inside its official container using a fine-grained PAT
+      # (secrets.RENOVATE_TOKEN) scoped to THIS repo with:
+      #   Contents: read and write        -> update dependency files / lockfiles
+      #   Pull requests: read and write   -> open/manage update PRs
+      #   Workflows: read and write       -> required: the github-actions manager rewrites
+      #                                       .github/workflows/*.yml; without it, action
+      #                                       SHA bumps silently fail to open PRs.
+      - name: Self-hosted Renovate
+        uses: renovatebot/github-action@3064367f740a1a91cca218698a63902689cce200 # v46.1.20
+        with:
+          configurationFile: renovate.json
+          # Pin the Renovate container to a specific FULL image (includes bun, needed to
+          # regenerate the bun.lock). The action SHA above pins the wrapper.
+          renovate-version: 46.1.20-full
+          token: ${{ secrets.RENOVATE_TOKEN }}
+        env:
+          LOG_LEVEL: ${{ inputs.logLevel || 'info' }}
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          RENOVATE_DRY_RUN: ${{ inputs.dryRun && 'full' || '' }}
