@@ -1,3 +1,4 @@
+import type { Pool } from "@aetherdex/shared"
 import { useQuery } from "@tanstack/react-query"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { useEffect, useState } from "react"
@@ -39,7 +40,7 @@ function PoolsPage() {
   const [tokens, setTokens] = useState<Record<string, Token>>({})
   const [search, setSearch] = useState(filterToken)
 
-  const { data, isPending } = useQuery(
+  const { data, isPending, isError, refetch } = useQuery(
     poolsQueryOptions(50, 0, {
       sortBy,
       sortDirection: "desc",
@@ -101,51 +102,89 @@ function PoolsPage() {
         </div>
       </div>
 
-      {isPending ? (
-        <div className="flex justify-center py-12">
-          <span className="loading loading-spinner loading-lg" />
-        </div>
-      ) : pools.length === 0 ? (
-        <Card>
-          <CardBody>
-            <p className="py-8 text-center text-base-content/60">No pools found.</p>
-          </CardBody>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {pools.map((pool) => {
-            const t0 = tokens[pool.token0Address.toLowerCase()]
-            const t1 = tokens[pool.token1Address.toLowerCase()]
-            return (
-              <Link
-                key={pool.poolId}
-                to="/pools/$poolId"
-                params={{ poolId: pool.poolId }}
-                search={{ sortBy: "tvl", filterToken: "" }}
-                className="block"
-              >
-                <Card className="transition-colors hover:border-primary">
-                  <CardBody>
-                    <div className="mb-3 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        {t0 ? <TokenChip token={t0} /> : null}
-                        <span className="text-base-content/40">/</span>
-                        {t1 ? <TokenChip token={t1} /> : null}
-                      </div>
-                      <span className="badge badge-ghost">{(pool.fee / 10_000).toFixed(2)}%</span>
-                    </div>
-                    <div className="stats stats-horizontal bg-transparent">
-                      <Stat label="TVL" value={`$${formatUsd(pool.tvlUsd)}`} />
-                      <Stat label="Vol 24h" value={`$${formatUsd(pool.volume24hUsd)}`} />
-                      <Stat label="Fees 24h" value={`$${formatUsd(pool.fees24hUsd)}`} />
-                    </div>
-                  </CardBody>
-                </Card>
-              </Link>
-            )
-          })}
-        </div>
-      )}
+      <PoolsResults isPending={isPending} isError={isError} pools={pools} tokens={tokens} onRetry={() => refetch()} />
+    </div>
+  )
+}
+
+interface PoolsResultsProps {
+  isPending: boolean
+  isError: boolean
+  pools: readonly Pool[]
+  tokens: Record<string, Token>
+  onRetry: () => void
+}
+
+export function PoolsResults({ isPending, isError, pools, tokens, onRetry }: PoolsResultsProps) {
+  if (isPending) {
+    return (
+      <div className="flex justify-center py-12">
+        <span className="loading loading-spinner loading-lg" />
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <Card>
+        <CardBody>
+          <p className="text-center font-medium">Failed to load pools.</p>
+          <p className="mt-1 text-center text-sm text-base-content/60">
+            Pool data is temporarily unavailable — please retry.
+          </p>
+          <div className="mt-4 flex justify-center">
+            <button type="button" onClick={onRetry} className="btn btn-primary btn-sm">
+              Retry
+            </button>
+          </div>
+        </CardBody>
+      </Card>
+    )
+  }
+
+  if (pools.length === 0) {
+    return (
+      <Card>
+        <CardBody>
+          <p className="py-8 text-center text-base-content/60">No pools found.</p>
+        </CardBody>
+      </Card>
+    )
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      {pools.map((pool) => {
+        const t0 = tokens[pool.token0Address.toLowerCase()]
+        const t1 = tokens[pool.token1Address.toLowerCase()]
+        return (
+          <Link
+            key={pool.poolId}
+            to="/pools/$poolId"
+            params={{ poolId: pool.poolId }}
+            search={{ sortBy: "tvl", filterToken: "" }}
+            className="block"
+          >
+            <Card className="transition-colors hover:border-primary">
+              <CardBody>
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    {t0 ? <TokenChip token={t0} /> : null}
+                    <span className="text-base-content/40">/</span>
+                    {t1 ? <TokenChip token={t1} /> : null}
+                  </div>
+                  <span className="badge badge-ghost">{(pool.fee / 10_000).toFixed(2)}%</span>
+                </div>
+                <div className="stats stats-horizontal bg-transparent">
+                  <Stat label="TVL" value={`$${formatUsd(pool.tvlUsd)}`} />
+                  <Stat label="Vol 24h" value={`$${formatUsd(pool.volume24hUsd)}`} />
+                  <Stat label="Fees 24h" value={`$${formatUsd(pool.fees24hUsd)}`} />
+                </div>
+              </CardBody>
+            </Card>
+          </Link>
+        )
+      })}
     </div>
   )
 }
