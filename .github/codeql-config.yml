@@ -4,6 +4,9 @@ paths:
   - "apps/**"
   - "packages/contracts/src/**"
   - "packages/contracts/test/**"
+  # Let the `actions` CodeQL language scan our workflows + composite action.
+  - ".github/workflows/**"
+  - ".github/actions/**"
 
 paths-ignore:
   - "**/routeTree.gen.ts"
