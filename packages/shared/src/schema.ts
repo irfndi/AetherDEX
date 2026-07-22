@@ -33,3 +33,36 @@ export const PoolListResponseSchema = Schema.Struct({
 })
 
 export type PoolListResponse = Schema.Schema.Type<typeof PoolListResponseSchema>
+
+/**
+ * Token metadata sourced from the canonical Uniswap default token list
+ * (Phase-0 G4). The API validates the list (schema + EIP-55 checksums +
+ * chainId filter) before serving.
+ */
+export const TokenSchema = Schema.Struct({
+  address: Schema.String,
+  symbol: Schema.String,
+  name: Schema.String,
+  decimals: Schema.Number,
+  logoUrl: Schema.NullOr(Schema.String),
+  isVerified: Schema.Boolean,
+  isNative: Schema.Boolean,
+  totalSupply: Schema.NullOr(Schema.String),
+  createdAt: Schema.Number,
+  updatedAt: Schema.Number,
+})
+
+export type Token = Schema.Schema.Type<typeof TokenSchema>
+
+export const TokenListResponseSchema = Schema.Struct({
+  tokens: Schema.Array(TokenSchema),
+  count: Schema.Number,
+})
+
+export type TokenListResponse = Schema.Schema.Type<typeof TokenListResponseSchema>
+
+export const TokenResponseSchema = Schema.Struct({
+  token: TokenSchema,
+})
+
+export type TokenResponse = Schema.Schema.Type<typeof TokenResponseSchema>
