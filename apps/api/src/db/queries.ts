@@ -4,7 +4,16 @@
 
 import { Effect } from "effect"
 import { SqlClient } from "effect/unstable/sql"
-import { type Pool, rowToPool, rowToToken, rowToTransaction, rowToUser, type Token, type Transaction } from "./schema"
+import {
+  type Pool,
+  rowToLiquidityPosition,
+  rowToPool,
+  rowToToken,
+  rowToTransaction,
+  rowToUser,
+  type Token,
+  type Transaction,
+} from "./schema"
 
 /* ============ TOKENS ============ */
 
@@ -114,4 +123,69 @@ export const getUser = (address: string) =>
     const rows = yield* sql`SELECT * FROM users WHERE address = ${address}`
     if (rows.length === 0) return null
     return rowToUser(rows[0] as Record<string, unknown>)
+  })
+
+/* ============ LIQUIDITY POSITIONS ============ */
+
+export const getPositionsByUser = (userAddress: string, limit = 100) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    const rows = yield* sql`
+      SELECT * FROM liquidity_positions
+      WHERE user_address = ${userAddress} AND is_active = 1
+      ORDER BY created_at DESC
+      LIMIT ${limit}
+    `
+    return rows.map((r) => rowToLiquidityPosition(r as Record<string, unknown>))
+  })
+
+export interface InsertPositionInput {
+  userAddress: string
+  poolId: string
+  tickLower: number
+  tickUpper: number
+  liquidity: string
+  amount0: string
+  amount1: string
+}
+
+export const insertPosition = (input: InsertPositionInput) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    const now = Date.now()
+    const rows = yield* sql`
+      INSERT INTO liquidity_positions
+        (user_address, pool_id, tick_lower, tick_upper, liquidity, amount0, amount1,
+         fees_earned_token0, fees_earned_token1, is_active, created_at, updated_at)
+      VALUES (${input.userAddress}, ${input.poolId}, ${input.tickLower}, ${input.tickUpper}, ${input.liquidity}, ${input.amount0}, ${input.amount1}, '0', '0', 1, ${now}, ${now})
+      RETURNING id
+    `
+    const first = rows[0] as Record<string, unknown> | undefined
+    return Number(first?.id ?? 0)
+  })
+
+/* ============ SWAP RECORD ============ */
+
+export interface RecordSwapInput {
+  txHash: string
+  userAddress: string
+  poolId: string | null
+  tokenIn: string | null
+  tokenOut: string | null
+  amountIn: string | null
+  amountOut: string | null
+  amountUsd: number | null
+  blockNumber: number
+  blockTimestamp: number
+}
+
+export const recordSwap = (tx: RecordSwapInput) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    yield* sql`
+      INSERT INTO transactions
+        (tx_hash, user_address, pool_id, tx_type, token_in, token_out, amount_in, amount_out, amount_usd, block_number, block_timestamp, status, created_at)
+      VALUES (${tx.txHash}, ${tx.userAddress}, ${tx.poolId}, 'swap', ${tx.tokenIn}, ${tx.tokenOut}, ${tx.amountIn}, ${tx.amountOut}, ${tx.amountUsd}, ${tx.blockNumber}, ${tx.blockTimestamp}, 'pending', ${Date.now()})
+      ON CONFLICT(tx_hash) DO NOTHING
+    `
   })
