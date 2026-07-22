@@ -46,6 +46,19 @@ bun run test
 bun run test:coverage
 ```
 
+## Dependency Automation (Renovate)
+
+Renovate (`.github/workflows/renovate.yml` + `renovate.json`) owns dependency updates for
+`bun` and `github-actions`; Dependabot is kept only as a security-update fallback.
+
+The workflow authenticates with a **fine-grained PAT** stored as `RENOVATE_TOKEN`, scoped to
+this repository with:
+
+- **Contents: read and write** — update dependency files and lockfiles
+- **Pull requests: read and write** — open and manage update PRs
+- **Workflows: read and write** — required because the `github-actions` manager rewrites
+  `.github/workflows/*.yml`; without it, action SHA bumps silently fail to open PRs
+
 ## Scope
 
 Lean spot DEX: Swap + Concentrated Liquidity + Token Search + Real-time Charts + Wallet Connect + Slippage/MEV protection.

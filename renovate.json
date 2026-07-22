@@ -5,7 +5,7 @@
     ":semanticCommits",
     "schedule:weekly"
   ],
-  "enabledManagers": ["npm", "github-actions"],
+  "enabledManagers": ["bun", "npm", "github-actions"],
   "labels": ["dependencies"],
   "dependencyDashboard": true,
   "dependencyDashboardTitle": "Renovate Dependency Dashboard",
@@ -39,8 +39,8 @@
   },
   "packageRules": [
     {
-      "description": "ALL npm/bun workspace updates -> one PR so the single root bun.lock is regenerated once (no per-directory PR storms).",
-      "matchManagers": ["npm"],
+      "description": "ALL bun workspace updates -> one PR so the single root bun.lock is regenerated once (no per-directory PR storms).",
+      "matchManagers": ["bun"],
       "matchUpdateTypes": ["major", "minor", "patch", "pin", "digest", "replacement", "rollback"],
       "matchFileNames": ["bun.lock", "package.json", "apps/**/package.json", "packages/**/package.json"],
       "groupName": "bun dependencies",
@@ -55,7 +55,7 @@
     },
     {
       "description": "Bun runtime is intentionally 'canary' (packageManager field) - Renovate must not bump it.",
-      "matchManagers": ["npm"],
+      "matchManagers": ["bun"],
       "matchPackageNames": ["bun"],
       "enabled": false
     }

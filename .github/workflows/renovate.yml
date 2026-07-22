@@ -35,9 +35,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # Renovate authenticates via RENOVATE_TOKEN (below), not the checkout token, so
+          # don't leave the default token persisted in .git/config (artipacked hardening).
+          persist-credentials: false
 
       # Runs Renovate inside its official container using a fine-grained PAT
-      # (secrets.RENOVATE_TOKEN: contents:write + pull_requests:write on this repo).
+      # (secrets.RENOVATE_TOKEN) scoped to THIS repo with:
+      #   Contents: read and write        -> update dependency files / lockfiles
+      #   Pull requests: read and write   -> open/manage update PRs
+      #   Workflows: read and write       -> required: the github-actions manager rewrites
+      #                                       .github/workflows/*.yml; without it, action
+      #                                       SHA bumps silently fail to open PRs.
       - name: Self-hosted Renovate
         uses: renovatebot/github-action@3064367f740a1a91cca218698a63902689cce200 # v46.1.20
         with:
