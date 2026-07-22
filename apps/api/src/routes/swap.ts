@@ -1,6 +1,9 @@
 /**
  * AetherDEX Swap HTTP endpoints
  * Quote generation, calldata building, swap recording
+ *
+ * All data access flows through Effect services (G3): SwapService composes
+ * PoolService (pool metadata) + ChainStateReader (on-chain V4 state, G2).
  */
 
 import { Effect, Layer } from "effect"
@@ -9,13 +12,75 @@ import { type AuthVariables, requireAuth } from "../auth/middleware"
 import { makeDbLayer } from "../db/client"
 import { recordSwap } from "../db/queries"
 import { runEffect } from "../lib/effect-bridge"
-import { type SwapQuote, SwapService, SwapServiceDeps, SwapServiceLive } from "../services/swap.service"
+import {
+  type ChainStateReader,
+  makeStateViewReaderLayer,
+  unconfiguredChainStateReaderLayer,
+} from "../services/chain-state-reader"
+import { PoolServiceLive } from "../services/pool.service"
+import {
+  type QuoteEngineMode,
+  type SwapQuote,
+  SwapService,
+  SwapServiceDeps,
+  SwapServiceLive,
+} from "../services/swap.service"
 
 const swap = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
 // ─── Address validation ──────────────────────────────────────────────────────
 
 const ETH_ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/
+const HEX_ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/
+
+interface QuoteEnv {
+  DB?: D1Database
+  ROUTER_ADDRESS?: string
+  FACTORY_ADDRESS?: string
+  STATE_VIEW_ADDRESS?: string
+  RPC_URL?: string
+  CHAIN_ID?: string
+  QUOTE_ENGINE_MODE?: string
+}
+
+/**
+ * Build the SwapService layer stack for a request.
+ * On-chain reads are deployment config (G5): when STATE_VIEW_ADDRESS + RPC_URL
+ * are set we read V4 state live; otherwise the reader reports `not_configured`
+ * and QUOTE_ENGINE_MODE=auto degrades to the legacy approximation.
+ */
+const swapServiceLayer = (env: QuoteEnv) => {
+  const db = env.DB as D1Database
+  const stateViewAddress = env.STATE_VIEW_ADDRESS ?? ""
+  const rpcUrl = env.RPC_URL ?? ""
+  const chainId = Number.parseInt(env.CHAIN_ID ?? "1", 10)
+
+  const readerLayer: Layer.Layer<ChainStateReader> =
+    HEX_ADDRESS_RE.test(stateViewAddress) && rpcUrl.length > 0
+      ? makeStateViewReaderLayer({
+          rpcUrl,
+          stateViewAddress: stateViewAddress as `0x${string}`,
+          chainId,
+          tickScanEachSide: 64,
+        })
+      : unconfiguredChainStateReaderLayer
+
+  const mode: QuoteEngineMode =
+    env.QUOTE_ENGINE_MODE === "v4" || env.QUOTE_ENGINE_MODE === "legacy" ? env.QUOTE_ENGINE_MODE : "auto"
+
+  const depsLayer = Layer.succeed(SwapServiceDeps, {
+    routerAddress: env.ROUTER_ADDRESS ?? "",
+    factoryAddress: env.FACTORY_ADDRESS ?? "",
+    chainId,
+    mode,
+  })
+
+  return SwapServiceLive.pipe(
+    Layer.provide(PoolServiceLive.pipe(Layer.provide(makeDbLayer(db)))),
+    Layer.provide(readerLayer),
+    Layer.provide(depsLayer),
+  )
+}
 
 // ─── GET /quote ──────────────────────────────────────────────────────────────
 
@@ -41,11 +106,6 @@ swap.get("/quote", async (c) => {
     if (!c.env.ROUTER_ADDRESS || !c.env.FACTORY_ADDRESS) {
       return c.json({ error: "Server misconfigured: missing ROUTER_ADDRESS or FACTORY_ADDRESS" }, 500)
     }
-    const depsLayer = Layer.succeed(SwapServiceDeps, {
-      db: c.env.DB as D1Database,
-      routerAddress: c.env.ROUTER_ADDRESS,
-      factoryAddress: c.env.FACTORY_ADDRESS,
-    })
     const program = Effect.gen(function* () {
       const swapService = yield* SwapService
       return yield* swapService.getQuote({
@@ -55,7 +115,7 @@ swap.get("/quote", async (c) => {
         slippageTolerance,
       })
     })
-    const quote = await Effect.runPromise(program.pipe(Effect.provide(SwapServiceLive.pipe(Layer.provide(depsLayer)))))
+    const quote = await Effect.runPromise(program.pipe(Effect.provide(swapServiceLayer(c.env))))
     return c.json(quote)
   } catch (err) {
     return c.json({ error: String(err) }, 500)
@@ -90,18 +150,11 @@ swap.post("/build", async (c) => {
     if (!c.env.ROUTER_ADDRESS || !c.env.FACTORY_ADDRESS) {
       return c.json({ error: "Server misconfigured: missing ROUTER_ADDRESS or FACTORY_ADDRESS" }, 500)
     }
-    const depsLayer = Layer.succeed(SwapServiceDeps, {
-      db: c.env.DB as D1Database,
-      routerAddress: c.env.ROUTER_ADDRESS,
-      factoryAddress: c.env.FACTORY_ADDRESS,
-    })
     const program = Effect.gen(function* () {
       const swapService = yield* SwapService
       return yield* swapService.buildCalldata(quote, recipient)
     })
-    const calldata = await Effect.runPromise(
-      program.pipe(Effect.provide(SwapServiceLive.pipe(Layer.provide(depsLayer)))),
-    )
+    const calldata = await Effect.runPromise(program.pipe(Effect.provide(swapServiceLayer(c.env))))
     return c.json(calldata)
   } catch (err) {
     return c.json({ error: String(err) }, 500)
