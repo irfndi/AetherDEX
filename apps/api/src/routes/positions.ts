@@ -3,10 +3,16 @@
  *
  * GET /api/v1/users/:address/positions — public, list user's active LP positions
  * POST /api/v1/positions — auth required, record a new LP position
+ *
+ * Resolved through Effect queries (db/queries.ts) — D1 as single access path.
  */
 
+import { Effect } from "effect"
 import { Hono } from "hono"
 import { type AuthVariables, requireAuth } from "../auth/middleware"
+import { makeDbLayer } from "../db/client"
+import { getPositionsByUser, insertPosition } from "../db/queries"
+import { runEffect } from "../lib/effect-bridge"
 
 type Bindings = {
   DB: D1Database
@@ -29,49 +35,8 @@ positions.get("/users/:address/positions", async (c) => {
   }
 
   try {
-    const result = await c.env.DB.prepare(
-      `SELECT id, user_address, pool_id, tick_lower, tick_upper, liquidity,
-              amount0, amount1, fees_earned_token0, fees_earned_token1,
-              is_active, created_at, updated_at
-       FROM liquidity_positions
-       WHERE user_address = ? AND is_active = 1
-       ORDER BY created_at DESC LIMIT 100`,
-    )
-      .bind(address)
-      .all<{
-        id: number
-        user_address: string
-        pool_id: string
-        tick_lower: number
-        tick_upper: number
-        liquidity: string
-        amount0: string
-        amount1: string
-        fees_earned_token0: string
-        fees_earned_token1: string
-        is_active: number
-        created_at: number
-        updated_at: number
-      }>()
-
-    return c.json({
-      positions: (result.results ?? []).map((row) => ({
-        id: row.id,
-        userAddress: row.user_address,
-        poolId: row.pool_id,
-        tickLower: row.tick_lower,
-        tickUpper: row.tick_upper,
-        liquidity: row.liquidity,
-        amount0: row.amount0,
-        amount1: row.amount1,
-        feesEarnedToken0: row.fees_earned_token0,
-        feesEarnedToken1: row.fees_earned_token1,
-        isActive: Boolean(row.is_active),
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-      })),
-      count: (result.results ?? []).length,
-    })
+    const list = await runEffect(getPositionsByUser(address, 100).pipe(Effect.provide(makeDbLayer(c.env.DB))))
+    return c.json({ positions: list, count: list.length })
   } catch (err) {
     return c.json({ error: String(err) }, 500)
   }
@@ -99,27 +64,18 @@ positions.post("/", requireAuth, async (c) => {
   }
 
   try {
-    const now = Date.now()
-    const result = await c.env.DB.prepare(
-      `INSERT INTO liquidity_positions
-       (user_address, pool_id, tick_lower, tick_upper, liquidity, amount0, amount1,
-        fees_earned_token0, fees_earned_token1, is_active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, '0', '0', 1, ?, ?)`,
+    const positionId = await runEffect(
+      insertPosition({
+        userAddress: session.userAddress,
+        poolId: body.poolId,
+        tickLower: body.tickLower,
+        tickUpper: body.tickUpper,
+        liquidity: body.liquidity,
+        amount0: body.amount0 ?? "0",
+        amount1: body.amount1 ?? "0",
+      }).pipe(Effect.provide(makeDbLayer(c.env.DB))),
     )
-      .bind(
-        session.userAddress,
-        body.poolId,
-        body.tickLower,
-        body.tickUpper,
-        body.liquidity,
-        body.amount0 ?? "0",
-        body.amount1 ?? "0",
-        now,
-        now,
-      )
-      .run()
-
-    return c.json({ ok: true, positionId: result.meta.last_row_id })
+    return c.json({ ok: true, positionId })
   } catch (err) {
     return c.json({ error: String(err) }, 500)
   }

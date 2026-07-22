@@ -1,0 +1,28 @@
+{
+  "name": "@aetherdex/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared typed API contract (RpcGroup + Schemas) for AetherDEX",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check src/",
+    "lint:fix": "biome check --write src/"
+  },
+  "dependencies": {
+    "effect": "4.0.0-beta.100"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.5",
+    "@types/node": "^26.1.1",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "bun": ">=1.4.0",
+    "node": ">=24.0.0"
+  }
+}

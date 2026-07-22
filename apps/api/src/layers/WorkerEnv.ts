@@ -10,6 +10,6 @@ export interface WorkerEnv {
   readonly ENVIRONMENT: string
 }
 
-export const WorkerEnv = Context.GenericTag<WorkerEnv>("@aetherdex/WorkerEnv")
+export const WorkerEnv = Context.Service<WorkerEnv>("@aetherdex/WorkerEnv")
 
 export const makeWorkerEnvLayer = (env: WorkerEnv): Layer.Layer<WorkerEnv> => Layer.succeed(WorkerEnv, env)

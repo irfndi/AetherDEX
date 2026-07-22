@@ -6,6 +6,9 @@
 import { Effect, Layer } from "effect"
 import { Hono } from "hono"
 import { type AuthVariables, requireAuth } from "../auth/middleware"
+import { makeDbLayer } from "../db/client"
+import { recordSwap } from "../db/queries"
+import { runEffect } from "../lib/effect-bridge"
 import { type SwapQuote, SwapService, SwapServiceDeps, SwapServiceLive } from "../services/swap.service"
 
 const swap = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
@@ -52,7 +55,7 @@ swap.get("/quote", async (c) => {
         slippageTolerance,
       })
     })
-    const quote = await Effect.runPromise(Effect.provide(program, SwapServiceLive.pipe(Layer.provide(depsLayer))))
+    const quote = await Effect.runPromise(program.pipe(Effect.provide(SwapServiceLive.pipe(Layer.provide(depsLayer)))))
     return c.json(quote)
   } catch (err) {
     return c.json({ error: String(err) }, 500)
@@ -96,7 +99,9 @@ swap.post("/build", async (c) => {
       const swapService = yield* SwapService
       return yield* swapService.buildCalldata(quote, recipient)
     })
-    const calldata = await Effect.runPromise(Effect.provide(program, SwapServiceLive.pipe(Layer.provide(depsLayer))))
+    const calldata = await Effect.runPromise(
+      program.pipe(Effect.provide(SwapServiceLive.pipe(Layer.provide(depsLayer)))),
+    )
     return c.json(calldata)
   } catch (err) {
     return c.json({ error: String(err) }, 500)
@@ -130,33 +135,21 @@ swap.post("/record", requireAuth, async (c) => {
     return c.json({ error: "txHash, blockNumber, blockTimestamp required" }, 400)
   }
 
-  const db = c.env.DB
-  if (!db) {
-    return c.json({ error: "Database not configured" }, 500)
-  }
-
   try {
-    await db
-      .prepare(
-        `INSERT INTO transactions
-       (tx_hash, user_address, pool_id, tx_type, token_in, token_out, amount_in, amount_out, amount_usd, block_number, block_timestamp, status, created_at)
-       VALUES (?, ?, ?, 'swap', ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
-       ON CONFLICT(tx_hash) DO NOTHING`,
-      )
-      .bind(
-        body.txHash,
-        session.userAddress,
-        body.poolId ?? null,
-        body.tokenIn ?? null,
-        body.tokenOut ?? null,
-        body.amountIn ?? null,
-        body.amountOut ?? null,
-        body.amountUsd ?? null,
-        body.blockNumber,
-        body.blockTimestamp,
-        Date.now(),
-      )
-      .run()
+    await runEffect(
+      recordSwap({
+        txHash: body.txHash,
+        userAddress: session.userAddress,
+        poolId: body.poolId ?? null,
+        tokenIn: body.tokenIn ?? null,
+        tokenOut: body.tokenOut ?? null,
+        amountIn: body.amountIn ?? null,
+        amountOut: body.amountOut ?? null,
+        amountUsd: body.amountUsd ?? null,
+        blockNumber: body.blockNumber,
+        blockTimestamp: body.blockTimestamp,
+      }).pipe(Effect.provide(makeDbLayer(c.env.DB as D1Database))),
+    )
 
     return c.json({ ok: true, txHash: body.txHash })
   } catch (err) {

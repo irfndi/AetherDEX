@@ -4,7 +4,7 @@
  * R2 is cheaper than D1 for large archival data
  */
 
-import { Effect } from "effect"
+import { Context, Effect, Layer } from "effect"
 
 export interface TradeRecord {
   txHash: string
@@ -68,8 +68,8 @@ export const gunzip = async (data: Uint8Array): Promise<string> => {
  * R2 Storage Service — typed wrapper for R2 operations
  * Trade history is archived as monthly JSONL.gz files
  */
-export class R2StorageService extends Effect.Service<R2StorageService>()("@aetherdex/R2StorageService", {
-  effect: Effect.gen(function* () {
+export class R2StorageService extends Context.Service<R2StorageService>()("@aetherdex/R2StorageService", {
+  make: Effect.gen(function* () {
     return {
       /**
        * Write trade records to a monthly archive (overwrites existing)
@@ -181,4 +181,6 @@ export class R2StorageService extends Effect.Service<R2StorageService>()("@aethe
         }),
     }
   }),
-}) {}
+}) {
+  static readonly layer = Layer.effect(this, this.make)
+}

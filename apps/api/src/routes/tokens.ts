@@ -1,9 +1,13 @@
 /**
  * AetherDEX Token HTTP endpoints
- * Token list, detail, search — queries D1 directly
+ * Token list, detail, search — resolved through TokenService (Effect), D1 as single path.
  */
 
+import { Effect, Layer } from "effect"
 import { Hono } from "hono"
+import { makeDbLayer } from "../db/client"
+import { runEffect } from "../lib/effect-bridge"
+import { TokenService, TokenServiceLive } from "../services/token.service"
 
 type Bindings = {
   DB: D1Database
@@ -15,6 +19,8 @@ type Bindings = {
 
 const tokens = new Hono<{ Bindings: Bindings }>()
 
+const tokenLayer = (db: D1Database) => TokenServiceLive.pipe(Layer.provide(makeDbLayer(db)))
+
 /**
  * GET /api/v1/tokens?verified=true&search=eth&limit=100
  */
@@ -24,59 +30,11 @@ tokens.get("/", async (c) => {
   const search = c.req.query("search")
 
   try {
-    let query = `
-      SELECT address, symbol, name, decimals, logo_url, is_verified, is_native,
-             total_supply, created_at, updated_at
-      FROM tokens
-    `
-    const conditions: string[] = []
-    const bindings: (string | number)[] = []
-
-    if (verified) {
-      conditions.push("is_verified = 1")
-    }
-
-    if (search && search.length >= 2) {
-      conditions.push("(LOWER(symbol) LIKE ? OR LOWER(name) LIKE ?)")
-      const searchPattern = `%${search.toLowerCase()}%`
-      bindings.push(searchPattern, searchPattern)
-    }
-
-    if (conditions.length > 0) {
-      query += ` WHERE ${conditions.join(" AND ")}`
-    }
-
-    query += " ORDER BY is_verified DESC, symbol ASC LIMIT ?"
-    bindings.push(limit)
-
-    const result = await c.env.DB.prepare(query)
-      .bind(...bindings)
-      .all<{
-        address: string
-        symbol: string
-        name: string
-        decimals: number
-        logo_url: string | null
-        is_verified: number
-        is_native: number
-        total_supply: string | null
-        created_at: number
-        updated_at: number
-      }>()
-
-    const tokenList = (result.results ?? []).map((row) => ({
-      address: row.address,
-      symbol: row.symbol,
-      name: row.name,
-      decimals: row.decimals,
-      logoUrl: row.logo_url,
-      isVerified: Boolean(row.is_verified),
-      isNative: Boolean(row.is_native),
-      totalSupply: row.total_supply,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    }))
-
+    const program = Effect.gen(function* () {
+      const tokenService = yield* TokenService
+      return yield* tokenService.listTokens({ limit, verified, query: search })
+    })
+    const tokenList = await runEffect(program.pipe(Effect.provide(tokenLayer(c.env.DB))))
     return c.json({ tokens: tokenList, count: tokenList.length })
   } catch (err) {
     return c.json({ error: String(err) }, 500)
@@ -93,43 +51,17 @@ tokens.get("/:address", async (c) => {
   }
 
   try {
-    const result = await c.env.DB.prepare(
-      `SELECT address, symbol, name, decimals, logo_url, is_verified, is_native,
-              total_supply, created_at, updated_at
-       FROM tokens WHERE address = ?`,
-    )
-      .bind(address)
-      .first<{
-        address: string
-        symbol: string
-        name: string
-        decimals: number
-        logo_url: string | null
-        is_verified: number
-        is_native: number
-        total_supply: string | null
-        created_at: number
-        updated_at: number
-      }>()
+    const program = Effect.gen(function* () {
+      const tokenService = yield* TokenService
+      return yield* tokenService.getToken(address)
+    })
+    const token = await runEffect(program.pipe(Effect.provide(tokenLayer(c.env.DB))))
 
-    if (!result) {
+    if (!token) {
       return c.json({ error: "Token not found" }, 404)
     }
 
-    return c.json({
-      token: {
-        address: result.address,
-        symbol: result.symbol,
-        name: result.name,
-        decimals: result.decimals,
-        logoUrl: result.logo_url,
-        isVerified: Boolean(result.is_verified),
-        isNative: Boolean(result.is_native),
-        totalSupply: result.total_supply,
-        createdAt: result.created_at,
-        updatedAt: result.updated_at,
-      },
-    })
+    return c.json({ token })
   } catch (err) {
     return c.json({ error: String(err) }, 500)
   }

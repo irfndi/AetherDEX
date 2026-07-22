@@ -3,8 +3,8 @@
  * Reads from D1 for indexed pool data + composes with on-chain V4 reads
  */
 
-import { SqlClient } from "@effect/sql"
 import { Context, Effect, Layer } from "effect"
+import { SqlClient } from "effect/unstable/sql"
 import { rowToPool } from "../db/schema"
 
 // --- Types ---
@@ -35,25 +35,39 @@ export interface PoolQueryOptions {
   filterByToken?: string
 }
 
+// --- Errors ---
+
+/** Raised when a pool list read from D1 fails, so HTTP callers return 500 instead of 200 `[]`. */
+export class PoolListError {
+  readonly _tag = "PoolListError"
+  constructor(readonly cause: string) {}
+}
+
+/** Raised when a single-pool read from D1 fails, so HTTP callers return 500 instead of 404 for a valid id. */
+export class PoolReadError {
+  readonly _tag = "PoolReadError"
+  constructor(readonly cause: string) {}
+}
+
 // --- Service interface ---
 
 export interface PoolService {
-  readonly getPool: (poolId: string) => Effect.Effect<PoolInfo | null>
-  readonly listPools: (options?: PoolQueryOptions) => Effect.Effect<PoolInfo[]>
+  readonly getPool: (poolId: string) => Effect.Effect<PoolInfo | null, PoolReadError>
+  readonly listPools: (options?: PoolQueryOptions) => Effect.Effect<PoolInfo[], PoolListError>
   readonly getPoolByTokens: (token0: string, token1: string, fee: number) => Effect.Effect<PoolInfo | null>
   readonly refreshPool: (poolId: string) => Effect.Effect<PoolInfo>
 }
 
 // --- Tag ---
 
-export const PoolService = Context.GenericTag<PoolService>("@aetherdex/PoolService")
+export const PoolService = Context.Service<PoolService>("@aetherdex/PoolService")
 
 // --- D1-backed implementation ---
 
 const makePoolService = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
 
-  const getPool = (poolId: string): Effect.Effect<PoolInfo | null, never, never> =>
+  const getPool = (poolId: string): Effect.Effect<PoolInfo | null, PoolReadError, never> =>
     Effect.gen(function* () {
       const rows = (yield* sql`SELECT * FROM pools WHERE pool_id = ${poolId}`) as unknown as readonly Record<
         string,
@@ -61,9 +75,9 @@ const makePoolService = Effect.gen(function* () {
       >[]
       if (rows.length === 0) return null
       return rowToPool(rows[0] as Record<string, unknown>)
-    }).pipe(Effect.catchAll(() => Effect.succeed(null as PoolInfo | null)))
+    }).pipe(Effect.catch((error) => Effect.fail(new PoolReadError(String(error)))))
 
-  const listPools = (options?: PoolQueryOptions): Effect.Effect<PoolInfo[], never, never> =>
+  const listPools = (options?: PoolQueryOptions): Effect.Effect<PoolInfo[], PoolListError, never> =>
     Effect.gen(function* () {
       const limit = Math.min(options?.limit ?? 50, 200)
       const offset = options?.offset ?? 0
@@ -97,7 +111,7 @@ const makePoolService = Effect.gen(function* () {
         `) as unknown as readonly Record<string, unknown>[]
 
       return rows.map((r: Record<string, unknown>) => rowToPool(r))
-    }).pipe(Effect.catchAll(() => Effect.succeed([] as PoolInfo[])))
+    }).pipe(Effect.catch((error) => Effect.fail(new PoolListError(String(error)))))
 
   const getPoolByTokens = (token0: string, token1: string, fee: number): Effect.Effect<PoolInfo | null, never, never> =>
     Effect.gen(function* () {
@@ -108,7 +122,7 @@ const makePoolService = Effect.gen(function* () {
       `) as unknown as readonly Record<string, unknown>[]
       if (rows.length === 0) return null
       return rowToPool(rows[0] as Record<string, unknown>)
-    }).pipe(Effect.catchAll(() => Effect.succeed(null as PoolInfo | null)))
+    }).pipe(Effect.catch(() => Effect.succeed(null as PoolInfo | null)))
 
   const refreshPool = (poolId: string): Effect.Effect<PoolInfo, never, never> =>
     Effect.gen(function* () {
@@ -118,14 +132,14 @@ const makePoolService = Effect.gen(function* () {
       >[]
       if (rows.length === 0) return yield* Effect.die(new Error(`Pool ${poolId} not found`))
       return rowToPool(rows[0] as Record<string, unknown>)
-    }).pipe(Effect.catchAll(() => Effect.die(new Error("D1 query failed"))))
+    }).pipe(Effect.catch(() => Effect.die(new Error("D1 query failed"))))
 
-  return PoolService.of({
+  return {
     getPool,
     listPools,
     getPoolByTokens,
     refreshPool,
-  }) as unknown as PoolService
+  }
 })
 
 // --- Live layer (requires SqlClient.SqlClient from D1) ---
