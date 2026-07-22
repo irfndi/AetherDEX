@@ -1,22 +1,9 @@
+import { useQuery } from "@tanstack/react-query"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { useEffect, useState } from "react"
 import { TokenChip } from "../components/TokenChip"
 import { Card, CardBody, Input, Stat } from "../components/ui"
-
-interface Pool {
-  poolId: string
-  token0Address: string
-  token1Address: string
-  fee: number
-  tickSpacing: number
-  sqrtPriceX96: string
-  currentTick: number
-  liquidity: string
-  tvlUsd: number
-  volume24hUsd: number
-  fees24hUsd: number
-  isActive: boolean
-}
+import { poolsQueryOptions } from "../lib/pools-query"
 
 interface Token {
   address: string
@@ -26,29 +13,40 @@ interface Token {
   logoURI?: string
 }
 
-export const Route = createFileRoute("/pools")({
-  component: PoolsPage,
-  validateSearch: (search: Record<string, unknown>) => ({
-    sortBy: (search.sortBy as string) ?? "tvl",
-    filterToken: (search.filterToken as string) ?? "",
-  }),
-})
-
 const SORT_OPTIONS = [
   { value: "tvl", label: "TVL" },
   { value: "volume", label: "Volume 24h" },
   { value: "fees", label: "Fees 24h" },
 ] as const
 
+type SortBy = (typeof SORT_OPTIONS)[number]["value"]
+
+const isSortBy = (value: unknown): value is SortBy => SORT_OPTIONS.some((option) => option.value === value)
+
+export const Route = createFileRoute("/pools")({
+  component: PoolsPage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    sortBy: isSortBy(search.sortBy) ? search.sortBy : "tvl",
+    filterToken: (search.filterToken as string) ?? "",
+  }),
+})
+
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080/api/v1"
 
 function PoolsPage() {
   const { sortBy, filterToken } = Route.useSearch()
   const navigate = Route.useNavigate()
-  const [pools, setPools] = useState<Pool[]>([])
   const [tokens, setTokens] = useState<Record<string, Token>>({})
-  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState(filterToken)
+
+  const { data, isPending } = useQuery(
+    poolsQueryOptions(50, 0, {
+      sortBy,
+      sortDirection: "desc",
+      filterToken: filterToken === "" ? undefined : filterToken,
+    }),
+  )
+  const pools = data?.pools ?? []
 
   useEffect(() => {
     fetch(`${API_URL}/tokens?verified=true&limit=200`)
@@ -60,24 +58,6 @@ function PoolsPage() {
       })
       .catch(() => {})
   }, [])
-
-  useEffect(() => {
-    setLoading(true)
-    const params = new URLSearchParams({
-      sortBy,
-      sortDirection: "desc",
-      limit: "50",
-    })
-    if (filterToken) params.set("filterToken", filterToken)
-
-    fetch(`${API_URL}/pools?${params.toString()}`)
-      .then((r) => r.json())
-      .then((data: { pools: Pool[] }) => {
-        setPools(data.pools ?? [])
-      })
-      .catch(() => setPools([]))
-      .finally(() => setLoading(false))
-  }, [sortBy, filterToken])
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -121,7 +101,7 @@ function PoolsPage() {
         </div>
       </div>
 
-      {loading ? (
+      {isPending ? (
         <div className="flex justify-center py-12">
           <span className="loading loading-spinner loading-lg" />
         </div>
