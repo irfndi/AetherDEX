@@ -260,6 +260,14 @@ This reframes the existing AGENTS.md "Wave 3+" backlog around the Alpine LP thes
 - **[G5] Deploy bindings**: replace placeholder D1/KV/Router/Factory ids; deploy contracts to Sepolia for end-to-end validation.
 
 ### Phase 1 — Concentrated-liquidity UX (the Alpine core)
+
+> **Parallel v3 track (in scope, tracked — not deferred).** The bullets below are written around the V4 `AetherRouter`/`PositionManager` because that is where the *new automation* lands, but the locked scope (AGENTS.md "Core"; §14) is **Uniswap v3+v4 LP tooling**, so a **v3 delivery track runs alongside v4** with explicit tasks:
+> - **v3 adapter (positions + tx building):** `AetherRouter`/`AetherFactory` mint and manage v3 positions via Uniswap v3's **`NonfungiblePositionManager`** (the v3 position-NFT manager) alongside the v4 `PositionManager`. The single-sided **zap**, **one-click rebalance**, and **pool-creation** flows each gain a v3 path built on the `@uniswap/v3-sdk` added in Phase-0 G2 (`Position` / `NonfungiblePositionManager` calldata / `nearestUsableTick`) — reused here for **v3 transaction building, not math-only**.
+> - **v3 indexer / discovery:** the Phase-3 indexer also ingests **v3 `NonfungiblePositionManager` `IncreaseLiquidity`/`Transfer`/`Collect` events** (and v3 `Pool` `Mint`/`Burn`), so v3 positions surface in portfolio/folio and in on-chain reconciliation — not only v4 pool events.
+> - **v3 UI:** the same liquidity/range and `/positions` flows surface v3 positions (tick ranges map 1:1; v3 already has native TP/SL per Alps' model — *parity* work, §7.2).
+>
+> Net result is a **v3+v4 platform**: v3 reaches *parity* with Alps (its existing turf), v4 is where AetherDEX *exceeds* it (oracle-backed automation, §7.2). Neither track is dropped, and the non-custodial model is preserved (users hold the v3 `NonfungiblePositionManager` NFTs, same as v4 position NFTs).
+
 - **Liquidity page** with visual depth-chart range selector (mountain silhouette, drag handles, tick snapping, live-price guard).
 - **Single-sided zap**: `AetherRouter.addLiquiditySingleSided` + build service ("one token in, correct orientation out").
 - **One-click rebalance** flow on `/positions`.
@@ -279,7 +287,11 @@ This reframes the existing AGENTS.md "Wave 3+" backlog around the Alpine LP thes
 - **Volume-spike alerts** (DO + threshold check; optional Telegram bot, read-only).
 - **Playground / paper LP** simulator.
 - **On-chain indexer** (block cursor + event log) replacing seeded D1 data — **prerequisite for trustworthy PnL and for *unattended* automation at scale** (indexing / on-chain verification must precede any fund-moving automation that runs unattended).
-- **MEV protection** (in-scope, currently missing) + rate limiting + circuit breaker.
+- **MEV protection — full suite** (in-scope, currently missing; core scope per AGENTS.md "Core": "slippage/MEV protection") + rate limiting + circuit breaker (see ordering note below).
+
+> **MEV ordering note (priority, not a phase reshuffle).** The phase numbering is unchanged, but read the control in two tiers:
+> - **Basic front-running / MEV guards are present from Phase 0.** `AetherRouter` already enforces **slippage bounds + transaction deadlines** (plus SafeERC20 + reentrancy guard — §6.3). Because **Phase-1 zaps / rebalances are user-initiated and signed by the user's own wallet**, those fund-moving flows inherit these basic frontrunning protections from day one — they are not built onto an unguarded router.
+> - **The full MEV-protection suite (this Phase-3 item — e.g. protected/private transaction submission, sandwich mitigation) is a *priority gate*, not a tail-end engagement task.** It must land **before any *unattended*, at-scale, fund-moving automation runs** — i.e. before the **Phase-2 keeper executes in unattended mode on its funded signer/relayer** (§9 Phase 2). This is the **same precondition already fixed in round 2**: unattended fund-moving automation is gated on the **Phase-2 on-chain verification gate** ("required before any fund-moving action") **and** on this Phase-3 indexer + MEV suite. Until both land, Phase-2 automation stays **reconciliation-gated per action** and Phase-1 zaps stay **user-signed under the router's slippage/deadline guards** — so no fund-moving flow is exercised against a router that lacks MEV protection.
 
 ### Phase 4 — Monetization (gated by §11 decisions)
 - **Immutable 0.1% fee** on deposit/pool-creation in `AetherHook`/`AetherRouter`.
