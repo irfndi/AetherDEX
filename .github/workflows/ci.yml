@@ -99,6 +99,8 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Setup workspace
         uses: ./.github/actions/setup
       - name: Typecheck
@@ -117,6 +119,8 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Setup workspace
         uses: ./.github/actions/setup
 
@@ -126,7 +130,9 @@ jobs:
           version: ${{ env.FOUNDRY_VERSION }}
 
       # Cache the (otherwise uncommitted) Foundry libs and build artifacts so we do not
-      # re-clone v4-core / forge-std / OZ and recompile on every run.
+      # re-clone v4-core / forge-std / OZ and recompile on every run. The key also hashes
+      # this workflow because the pinned forge-install revisions live here, so bumping a
+      # dependency invalidates the cache instead of silently reusing stale libs.
       - name: Cache Foundry libs + build artifacts
         id: foundry-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
@@ -135,7 +141,7 @@ jobs:
             packages/contracts/lib
             packages/contracts/out
             packages/contracts/cache
-          key: ${{ runner.os }}-foundry-${{ env.FOUNDRY_VERSION }}-${{ hashFiles('packages/contracts/foundry.toml', 'packages/contracts/remappings.txt') }}
+          key: ${{ runner.os }}-foundry-${{ env.FOUNDRY_VERSION }}-${{ hashFiles('packages/contracts/foundry.toml', 'packages/contracts/remappings.txt', '.github/workflows/ci.yml') }}
           restore-keys: |
             ${{ runner.os }}-foundry-${{ env.FOUNDRY_VERSION }}-
 
@@ -250,6 +256,8 @@ jobs:
       run:
         working-directory: apps/api
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Setup workspace
         uses: ./.github/actions/setup
 
@@ -314,6 +322,8 @@ jobs:
       run:
         working-directory: apps/web
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Setup workspace
         uses: ./.github/actions/setup
 
@@ -356,6 +366,8 @@ jobs:
       run:
         working-directory: apps/web
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Setup workspace
         uses: ./.github/actions/setup
 
@@ -381,11 +393,16 @@ jobs:
           if-no-files-found: ignore
 
   # ---------------------------------------------------------------------------
-  # Echidna fuzzing (advisory). Real tooling is installed and run, but the existing
-  # suite is Foundry-style invariant fuzzing, not Echidna property/assertion harnesses.
-  # Promoting to a hard gate needs an Echidna config + `echidna_*` properties (owned by
-  # the contracts workstream, out of scope here) — so it is continue-on-error and is
-  # NOT part of the ci-status gate.
+  # Echidna fuzzing (advisory). Only fuzzes a REAL harness when one exists.
+  #
+  # Echidna cannot fuzz `src/hook/AetherHook.sol` directly: its 4-arg constructor rejects
+  # the default zero treasury and validates its own address's BEFORE_SWAP|AFTER_SWAP hook
+  # bits, so a default deployment fails before any case runs. We do NOT `continue-on-error`
+  # over that. Instead this job looks for a property harness under
+  # packages/contracts/test/echidna/ (an `echidna.yaml` + a .sol harness exposing
+  # `echidna_*` invariants, deploying AetherHook at a bit-mined CREATE2 address). Present
+  # -> fuzz for real; absent -> SKIP transparently (message + clean exit). Landing the
+  # harness (owned by the contracts workstream) auto-enables this job.
   # ---------------------------------------------------------------------------
   echidna:
     name: Echidna fuzz — advisory
@@ -394,19 +411,40 @@ jobs:
     if: ${{ github.event_name == 'schedule' || needs.detect-changes.outputs.contracts == 'true' }}
     permissions:
       contents: read
-    continue-on-error: true
     env:
       ECHIDNA_VERSION: v2.3.2
+      ECHIDNA_DIR: packages/contracts/test/echidna
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Decide up front whether a real harness exists. Everything heavy below is gated on
+      # this so an absent harness skips fast and loudly rather than pretending to fuzz.
+      - name: Detect Echidna harness
+        id: harness
+        run: |
+          set -euo pipefail
+          if [ -f "${ECHIDNA_DIR}/echidna.yaml" ] && ls "${ECHIDNA_DIR}"/*.sol >/dev/null 2>&1; then
+            echo "present=true" >> "${GITHUB_OUTPUT}"
+            echo "Echidna harness found under ${ECHIDNA_DIR}; will fuzz."
+          else
+            echo "present=false" >> "${GITHUB_OUTPUT}"
+            echo "SKIPPED: no echidna harness yet (tracked as future work)."
+            echo "Expected ${ECHIDNA_DIR}/echidna.yaml + a .sol property harness; adding them auto-enables this job."
+          fi
+
       - name: Setup workspace
+        if: steps.harness.outputs.present == 'true'
         uses: ./.github/actions/setup
 
       - name: Install Foundry (pinned)
+        if: steps.harness.outputs.present == 'true'
         uses: foundry-rs/foundry-toolchain@b00af27efadbc7b4ca8b82abbd903b17cc874d2a # v1
         with:
           version: ${{ env.FOUNDRY_VERSION }}
 
       - name: Cache Foundry libs + build artifacts
+        if: steps.harness.outputs.present == 'true'
         id: echidna-foundry-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
@@ -414,12 +452,12 @@ jobs:
             packages/contracts/lib
             packages/contracts/out
             packages/contracts/cache
-          key: ${{ runner.os }}-foundry-${{ env.FOUNDRY_VERSION }}-${{ hashFiles('packages/contracts/foundry.toml', 'packages/contracts/remappings.txt') }}
+          key: ${{ runner.os }}-foundry-${{ env.FOUNDRY_VERSION }}-${{ hashFiles('packages/contracts/foundry.toml', 'packages/contracts/remappings.txt', '.github/workflows/ci.yml') }}
           restore-keys: |
             ${{ runner.os }}-foundry-${{ env.FOUNDRY_VERSION }}-
 
       - name: Install contract libs (pinned, cache-miss only)
-        if: steps.echidna-foundry-cache.outputs.cache-hit != 'true'
+        if: steps.harness.outputs.present == 'true' && steps.echidna-foundry-cache.outputs.cache-hit != 'true'
         working-directory: packages/contracts
         run: |
           set -euo pipefail
@@ -429,10 +467,12 @@ jobs:
           forge install OpenZeppelin/openzeppelin-contracts@v5.5.0 --no-git
 
       - name: Build contracts
+        if: steps.harness.outputs.present == 'true'
         working-directory: packages/contracts
         run: forge build --via-ir
 
       - name: Install Echidna + solc
+        if: steps.harness.outputs.present == 'true'
         run: |
           set -euo pipefail
           # Official static linux binary (x86_64) for Ubuntu runners.
@@ -445,18 +485,14 @@ jobs:
           solc-select install 0.8.31
           solc-select use 0.8.31
 
-      - name: Run Echidna (assertion mode)
+      - name: Run Echidna (property harness)
+        if: steps.harness.outputs.present == 'true'
         working-directory: packages/contracts
         run: |
           set -euo pipefail
-          # Compile + fuzz the hook's bytecode for assertion violations. Crytic-compile
-          # auto-detects foundry.toml for import/remapping resolution. A dedicated
-          # Echidna config + property harness will sharpen and eventually gate this.
-          echidna src/hook/AetherHook.sol \
-            --contract AetherHook \
-            --test-mode assertion \
-            --corpus-dir /tmp/echidna-corpus \
-            --test-limit 50000
+          # Fuzz the real harness via its config. Crytic-compile runs on the project root
+          # (.) so it reads foundry.toml for import/remapping resolution.
+          echidna . --config test/echidna/echidna.yaml --corpus-dir /tmp/echidna-corpus
 
   # ---------------------------------------------------------------------------
   # Required status gate. Required jobs must be success or skipped (path-filtered out);
