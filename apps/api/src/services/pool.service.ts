@@ -37,16 +37,22 @@ export interface PoolQueryOptions {
 
 // --- Errors ---
 
-/** Raised when a pool read from D1 fails, so HTTP callers return 500 instead of 200 `[]`. */
+/** Raised when a pool list read from D1 fails, so HTTP callers return 500 instead of 200 `[]`. */
 export class PoolListError {
   readonly _tag = "PoolListError"
+  constructor(readonly cause: string) {}
+}
+
+/** Raised when a single-pool read from D1 fails, so HTTP callers return 500 instead of 404 for a valid id. */
+export class PoolReadError {
+  readonly _tag = "PoolReadError"
   constructor(readonly cause: string) {}
 }
 
 // --- Service interface ---
 
 export interface PoolService {
-  readonly getPool: (poolId: string) => Effect.Effect<PoolInfo | null>
+  readonly getPool: (poolId: string) => Effect.Effect<PoolInfo | null, PoolReadError>
   readonly listPools: (options?: PoolQueryOptions) => Effect.Effect<PoolInfo[], PoolListError>
   readonly getPoolByTokens: (token0: string, token1: string, fee: number) => Effect.Effect<PoolInfo | null>
   readonly refreshPool: (poolId: string) => Effect.Effect<PoolInfo>
@@ -61,7 +67,7 @@ export const PoolService = Context.Service<PoolService>("@aetherdex/PoolService"
 const makePoolService = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
 
-  const getPool = (poolId: string): Effect.Effect<PoolInfo | null, never, never> =>
+  const getPool = (poolId: string): Effect.Effect<PoolInfo | null, PoolReadError, never> =>
     Effect.gen(function* () {
       const rows = (yield* sql`SELECT * FROM pools WHERE pool_id = ${poolId}`) as unknown as readonly Record<
         string,
@@ -69,7 +75,7 @@ const makePoolService = Effect.gen(function* () {
       >[]
       if (rows.length === 0) return null
       return rowToPool(rows[0] as Record<string, unknown>)
-    }).pipe(Effect.catch(() => Effect.succeed(null as PoolInfo | null)))
+    }).pipe(Effect.catch((error) => Effect.fail(new PoolReadError(String(error)))))
 
   const listPools = (options?: PoolQueryOptions): Effect.Effect<PoolInfo[], PoolListError, never> =>
     Effect.gen(function* () {

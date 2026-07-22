@@ -28,13 +28,27 @@ export interface TokenSearchOptions {
   limit?: number
 }
 
+// --- Errors ---
+
+/** Raised when a token list read from D1 fails, so HTTP callers return 500 instead of 200 `[]`. */
+export class TokenListError {
+  readonly _tag = "TokenListError"
+  constructor(readonly cause: string) {}
+}
+
+/** Raised when a single-token read from D1 fails, so HTTP callers return 500 instead of 404 for a valid address. */
+export class TokenReadError {
+  readonly _tag = "TokenReadError"
+  constructor(readonly cause: string) {}
+}
+
 // --- Service interface ---
 
 export interface TokenService {
-  readonly getToken: (address: string) => Effect.Effect<TokenInfo | null>
-  readonly listTokens: (options?: TokenSearchOptions) => Effect.Effect<TokenInfo[]>
-  readonly searchTokens: (query: string) => Effect.Effect<TokenInfo[]>
-  readonly getVerifiedTokens: () => Effect.Effect<TokenInfo[]>
+  readonly getToken: (address: string) => Effect.Effect<TokenInfo | null, TokenReadError>
+  readonly listTokens: (options?: TokenSearchOptions) => Effect.Effect<TokenInfo[], TokenListError>
+  readonly searchTokens: (query: string) => Effect.Effect<TokenInfo[], TokenListError>
+  readonly getVerifiedTokens: () => Effect.Effect<TokenInfo[], TokenListError>
   readonly upsertToken: (token: Omit<TokenInfo, "createdAt" | "updatedAt">) => Effect.Effect<void>
 }
 
@@ -47,7 +61,7 @@ export const TokenService = Context.Service<TokenService>("@aetherdex/TokenServi
 const makeTokenService = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
 
-  const getToken = (address: string): Effect.Effect<TokenInfo | null, never, never> =>
+  const getToken = (address: string): Effect.Effect<TokenInfo | null, TokenReadError, never> =>
     Effect.gen(function* () {
       const rows = (yield* sql`SELECT * FROM tokens WHERE address = ${address}`) as unknown as readonly Record<
         string,
@@ -55,9 +69,9 @@ const makeTokenService = Effect.gen(function* () {
       >[]
       if (rows.length === 0) return null
       return rowToToken(rows[0] as Record<string, unknown>)
-    }).pipe(Effect.catch(() => Effect.succeed(null as TokenInfo | null)))
+    }).pipe(Effect.catch((error) => Effect.fail(new TokenReadError(String(error)))))
 
-  const listTokens = (options?: TokenSearchOptions): Effect.Effect<TokenInfo[], never, never> =>
+  const listTokens = (options?: TokenSearchOptions): Effect.Effect<TokenInfo[], TokenListError, never> =>
     Effect.gen(function* () {
       const limit = Math.min(options?.limit ?? 100, 500)
       const verified = options?.verified
@@ -97,9 +111,9 @@ const makeTokenService = Effect.gen(function* () {
       }
 
       return rows.map((r: Record<string, unknown>) => rowToToken(r))
-    }).pipe(Effect.catch(() => Effect.succeed([] as TokenInfo[])))
+    }).pipe(Effect.catch((error) => Effect.fail(new TokenListError(String(error)))))
 
-  const searchTokens = (query: string): Effect.Effect<TokenInfo[], never, never> =>
+  const searchTokens = (query: string): Effect.Effect<TokenInfo[], TokenListError, never> =>
     Effect.gen(function* () {
       if (query.length < 2) return []
       const searchPattern = `%${query.toLowerCase()}%`
@@ -110,9 +124,9 @@ const makeTokenService = Effect.gen(function* () {
         LIMIT 50
       `) as unknown as readonly Record<string, unknown>[]
       return rows.map((r: Record<string, unknown>) => rowToToken(r))
-    }).pipe(Effect.catch(() => Effect.succeed([] as TokenInfo[])))
+    }).pipe(Effect.catch((error) => Effect.fail(new TokenListError(String(error)))))
 
-  const getVerifiedTokens = (): Effect.Effect<TokenInfo[], never, never> =>
+  const getVerifiedTokens = (): Effect.Effect<TokenInfo[], TokenListError, never> =>
     Effect.gen(function* () {
       const rows = (yield* sql`
         SELECT * FROM tokens
@@ -121,7 +135,7 @@ const makeTokenService = Effect.gen(function* () {
         LIMIT 100
       `) as unknown as readonly Record<string, unknown>[]
       return rows.map((r: Record<string, unknown>) => rowToToken(r))
-    }).pipe(Effect.catch(() => Effect.succeed([] as TokenInfo[])))
+    }).pipe(Effect.catch((error) => Effect.fail(new TokenListError(String(error)))))
 
   const upsertToken = (token: Omit<TokenInfo, "createdAt" | "updatedAt">): Effect.Effect<void, never, never> =>
     Effect.gen(function* () {
