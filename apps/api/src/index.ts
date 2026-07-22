@@ -115,6 +115,33 @@ async function checkR2(r2: R2Bucket): Promise<{ healthy: boolean; latencyMs: num
   }
 }
 
+// ─── WebSocket upgrade routes (Phase-0 G1) ──────────────────────────────────
+// Transport plumbing only: upgrades are routed to the Durable Objects, which
+// own the WebSocket lifecycle (hibernation API, fan-out, snapshots).
+//
+//   /ws/prices/:tokenAddress  → WebSocketHubDO  (live price fan-out; a single
+//                               hub instance serves all price subscriptions,
+//                               matching PriceTicker/useWebSocket on the web)
+//   /ws/orderbook/:poolId     → OrderBookDO     (one instance per pool id)
+
+app.get("/ws/prices/:tokenAddress", async (c) => {
+  const id = c.env.WEBSOCKET_HUB.idFromName("price-hub")
+  return c.env.WEBSOCKET_HUB.get(id).fetch(c.req.raw)
+})
+
+app.get("/ws/orderbook/:poolId", async (c) => {
+  const poolId = c.req.param("poolId")
+  if (!/^0x[a-fA-F0-9]{64}$/.test(poolId)) {
+    return c.json({ error: "Invalid poolId (must be 0x + 64 hex chars)" }, 400)
+  }
+  const url = new URL(c.req.url)
+  url.searchParams.set("poolId", poolId)
+  const id = c.env.ORDER_BOOK.idFromName(poolId)
+  return c.env.ORDER_BOOK.get(id).fetch(
+    new Request(url.toString(), { method: c.req.method, headers: c.req.raw.headers }),
+  )
+})
+
 app.route("/api/v1/auth", auth)
 
 app.route("/api/v1", swap)
