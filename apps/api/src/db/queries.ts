@@ -149,6 +149,12 @@ export interface InsertPositionInput {
   amount1: string
 }
 
+/** Raised when INSERT … RETURNING id yields no id, so a failed insert fails the Effect instead of returning a bogus `0` positionId. */
+export class InsertPositionError {
+  readonly _tag = "InsertPositionError"
+  constructor(readonly message: string) {}
+}
+
 export const insertPosition = (input: InsertPositionInput) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient
@@ -161,7 +167,13 @@ export const insertPosition = (input: InsertPositionInput) =>
       RETURNING id
     `
     const first = rows[0] as Record<string, unknown> | undefined
-    return Number(first?.id ?? 0)
+    const id = first?.id
+    if (typeof id !== "number") {
+      return yield* Effect.fail(
+        new InsertPositionError("INSERT INTO liquidity_positions returned no id — insert failed"),
+      )
+    }
+    return id
   })
 
 /* ============ SWAP RECORD ============ */
