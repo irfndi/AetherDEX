@@ -19,13 +19,18 @@
     "format": "biome format --write src/ test/"
   },
   "dependencies": {
+    "@aetherdex/shared": "workspace:*",
+    "@tanstack/react-form": "^1.33.2",
     "@tanstack/react-query": "^5.101.4",
     "@tanstack/react-router": "^1.170.18",
+    "@tanstack/react-table": "^8.21.3",
+    "@tanstack/react-virtual": "^3.14.7",
     "@tanstack/router-devtools": "^1.167.0",
     "@wagmi/core": "^3.6.3",
     "@reown/appkit": "^1.8.22",
     "@reown/appkit-adapter-wagmi": "^1.8.22",
     "daisyui": "^5.7.0",
+    "effect": "4.0.0-beta.100",
     "framer-motion": "^12.42.2",
     "lucide-react": "^1.25.0",
     "react": "^19.2.8",

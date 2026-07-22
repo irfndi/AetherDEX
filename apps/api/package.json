@@ -27,7 +27,10 @@
     "secret:set": "wrangler secret put"
   },
   "dependencies": {
+    "@aetherdex/shared": "workspace:*",
     "@effect/sql-d1": "4.0.0-beta.100",
+    "@uniswap/v3-sdk": "^3.31.0",
+    "@uniswap/v4-sdk": "^2.3.0",
     "effect": "4.0.0-beta.100",
     "hono": "^4.12.31",
     "siwe": "^3.0.0",
