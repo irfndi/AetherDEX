@@ -293,7 +293,7 @@ The AGENTS.md baseline already names Bun canary + TypeScript 7 (via tsgo); this 
 | **TypeScript 7.0 stable (native)** | Replace the current `@typescript/native-preview` pin (root, `apps/web`, `apps/api`) with the **stable `typescript@^7.0.x`** package. | TS 7.0 shipped **2026-07-08** — a native (Go) compiler, 8–12× faster builds. `@typescript/native-preview` is **superseded**; nightlies now resume as `typescript@next`. |
 | **TS 7 config migration** | Update every `tsconfig.json`. | New defaults: `rootDir`→`./` (set an explicit `rootDir`), `types`→`[]` (must list `["bun", …]` explicitly), `baseUrl` **removed** (use relative `paths`), `module`→`esnext`, `strict`→`true` (already strict). AetherDEX's `target: es2025` + `moduleResolution: bundler` are already compliant. |
 | **Bun canary** | Standardize on **Bun canary** (`bun --canary`; Bun 1.4.x canary) as the sole runtime + package manager across root/`apps/web`/`apps/api`. | Already AGENTS.md intent (`1.4.0-canary.1`). Set `packageManager` + CI to canary. |
-| **Full dependency refresh** | `bun --canary update` everything to latest compatible, then re-run `typecheck` + `lint` + `test` + `build`. | wagmi v3, viem v2, TanStack Router/Query, Hono, Vite, React 19, DaisyUI 5, the Effect v4 ecosystem, and **add `@uniswap/v3-sdk` + `@uniswap/v4-sdk`** (Phase-0 G2's missing dependency). |
+| **Full dependency refresh — latest, always** | `bun --canary update` **every dependency to the latest available**, then re-run `typecheck` + `lint` + `test` + `build`. Any **newly added** dependency is pulled at latest too. | wagmi v3, viem v2, Hono, Vite, React 19, DaisyUI 5, the Effect v4 ecosystem, **add `@uniswap/v3-sdk` + `@uniswap/v4-sdk`** (Phase-0 G2). **Web leverages the full TanStack Suite** — Router + Query (existing, at latest) plus **Form / Table / Virtual** added when first used in the UI. **Flagged exception: Tailwind stays v3** (DaisyUI-5 based; v4 is a separate visual task — owner to confirm). |
 
 ### P2 — Full Effect v4 adoption
 
@@ -326,7 +326,9 @@ AGENTS.md designates Effect TS as the backend paradigm (business logic, DI via `
 
 ## 11. Strategic Forks Requiring an Owner Decision
 
-These cannot be resolved by engineering judgment alone:
+> **All forks below are RESOLVED by the owner (2026-07-22).** See **§14 — Owner Decisions** for the binding answers; `AGENTS.md` has been updated to match. Kept here for the reasoning trail.
+
+These were the open forks:
 
 1. **Positioning:** Stay a *lean spot DEX* (current AGENTS.md lock) **or** re-position as an *autonomous-LP terminal* (the Alpine thesis)? The roadmap above assumes a soft pivot that keeps the DEX core but leads with LP. This is the single biggest fork.
 2. **Token / revenue:** Adopt a **0.1% immutable fee + optional buyback-burn token**, or keep feeless / treasury-only? AGENTS.md currently implies no token.
@@ -365,17 +367,28 @@ Concretely, the smallest high-value PR after this exploration is: **wire the Web
 
 ---
 
-## 14. Open Questions for the Owner
+## 14. Owner Decisions (Resolved — 2026-07-22)
 
-1. Do you want AetherDEX to **lead with autonomous concentrated-liquidity** (soft Alpine pivot), or keep the **plain lean spot-DEX** focus?
-2. Is a **token + buyback-burn** acceptable, or treasury/feeless only?
-3. Is an **off-chain keeper** within your "lean" definition?
-4. Should we **target Robinhood Chain** early, or stay multi-chain/EVM-generic first?
-5. Confirm: **non-custodial now and forever** (reject the ERC4626 vault)?
-6. Browser-side or D1 for **PnL/history**?
-7. **Effect v4 now (beta) or wait for GA / stay on Effect v3?** (gates Workstream P, §10)
-8. **Adopt `@effect/rpc`** end-to-end, or keep Effect strictly on the backend?
-9. **Confirm Bun canary** as the pinned runtime/package manager in CI and `packageManager`, accepting canary churn?
+All forks are **resolved by the owner**. This is the locked direction; `AGENTS.md` has been updated to match.
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | Positioning | **Farm / autonomous concentrated-liquidity (soft Alpine pivot).** Multi-chain: **Ethereum + L2s**, with **Robinhood Chain as the first-mover beachhead** (new chain, capital inflow). |
+| 2 | Revenue / token | **Flat immutable 0.1% protocol fee → treasury multisig. No token for now.** A buyback-burn token needs launch liquidity + fee-funded market buys = capital, ops and securities risk — the opposite of "robust, secure, 0 capital." A flat on-chain fee to a treasury earns revenue with **zero capital outlay**. Token remains a *future option* once traction justifies it. |
+| 3 | Off-chain keeper | **Yes.** Keeper = our logic running on **Cloudflare Workers (Cron + Queues)** that manages on-chain positions. Locks the principle: **mutable policy off-chain (Workers); immutable safety invariants on-chain (contracts)** — changing strategy never needs a redeploy. |
+| 4 | Chain focus | **Robinhood Chain first**, then Ethereum + L2s. |
+| 5 | Custody | **Non-custodial aggregator** (confirmed). Users keep their Uniswap position NFTs; AetherDEX builds/signs txs + runs the keeper + indexes data. **Reject the ERC4626 vault** — simpler, smaller audit surface, strongest trust. |
+| 6 | PnL / history | **D1-indexed, server-side via Workers** (not browser-only). Positions/history are public on-chain data (we never hold keys), so the privacy tradeoff is minimal; we leverage the existing Workers/D1/KV stack for queryable analytics & portfolio. |
+| 7 | Effect | **v4 now** (beta accepted). Pin exact `effect@4.x` across all `@effect/*`; gate behind tests; keep v3 as a documented fallback until GA. |
+| 8 | @effect/rpc | **Adopt @effect/rpc end-to-end.** Define the API as typed `RpcGroup`s + shared Schema; server resolves via `@hono/effect`, client consumes via the `@effect/rpc` TanStack-Query resolver. Effect spans the API contract (server + client + schema); UI/state stays React/TanStack Query. |
+| 9 | Bun | **`bun --canary`** pinned as runtime/package manager in CI + `packageManager`, accepting canary churn. |
+
+**Resulting scope shift:** AetherDEX re-positions from "lean spot DEX" to a **non-custodial autonomous concentrated-liquidity platform** — Uniswap v3+v4 LP tooling (visual ranges, single-sided zaps, one-click rebalance, **V4-native TP/SL via the AetherHook TWAP oracle**), an off-chain Workers keeper, multi-chain (Robinhood-first, ETH + L2s), funded by a flat 0.1% immutable fee to treasury.
+
+### Frontend & dependency policy (additional owner directive, 2026-07-22)
+
+- **Web is built on the TanStack Suite — leverage it fully, not just Query.** TanStack **Router** (file-based, already used) and TanStack **Query** (server state — fed by the `@effect/rpc` TanStack-Query resolver per Decision 8) are the base. Adopt the rest **as needed**, at latest: **TanStack Form** (swap / range / TP-SL / slippage forms + validation), **TanStack Table** (pools, positions, PnL/history), **TanStack Virtual** (virtualize long pool/transaction lists). *(TanStack Start is **out** — it's an SSR meta-framework that conflicts with our Vite SPA + separate Workers API.)*
+- **Dependency policy — latest, always.** Every dependency — existing bumps **and** any newly added one — uses the **latest available version.** No pinning to old majors. Two owner-flagged, consciously-managed exceptions: **Tailwind stays v3** (DaisyUI 5 is Tailwind-3-based; a v4 migration is a separate visual-engineering task — owner to confirm), and **Effect is pinned to the chosen v4 build** per Decision 7 (v4 is the latest major; it is beta).
 
 ---
 

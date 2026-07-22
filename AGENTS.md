@@ -5,7 +5,7 @@
 
 ## Project Summary
 
-**AetherDEX** is a lean spot DEX built on Uniswap V4, deployed entirely on the Cloudflare stack.
+**AetherDEX** is a non-custodial **autonomous concentrated-liquidity platform** on Uniswap V4 (v3+v4 LP tooling: visual ranges, single-sided zaps, one-click rebalance, and **V4-native TP/SL** via the `AetherHook` TWAP oracle), deployed entirely on the Cloudflare stack. **Robinhood-Chain-first**, multi-chain (Ethereum + L2s). (Re-positioned from "lean spot DEX" on 2026-07-22 per the exploration plan — PR #301.)
 
 - **Frontend** (`apps/web/`): Vite + React 19 + TanStack Router + Wagmi + DaisyUI
 - **Backend** (`apps/api/`): Cloudflare Workers + Hono + Effect TS + D1/R2/KV/DO
@@ -13,7 +13,17 @@
 
 ## Product Scope (Locked)
 
-**LEAN SPOT DEX** — Swap + Concentrated Liquidity + Token Search + Real-time Charts + Wallet Connect + Slippage/MEV protection.
+**AUTONOMOUS CONCENTRATED-LIQUIDITY PLATFORM (Alpine-style)** — the locked direction decided 2026-07-22 (supersedes "lean spot DEX"):
+
+- **Core:** Uniswap v3 + v4 LP automation — spot swap, visual range ("mountain") selection, **single-sided deposits (zap)**, **one-click rebalance** (close → collect → re-mint), pool creation, PnL & history, real-time charts, token search, wallet connect (SIWE), slippage/MEV protection.
+- **Differentiator:** **V4-native TP/SL + auto-recenter** — enabled by `AetherHook`'s 1024-slot **TWAP oracle** (the piece Alps.farm says v4 lacks).
+- **Custody:** **Non-custodial aggregator.** Users keep their position NFTs; we build/sign txs in-browser + run an off-chain keeper + index data. **No ERC4626 vault.**
+- **Automation:** **Off-chain keeper** on Cloudflare Workers (Cron + Queues). Principle: **mutable policy off-chain, immutable safety invariants on-chain** — strategy changes never need a redeploy.
+- **Chains:** **Robinhood Chain first** (beachhead), then Ethereum + L2s.
+- **Revenue:** flat **immutable 0.1% protocol fee → treasury multisig. No native token for now** (zero capital outlay; token deferred).
+- **Data:** PnL/history **D1-indexed, server-side via Workers.**
+- **API contract:** typed end-to-end via **`@effect/rpc`** (shared Schema; server via `@hono/effect`, client via TanStack-Query resolver).
+- **Frontend:** full **TanStack Suite** (Router + Query via @effect/rpc + Form + Table + Virtual as needed), all at latest.
 
 **DROPPED** (do NOT re-introduce):
 - Limit orders
@@ -38,31 +48,44 @@
 - Oxlint (replaced by Biome)
 - npm/pnpm (replaced by Bun)
 - ESLint (replaced by Biome)
+- ERC4626 custodial vault / position baskets (rejected — non-custodial aggregator instead)
+- Native token / buyback-burn (deferred — flat 0.1% fee to treasury for now)
+- TanStack Start — SSR meta-framework (conflicts with our Vite SPA + separate Workers API)
 
 ## Tech Stack (Latest, 2026-06-30)
 
 ### Runtime
-- **Bun**: 1.4.0-canary.1 (latest canary, document in tooling/scripts/VERSIONS.md)
-- **TypeScript**: 7.0.1-rc (via tsgo — `@typescript/native-preview`)
+- **Bun**: canary (`bun --canary`; Bun 1.4.x canary) — pinned via `packageManager: bun@canary` + CI. (document exact version in tooling/scripts/VERSIONS.md)
+- **TypeScript**: **7.0 stable (native Go compiler — 8–12× faster builds)** via the standard `typescript@^7.0.x` package (`tsc`). `@typescript/native-preview` / `tsgo` are **superseded**; nightlies ship as `typescript@next`.
+- **TS 7 config rules**: `rootDir` defaults to `./` (set explicitly per workspace), `types` defaults to `[]` (list needed `@types` explicitly), `baseUrl` removed (relative `paths`), `esModuleInterop`/`allowSyntheticDefaultImports` must stay `true`.
 - **Node**: 24+
 
 ### Frontend (`apps/web/`)
-- Vite 7 + React 19
-- TanStack Router 1.x (file-based) + TanStack Query 5.x
+- Vite + React 19
+- **TanStack Suite (leverage the full suite at latest — not just Query):**
+  - **TanStack Router** — file-based, type-safe routing (in use).
+  - **TanStack Query** — server state, fed by the **`@effect/rpc` TanStack-Query client resolver** (typed end-to-end API contract with the Workers backend).
+  - **TanStack Form** — swap / range / TP-SL / slippage forms + validation (adopt where the UI needs it).
+  - **TanStack Table** — pools, positions, PnL/history tables (sort/filter/paginate).
+  - **TanStack Virtual** — virtualize long pool/transaction lists.
 - Wagmi v3 + Viem v2 + Reown AppKit (multi-wallet UI)
-- DaisyUI 5 (Tailwind 3) — theme: `aetherdex`
+- DaisyUI 5 (**Tailwind 3** — v4 deferred to preserve the working UI; separate migration) — theme: `aetherdex`
 - Framer Motion (animations)
 - Lucide icons
-- Vitest 4 + Playwright for tests
+- Vitest + Playwright for tests
 - Biome for lint/format
+- **Dependency policy: latest, always** — every dep at the latest available; new deps added at latest.
 
 ### Backend (`apps/api/`)
 - Cloudflare Workers (compatibility_date: 2026-06-29)
-- Hono 4 (HTTP routing) + Effect TS v3 (business logic, DI, error handling)
+- Hono 4 (HTTP routing) + **Effect TS v4 (beta-accepted)** — business logic, DI via `Layer`, typed errors (`Data.TaggedError`), structured concurrency
+- **Effect v4 rules**: single shared version across all `@effect/*` (`effect@4.x` + `@effect/sql-d1@4.x` + `@effect/vitest@4.x`, …); `@effect/platform`/`@effect/rpc` consolidated into core `effect`; `Effect.Service` → `Context.Service` with explicit `Layer.effect(this, this.make)`; `Effect.catchAll` → `Effect.catch`; Yieldables need `.asEffect()`; `sql` is an unstable module (`effect/unstable/sql`). Keep Effect v3 as a documented fallback until GA.
 - @effect/sql-d1 (D1 queries)
-- @hono/effect (Hono+Effect bridge)
+- @hono/effect (Hono+Effect bridge) — **all HTTP routes go through Effect services** (no raw `c.env.DB.prepare()`)
+- **@effect/rpc** — typed end-to-end API contract (shared Schema; server handlers via `@hono/effect`, TanStack-Query client resolver)
 - SIWE (Sign-In with Ethereum) for auth
-- Viem for on-chain reads
+- Viem + **@uniswap/v3-sdk / @uniswap/v4-sdk** for on-chain reads + correct CL tick math (quotes/zaps/rebalance)
+- **Off-chain keeper** (Cron + Queues) for TP/SL + auto-recenter — mutable policy off-chain
 - @cloudflare/vitest-pool-workers for tests
 - Biome for lint/format
 
@@ -112,7 +135,7 @@
 ### Root
 ```bash
 bun install              # Install workspace deps
-bun run typecheck        # tsgo --noEmit
+bun run typecheck        # tsc --noEmit (TypeScript 7 native compiler)
 bun run lint             # biome check .
 bun run format           # biome format --write .
 bun run test             # vitest run (all workspaces)
@@ -174,8 +197,9 @@ bun run contracts:deploy:sepolia
 - Manual QA: real browser/curl/tmux before claiming "done"
 
 ### Dependencies
-- Prefer Bun canary + tsgo over Node + tsc
-- Use latest stable of each package (no pinning to old versions)
+- Prefer Bun canary + TypeScript 7 native `tsc` over Node + tsc
+- **Use the latest available version of every dependency** (no pinning to old versions); **any newly added dependency starts at latest.**
+- Deliberate, owner-flagged exceptions: Tailwind kept at v3 (DaisyUI-5 UI; v4 is a separate visual migration), Effect pinned to the chosen v4 build.
 - Dependabot weekly for all ecosystems
 
 ## Architectural Decisions
@@ -193,6 +217,21 @@ bun run contracts:deploy:sepolia
 - Structured concurrency for background work
 - Plays well with Hono via `@hono/effect`
 - Workers-compatible patterns via `effect-cf`
+
+### Why a non-custodial aggregator + off-chain keeper?
+- Users keep their Uniswap position NFTs; we never hold funds → smallest audit surface + strongest trust (matches Alps.farm's production model).
+- No ERC4626 share/NAV accounting, no custody risk, no vault math → far simpler than the custodial-vault approach.
+- **Mutable policy off-chain (Workers Cron/Queue), immutable safety invariants on-chain (contracts):** strategy changes iterate without a redeploy; fund-safety (owner-only proceeds, slippage caps, TWAP-guarded triggers) lives in audited, immutable contracts.
+- The `AetherHook` **TWAP oracle is the v4 differentiator**: it gives a keeper something safe to verify TP/SL/auto-recenter triggers against — exactly what Alps.farm says v4 lacks.
+
+### Why Robinhood-Chain-first, then Ethereum + L2s?
+- Robinhood Chain launched 2026-07 with Uniswap as its primary AMM; first-mover LP tooling captures new liquidity + volume before competitors.
+- The Uniswap v3+v4 stack is chain-agnostic (same SDK + contract pattern), so this is go-to-market sequencing, not lock-in.
+
+### Why a flat 0.1% fee to treasury (no token) for now?
+- Zero capital outlay: users pay fees on their own txs; we never fund a token launch, seed liquidity, or execute buybacks.
+- Robust + secure: immutable on-chain fee rate + treasury multisig; no market ops, no buyback logic, no securities exposure.
+- A token + buyback-burn is a future option once there is traction and capital appetite.
 
 ### Why Uniswap V4 directly (not custom Vyper pool)?
 - Less code = less audit surface
@@ -227,7 +266,13 @@ bun run contracts:deploy:sepolia
 - T10: Workers API scaffold (Hono + Effect + D1/R2/KV/DO/Queues)
 - T20: Vite frontend scaffold (React 19 + TanStack Router + DaisyUI + Wagmi)
 
-### Planned (Wave 3+)
+### Re-prioritized (exploration plan, PR #301, 2026-07-22)
+- The Wave 3+ backlog below is **re-framed** around the autonomous-LP pivot. Active tracks:
+  - **Phase 0** — foundation: wire WebSocket Durable Objects, real V4 tick-math quotes, route HTTP through Effect services, deploy bindings.
+  - **Workstream P (parallel)** — **P1 toolchain**: Bun canary + TypeScript 7 stable (`tsc`) + all-latest deps + `@uniswap/v3-sdk`+`v4-sdk` + full TanStack Suite at latest on web; **P2 Effect v4**: single-version `@effect/*` upgrade, `Context.Service` migration, HTTP-via-Effect, `@effect/rpc` end-to-end, new services (quote/indexer/keeper) on Effect v4.
+  - Then Phase 1 (CL UX — TanStack Form/Table/Virtual) → Phase 2 (V4-native TP/SL + keeper) → Phase 3 (alerts/playground/indexer/MEV) → Phase 4 (monetization). See `docs/exploration/alps-farm-refactor-plan.md`.
+
+### Planned (Wave 3+, original)
 - Wave 3 (10 parallel tasks): V4 hook, Router+Factory, D1 schema, R2/KV/DO services, Effect service layer, Queue/Cron, TanStack Router setup, DaisyUI+Layout
 - Wave 4 (7 parallel): Contract tests, SIWE auth, Quote/Swap endpoints, Pool/Liquidity endpoints, Wagmi+Reown, Charts, Token search
 - Wave 5 (3 tasks): Slither/Echidna, Swap page, Liquidity page
