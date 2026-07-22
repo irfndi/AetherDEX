@@ -69,3 +69,6 @@ coverage/
 tmp/
 temp/
 slither-report*.json
+
+# beads local task-tracker DB (per-developer); tracked snapshot lives in ROADMAP.md
+.beads/
