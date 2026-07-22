@@ -18,4 +18,8 @@ library Errors {
     error InvalidPath();
     error InvalidAction();
     error PoolIndexOutOfBounds();
+    /// @notice Oracle has not recorded enough observations to answer the query
+    error InsufficientObservations();
+    /// @notice Query target is older than the oracle buffer, or elapsed time is too short (zero)
+    error InsufficientElapsedTime();
 }

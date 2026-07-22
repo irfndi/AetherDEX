@@ -8,15 +8,31 @@ import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/Bala
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Errors} from "../lib/Errors.sol";
 
 /// @title AetherHook
 /// @notice Custom Uniswap V4 hook for AetherDEX
-/// @dev Captures protocol fee on every swap + records TWAP observations.
+/// @dev Captures protocol fee on every swap + records a Uniswap-v3-style TWAP oracle.
 ///      Hook permissions: BEFORE_SWAP_FLAG | AFTER_SWAP_FLAG
 ///      The hook address MUST have bits 6 and 7 set for these flags.
+///
+///      TWAP design (Plan §9 G2.5): each observation stores the pool's terminal POOL
+///      STATE (the current tick read from the PoolManager's slot0 after the swap), NOT
+///      the swap's volume-dependent execution price. Observations accumulate a
+///      time-weighted cumulative tick — `tickCumulative += lastTick * elapsedSeconds`
+///      (Uniswap v3 `Oracle.observe()` style) — so the time-weighted average tick over
+///      any window [t0, t1] is `(tickCumulative(t1) - tickCumulative(t0)) / (t1 - t0)`
+///      and is correct regardless of trade size. This is the keeper-safe substrate the
+///      V4-native TP/SL + auto-recenter (Phase 2) will verify triggers against.
 contract AetherHook is IHooks, Ownable {
+    using StateLibrary for IPoolManager;
+    using PoolIdLibrary for PoolKey;
 
     /// @notice The Uniswap V4 PoolManager
     IPoolManager public immutable poolManager;
@@ -30,19 +46,31 @@ contract AetherHook is IHooks, Ownable {
     /// @notice Maximum protocol fee (1000 bps = 10%)
     uint24 public constant MAX_PROTOCOL_FEE_BPS = 1000;
 
-    /// @notice TWAP observation for a pool
+    /// @notice TWAP observation for a pool — the pool's terminal SPOT STATE at sample time
+    /// @dev Packed into a single storage slot: 32 + 56 + 24 + 8 = 120 bits.
+    ///      `tickCumulative` stores the running sum of `tick * elapsed_time` (two's-complement
+    ///      wraparound, exactly like Uniswap v3's int56 accumulator): the time-weighted average
+    ///      tick over any window is the cumulative difference divided by elapsed seconds.
     struct Observation {
+        /// @dev block.timestamp when the observation was recorded
         uint32 timestamp;
-        uint256 priceCumulative;
-        uint256 priceLatest;
+        /// @dev running sum of (each observed tick * seconds it was the terminal spot tick)
+        int56 tickCumulative;
+        /// @dev the pool's terminal tick (from PoolManager slot0) at `timestamp`
+        int24 tick;
+        /// @dev whether this slot holds a real observation
+        bool initialized;
     }
 
     // ---- TWAP storage ----
-    /// @dev poolId => array of observations (circular buffer, size 1024)
+    /// @dev Maximum observations retained per pool (cardinality of the circular buffer)
+    uint16 public constant OBSERVATION_BUFFER_SIZE = 1024;
+
+    /// @dev internal poolId => ring buffer of observations (size 1024)
     mapping(bytes32 => Observation[1024]) internal _observations;
-    /// @dev poolId => current observation index
+    /// @dev internal poolId => index of the most recently written observation
     mapping(bytes32 => uint16) public observationIndex;
-    /// @dev poolId => observation count (capped at 1024)
+    /// @dev internal poolId => number of initialized observations (capped at 1024)
     mapping(bytes32 => uint16) public observationCount;
 
     // ---- Fee accrual storage ----
@@ -55,9 +83,7 @@ contract AetherHook is IHooks, Ownable {
     event ProtocolFeeUpdated(uint24 oldFee, uint24 newFee);
     event TreasuryUpdated(address oldTreasury, address newTreasury);
     event FeesWithdrawn(bytes32 indexed poolId, address indexed to, uint256 amount0, uint256 amount1);
-    event ObservationRecorded(
-        bytes32 indexed poolId, uint32 timestamp, uint256 priceCumulative, uint256 priceLatest
-    );
+    event ObservationRecorded(bytes32 indexed poolId, uint32 timestamp, int56 tickCumulative, int24 tick);
 
     // ---- Errors ----
     error FeeTooHigh();
@@ -66,12 +92,9 @@ contract AetherHook is IHooks, Ownable {
     /// @param _treasury The address that receives protocol fees
     /// @param _protocolFeeBps Initial protocol fee in basis points
     /// @param _initialOwner The initial owner of the hook
-    constructor(
-        IPoolManager _poolManager,
-        address _treasury,
-        uint24 _protocolFeeBps,
-        address _initialOwner
-    ) Ownable(_initialOwner) {
+    constructor(IPoolManager _poolManager, address _treasury, uint24 _protocolFeeBps, address _initialOwner)
+        Ownable(_initialOwner)
+    {
         if (_treasury == address(0)) revert Errors.ZeroAddress();
         if (_protocolFeeBps > MAX_PROTOCOL_FEE_BPS) revert FeeTooHigh();
         poolManager = _poolManager;
@@ -205,13 +228,11 @@ contract AetherHook is IHooks, Ownable {
     }
 
     /// @inheritdoc IHooks
-    function afterSwap(
-        address,
-        PoolKey calldata key,
-        SwapParams calldata params,
-        BalanceDelta delta,
-        bytes calldata
-    ) external onlyPoolManager returns (bytes4, int128) {
+    function afterSwap(address, PoolKey calldata key, SwapParams calldata params, BalanceDelta delta, bytes calldata)
+        external
+        onlyPoolManager
+        returns (bytes4, int128)
+    {
         bytes32 poolId = _poolId(key);
 
         // Determine swap direction from delta
@@ -240,10 +261,12 @@ contract AetherHook is IHooks, Ownable {
             }
         }
 
-        // Record TWAP observation
+        // Record TWAP observation: sample the pool's TERMINAL SPOT TICK (slot0) after the
+        // swap — a pool-state price that is independent of the swap's size — rather than
+        // the volume-dependent execution price implied by amountIn/amountOut.
         if (amountIn > 0 && amountOut > 0) {
-            uint256 price = (amountIn * 1e18) / amountOut;
-            _recordObservation(poolId, price);
+            (, int24 tick,,) = poolManager.getSlot0(key.toId());
+            _recordObservation(poolId, tick);
         }
 
         // Return 0 delta — the hook does not alter the swap output
@@ -251,64 +274,103 @@ contract AetherHook is IHooks, Ownable {
     }
 
     /// @inheritdoc IHooks
-    function beforeDonate(address, PoolKey calldata, uint256, uint256, bytes calldata)
-        external
-        pure
-        returns (bytes4)
-    {
+    function beforeDonate(address, PoolKey calldata, uint256, uint256, bytes calldata) external pure returns (bytes4) {
         revert("not implemented");
     }
 
     /// @inheritdoc IHooks
-    function afterDonate(address, PoolKey calldata, uint256, uint256, bytes calldata)
-        external
-        pure
-        returns (bytes4)
-    {
+    function afterDonate(address, PoolKey calldata, uint256, uint256, bytes calldata) external pure returns (bytes4) {
         revert("not implemented");
     }
 
-    // ---- TWAP read functions ----
+    // ---- TWAP read functions (Uniswap v3 `observe()` style) ----
 
-    /// @notice Get current TWAP for a pool
+    /// @notice Read the tick cumulatives at several points in the past (v3-style oracle query)
     /// @param poolId The pool to query
-    /// @param lookback Number of observations to look back
-    /// @return TWAP price scaled by 1e18
-    function getCurrentTwap(bytes32 poolId, uint32 lookback) external view returns (uint256) {
-        uint16 count = observationCount[poolId];
-        if (count == 0) return 0;
-
-        uint16 currentIndex = observationIndex[poolId];
-        uint256 lookbackSafe = lookback > count ? count : lookback;
-        if (lookbackSafe == 0) lookbackSafe = 1;
-
-        uint256 currentCumulative = _observations[poolId][currentIndex].priceCumulative;
-        uint256 previousCumulative;
-
-        if (count > lookbackSafe) {
-            uint16 lookbackIndex = (currentIndex + 1024 - uint16(lookbackSafe)) % 1024;
-            previousCumulative = _observations[poolId][lookbackIndex].priceCumulative;
+    /// @param secondsAgos Seconds in the past to query (0 = now). Targets older than the
+    ///        retained buffer revert with {Errors.InsufficientElapsedTime}.
+    /// @return tickCumulatives The cumulative tick at each requested target time. Targets
+    ///         between stored observations are linearly interpolated; targets newer than the
+    ///         latest observation are extrapolated with the latest terminal tick.
+    function observe(bytes32 poolId, uint32[] calldata secondsAgos)
+        external
+        view
+        returns (int56[] memory tickCumulatives)
+    {
+        uint32 time = uint32(block.timestamp);
+        tickCumulatives = new int56[](secondsAgos.length);
+        for (uint256 i = 0; i < secondsAgos.length; i++) {
+            tickCumulatives[i] = _observeCumulative(poolId, time - secondsAgos[i]);
         }
+    }
 
-        return currentCumulative - previousCumulative;
+    /// @notice Time-weighted average tick over the last `secondsAgo` seconds
+    /// @param poolId The pool to query
+    /// @param secondsAgo Length of the averaging window in seconds (must be > 0)
+    /// @return avgTick The time-weighted average terminal tick (floor division toward zero)
+    /// @dev Requires at least two observations, and the window start must lie within the
+    ///      retained buffer. Reverts with {Errors.InsufficientObservations} or
+    ///      {Errors.InsufficientElapsedTime} otherwise.
+    function getTwapTick(bytes32 poolId, uint32 secondsAgo) public view returns (int24 avgTick) {
+        if (secondsAgo == 0) revert Errors.InsufficientElapsedTime();
+        if (observationCount[poolId] < 2) revert Errors.InsufficientObservations();
+
+        uint32 time = uint32(block.timestamp);
+        int56 cumulativeNow = _observeCumulative(poolId, time);
+        int56 cumulativeThen = _observeCumulative(poolId, time - secondsAgo);
+
+        // Two's-complement subtraction (overflow-safe for deltas within int56 range),
+        // mirroring Uniswap v3's oracle tick averaging.
+        unchecked {
+            avgTick = int24((cumulativeNow - cumulativeThen) / int56(uint56(secondsAgo)));
+        }
+    }
+
+    /// @notice Time-weighted average price (token1 per token0) over the last `secondsAgo` seconds
+    /// @param poolId The pool to query
+    /// @param secondsAgo Length of the averaging window in seconds
+    /// @return priceX18 The time-weighted average price, scaled by 1e18
+    function getCurrentTwap(bytes32 poolId, uint32 secondsAgo) external view returns (uint256 priceX18) {
+        return _tickToPriceX18(getTwapTick(poolId, secondsAgo), false);
+    }
+
+    /// @notice Time-weighted average price in the reverse direction (token0 per token1)
+    /// @param poolId The pool to query
+    /// @param secondsAgo Length of the averaging window in seconds
+    /// @return priceX18 The reciprocal of the time-weighted average price, scaled by 1e18
+    function getCurrentTwapInverted(bytes32 poolId, uint32 secondsAgo) external view returns (uint256 priceX18) {
+        return _tickToPriceX18(getTwapTick(poolId, secondsAgo), true);
     }
 
     /// @notice Get the latest observation for a pool
     /// @param poolId The pool to query
     /// @return timestamp The observation timestamp
-    /// @return priceCumulative The cumulative price
-    /// @return priceLatest The latest price
+    /// @return tickCumulative The cumulative tick at `timestamp`
+    /// @return tick The terminal spot tick recorded at `timestamp`
     function getLatestObservation(bytes32 poolId)
         external
         view
-        returns (uint32 timestamp, uint256 priceCumulative, uint256 priceLatest)
+        returns (uint32 timestamp, int56 tickCumulative, int24 tick)
     {
         uint16 count = observationCount[poolId];
         if (count == 0) return (0, 0, 0);
 
         uint16 idx = observationIndex[poolId];
         Observation memory obs = _observations[poolId][idx];
-        return (obs.timestamp, obs.priceCumulative, obs.priceLatest);
+        return (obs.timestamp, obs.tickCumulative, obs.tick);
+    }
+
+    /// @notice Read a stored observation by its raw buffer slot
+    /// @param poolId The pool to query
+    /// @param bufferIndex Ring-buffer slot in [0, 1024)
+    function observationAt(bytes32 poolId, uint16 bufferIndex)
+        external
+        view
+        returns (uint32 timestamp, int56 tickCumulative, int24 tick, bool initialized)
+    {
+        if (bufferIndex >= OBSERVATION_BUFFER_SIZE) revert Errors.PoolIndexOutOfBounds();
+        Observation memory obs = _observations[poolId][bufferIndex];
+        return (obs.timestamp, obs.tickCumulative, obs.tick, obs.initialized);
     }
 
     // ---- Internal functions ----
@@ -318,27 +380,128 @@ contract AetherHook is IHooks, Ownable {
         return keccak256(abi.encode(key));
     }
 
-    /// @notice Record a TWAP observation for a pool
-    function _recordObservation(bytes32 poolId, uint256 price) internal {
-        uint16 index = observationIndex[poolId];
+    /// @notice Record a time-weighted tick observation for a pool (Uniswap v3 Oracle.write style)
+    /// @param poolId The pool to record for
+    /// @param tick The pool's terminal spot tick at `block.timestamp`
+    /// @dev Accumulates `tickCumulative += lastTick * elapsedSeconds`. Same-timestamp samples
+    ///      are folded in place (no zero-elapsed observation is ever stored, so no read path
+    ///      can divide by a zero delta). When the 1024-slot ring is full, the oldest slot is
+    ///      overwritten.
+    function _recordObservation(bytes32 poolId, int24 tick) internal {
+        uint32 time = uint32(block.timestamp);
         uint16 count = observationCount[poolId];
 
-        // Compute new cumulative price
-        uint256 previousCumulative = count > 0 ? _observations[poolId][index].priceCumulative : 0;
-        uint256 cumulative = previousCumulative + price;
+        // First observation for this pool: initialize slot 0 with zero cumulative.
+        if (count == 0) {
+            _observations[poolId][0] = Observation({timestamp: time, tickCumulative: 0, tick: tick, initialized: true});
+            observationIndex[poolId] = 0;
+            observationCount[poolId] = 1;
+            emit ObservationRecorded(poolId, time, 0, tick);
+            return;
+        }
 
-        // Advance circular buffer
-        uint16 nextIndex = (index + 1) % 1024;
+        uint16 index = observationIndex[poolId];
+        Observation storage last = _observations[poolId][index];
+
+        // Same block timestamp as the newest observation: accumulate nothing (zero elapsed
+        // delta would break time-weighting) and refresh the terminal tick in place.
+        if (last.timestamp == time) {
+            last.tick = tick;
+            emit ObservationRecorded(poolId, time, last.tickCumulative, tick);
+            return;
+        }
+
+        // New cumulative: the previously recorded tick held for (time - last.timestamp) seconds.
+        int56 cumulative;
+        unchecked {
+            cumulative = last.tickCumulative + int56(int256(last.tick)) * int56(uint56(time - last.timestamp));
+        }
+
+        // Advance the circular buffer (overwrite the oldest slot once full).
+        uint16 nextIndex = (index + 1) % OBSERVATION_BUFFER_SIZE;
+        _observations[poolId][nextIndex] =
+            Observation({timestamp: time, tickCumulative: cumulative, tick: tick, initialized: true});
         observationIndex[poolId] = nextIndex;
-        observationCount[poolId] = count < 1024 ? count + 1 : 1024;
+        // Ring is saturated at 1024: the overwritten oldest slot is simply recycled.
+        if (count < OBSERVATION_BUFFER_SIZE) observationCount[poolId] = count + 1;
 
-        _observations[poolId][nextIndex] = Observation({
-            timestamp: uint32(block.timestamp),
-            priceCumulative: cumulative,
-            priceLatest: price
-        });
+        emit ObservationRecorded(poolId, time, cumulative, tick);
+    }
 
-        emit ObservationRecorded(poolId, uint32(block.timestamp), cumulative, price);
+    /// @notice Cumulative tick at an arbitrary target timestamp (interpolated / extrapolated)
+    /// @param poolId The pool to query
+    /// @param target The unix timestamp to resolve the cumulative tick for
+    /// @return cumulative The (interpolated) tickCumulative at `target`
+    function _observeCumulative(bytes32 poolId, uint32 target) internal view returns (int56 cumulative) {
+        uint16 count = observationCount[poolId];
+        if (count == 0) revert Errors.InsufficientObservations();
+
+        uint16 newest = observationIndex[poolId];
+        Observation storage last = _observations[poolId][newest];
+
+        // At or after the newest observation: extrapolate using the latest terminal tick.
+        if (target >= last.timestamp) {
+            unchecked {
+                return last.tickCumulative + int56(int256(last.tick)) * int56(uint56(target - last.timestamp));
+            }
+        }
+
+        uint16 oldest = _oldestIndex(count, newest);
+        Observation storage first = _observations[poolId][oldest];
+
+        // Strictly older than the retained buffer (or a degenerate single-slot buffer).
+        if (target < first.timestamp) revert Errors.InsufficientElapsedTime();
+        if (target == first.timestamp) return first.tickCumulative;
+
+        // Binary search for the first slot whose timestamp is strictly greater than target,
+        // walking the ring from oldest (l = 0) to newest (r = count - 1).
+        uint16 l = 0;
+        uint16 r = count - 1;
+        while (l < r) {
+            uint16 mid = uint16((uint256(l) + r) / 2);
+            if (_observations[poolId][(oldest + mid) % OBSERVATION_BUFFER_SIZE].timestamp <= target) {
+                l = mid + 1;
+            } else {
+                r = mid;
+            }
+        }
+
+        uint16 loIndex = (oldest + l - 1) % OBSERVATION_BUFFER_SIZE;
+        Observation storage prior = _observations[poolId][loIndex];
+
+        // Exact hit on a stored observation.
+        if (prior.timestamp == target) return prior.tickCumulative;
+
+        // Linear interpolation between the bracketing observations using the prior tick.
+        unchecked {
+            return prior.tickCumulative + int56(int256(prior.tick)) * int56(uint56(target - prior.timestamp));
+        }
+    }
+
+    /// @notice Ring-buffer index of the oldest live observation
+    function _oldestIndex(uint16 count, uint16 newest) internal pure returns (uint16) {
+        return count < OBSERVATION_BUFFER_SIZE ? 0 : (newest + 1) % OBSERVATION_BUFFER_SIZE;
+    }
+
+    /// @notice Convert a tick to a 1e18-scaled price (token1 per token0), optionally inverted
+    /// @param tick The tick to convert (may be the time-weighted average tick)
+    /// @param invert If true, returns the reciprocal price (token0 per token1)
+    function _tickToPriceX18(int24 tick, bool invert) internal pure returns (uint256) {
+        // price(tick) = 1.0001^tick = (sqrtPriceX96 / 2^96)^2
+        uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(tick);
+
+        // priceX96 = sqrtPriceX96^2 / 2^96 (FullMath handles the 512-bit product).
+        uint256 priceX96 = FullMath.mulDiv(uint256(sqrtPriceX96), uint256(sqrtPriceX96), FixedPoint96.Q96);
+
+        // Rescale from Q96 to 1e18.
+        uint256 priceX18 = FullMath.mulDiv(priceX96, 1e18, FixedPoint96.Q96);
+
+        if (!invert) return priceX18;
+
+        // Pair-direction normalization: reciprocal price = 1e18 / priceX18, kept at 1e18 scale.
+        // A zero price (extremely negative tick) has no representable reciprocal at this scale.
+        if (priceX18 == 0) revert Errors.InvalidAmount();
+        return FullMath.mulDiv(1e18, 1e18, priceX18);
     }
 
     /// @notice Modifier to ensure only PoolManager can call hook callbacks
