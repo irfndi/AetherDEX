@@ -324,6 +324,23 @@ AGENTS.md designates Effect TS as the backend paradigm (business logic, DI via `
 
 ---
 
+## Parallel Workstream C — CI/CD Modernization (Approved 2026-07-22)
+
+Modernize and optimize GitHub Actions + dependency automation. Landed as a **separate PR after Workstream P** (it builds on the migrated toolchain and must enforce *real* green after the migration).
+
+**Current CI defects (verified):** `continue-on-error: true` masks test/build/coverage failures, so `ci-status` passes even on red; the contracts job re-`forge install`s libs on every run (`lib/` is neither committed nor cached) with an **unpinned Foundry**; Slither is gated on `command -v slither` so it never actually runs; coverage doesn't gate despite the 70/70/90 targets; Dependabot updates npm per-app against a **single root `bun.lock`** → conflicting PR storms. CI **already** uses `bun-version: canary` and script-based steps, so it is consistent with Workstream P (no migration-time change needed).
+
+- **C1 — Correctness gate:** remove the `continue-on-error` masks; make typecheck/lint/test/build mandatory; enforce coverage thresholds (70% backend / 70% frontend / 90% contracts); fix `ci-status` to gate correctly. *(Test types + coverage breadth are expanded in later phases.)*
+- **C2 — Fix the contracts job:** pin Foundry; pin + cache `lib/` (forge-std, v4-core, OZ@v5.5.0) so there is no per-run reinstall.
+- **C3 — Speed:** cache Bun install + Foundry artifacts; path filters per workspace; a composite setup action (DRY); parallelize the fast checks.
+- **C4 — Hardening + QA (approved):** pin actions to SHAs; least-privilege `permissions` per job; actually install & run **Slither, gated** on high/medium; add an **Echidna** fuzz job; **Playwright E2E wiring now** (suite/coverage expanded later).
+- **C5 — Dependency automation (free):** adopt **Renovate** (open-source, $0), **self-hosted via `renovatebot/github-action`** with a `renovate.json` tuned for the monorepo (one group per lockfile, lock-file maintenance, conventional commits, labels, PR limits). **Disable Dependabot's npm updates** (the PR-storm source); Renovate owns npm/bun + github-actions. *Owner action: add a fine-grained PAT (`contents:write` + `pull_requests:write`) as the `RENOVATE_TOKEN` secret.* Alternative: the free Mend Renovate GitHub App for public repos (third-party app access).
+- **C6 — Process:** **branch protection** on `main` requiring `ci-status` (set via the `gh` admin API if permitted, else owner); **Cloudflare Pages preview-deploy** job wiring now (tests/coverage expanded later).
+
+**Deferred:** Tailwind CSS v4 migration (kept at v3; open a dedicated bead only on explicit request).
+
+---
+
 ## 11. Strategic Forks Requiring an Owner Decision
 
 > **All forks below are RESOLVED by the owner (2026-07-22).** See **§14 — Owner Decisions** for the binding answers; `AGENTS.md` has been updated to match. Kept here for the reasoning trail.

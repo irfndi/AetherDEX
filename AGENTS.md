@@ -200,7 +200,13 @@ bun run contracts:deploy:sepolia
 - Prefer Bun canary + TypeScript 7 native `tsc` over Node + tsc
 - **Use the latest available version of every dependency** (no pinning to old versions); **any newly added dependency starts at latest.**
 - Deliberate, owner-flagged exceptions: Tailwind kept at v3 (DaisyUI-5 UI; v4 is a separate visual migration), Effect pinned to the chosen v4 build.
-- Dependabot weekly for all ecosystems
+- **Dependency automation = Renovate** (open-source, free; self-hosted via `renovatebot/github-action` + `renovate.json` grouping by lockfile). Replaces Dependabot for npm/bun + github-actions — Dependabot's per-app npm updates caused conflicting PR storms against the single root `bun.lock`.
+
+### CI/CD
+- Workstream C (separate PR, after the toolchain migration) modernizes CI to be **green-gated** (no `continue-on-error` masks), with coverage thresholds enforced (70% backend / 70% frontend / 90% contracts) and `ci-status` as the required gate.
+- **Security hardening:** Slither is installed and gated on high/medium; an Echidna fuzz job runs; actions are pinned to SHAs; each job sets least-privilege `permissions`; branch protection on `main` requires `ci-status`.
+- E2E (Playwright) + Cloudflare Pages preview-deploy are wired into CI early; test types + coverage breadth expand across later phases.
+- Dependency automation via Renovate (see Dependencies above).
 
 ## Architectural Decisions
 
