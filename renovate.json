@@ -39,8 +39,8 @@
   },
   "packageRules": [
     {
-      "description": "ALL bun workspace updates -> one PR so the single root bun.lock is regenerated once (no per-directory PR storms).",
-      "matchManagers": ["bun"],
+      "description": "ALL bun workspace updates -> one PR so the single root bun.lock is regenerated once (no per-directory PR storms). npm extracts the package.json manifests; bun handles bun.lock - both feed this group.",
+      "matchManagers": ["bun", "npm"],
       "matchUpdateTypes": ["major", "minor", "patch", "pin", "digest", "replacement", "rollback"],
       "matchFileNames": ["bun.lock", "package.json", "apps/**/package.json", "packages/**/package.json"],
       "groupName": "bun dependencies",
