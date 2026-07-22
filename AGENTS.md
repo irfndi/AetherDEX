@@ -5,7 +5,7 @@
 
 ## Project Summary
 
-**AetherDEX** is a non-custodial **autonomous concentrated-liquidity platform** on Uniswap V4 (v3+v4 LP tooling: visual ranges, single-sided zaps, one-click rebalance, and **V4-native TP/SL** via the `AetherHook` TWAP oracle), deployed entirely on the Cloudflare stack. **Robinhood-Chain-first**, multi-chain (Ethereum + L2s). (Re-positioned from "lean spot DEX" on 2026-07-22 per the exploration plan — PR #301.)
+**AetherDEX** is a non-custodial **autonomous concentrated-liquidity platform** on Uniswap V4 (v3+v4 LP tooling: visual ranges, single-sided zaps, one-click rebalance, and **V4-native TP/SL** via the `AetherHook` oracle — *planned, gated on the Phase-0 TWAP read-path fix, G2.5*), **targeting the Cloudflare stack** (**pre-deployment** — deployment bindings are placeholders; the first deployment is validated on **Sepolia** in Phase 0). **Robinhood-Chain-first**, multi-chain (Ethereum + L2s). (Re-positioned from "lean spot DEX" on 2026-07-22 per the exploration plan — PR #301.)
 
 - **Frontend** (`apps/web/`): Vite + React 19 + TanStack Router + Wagmi + DaisyUI
 - **Backend** (`apps/api/`): Cloudflare Workers + Hono + Effect TS + D1/R2/KV/DO
@@ -16,7 +16,7 @@
 **AUTONOMOUS CONCENTRATED-LIQUIDITY PLATFORM (Alpine-style)** — the locked direction decided 2026-07-22 (supersedes "lean spot DEX"):
 
 - **Core:** Uniswap v3 + v4 LP automation — spot swap, visual range ("mountain") selection, **single-sided deposits (zap)**, **one-click rebalance** (close → collect → re-mint), pool creation, PnL & history, real-time charts, token search, wallet connect (SIWE), slippage/MEV protection.
-- **Differentiator:** **V4-native TP/SL + auto-recenter** — enabled by `AetherHook`'s 1024-slot **TWAP oracle** (the piece Alps.farm says v4 lacks).
+- **Differentiator:** **V4-native TP/SL + auto-recenter** — *planned (Phase 2)*. `AetherHook` already records a 1024-slot **observation buffer** (the substrate Alps.farm says v4 lacks), but its **read path is not yet a true oracle**: it samples per-swap *execution* prices, not pool-state ticks. It becomes keeper-safe only after the **Phase-0 G2.5 fix** (record the `PoolManager`/`StateView` spot tick/`sqrtPriceX96` and time-weight it — plan §9 G2.5). Until then, no TP/SL/auto-recenter logic relies on it.
 - **Custody:** **Non-custodial aggregator.** Users keep their position NFTs; we build/sign txs in-browser + run an off-chain keeper + index data. **No ERC4626 vault.**
 - **Automation:** **Off-chain keeper** on Cloudflare Workers (Cron + Queues). Principle: **mutable policy off-chain, immutable safety invariants on-chain** — strategy changes never need a redeploy.
 - **Chains:** **Robinhood Chain first** (beachhead), then Ethereum + L2s.
@@ -56,7 +56,7 @@
 
 ### Runtime
 - **Bun**: canary (`bun --canary`; Bun 1.4.x canary) — pinned via `packageManager: bun@canary` + CI. (document exact version in tooling/scripts/VERSIONS.md)
-- **TypeScript**: **7.0 stable (native Go compiler — 8–12× faster builds)** via the standard `typescript@^7.0.x` package (`tsc`). `@typescript/native-preview` / `tsgo` are **superseded**; nightlies ship as `typescript@next`.
+- **TypeScript** (*target — delivered by Workstream P, PR #302*): **7.0 stable (native Go compiler — 8–12× faster builds)** via the standard `typescript@^7.0.x` package (`tsc`). **This branch is pre-migration** (`typescript@7.0.1-rc` + `@typescript/native-preview`/`tsgo`); the stable native `tsc` lands with Workstream P. `@typescript/native-preview` / `tsgo` are **superseded**; nightlies ship as `typescript@next`.
 - **TS 7 config rules**: `rootDir` defaults to `./` (set explicitly per workspace), `types` defaults to `[]` (list needed `@types` explicitly), `baseUrl` removed (relative `paths`), `esModuleInterop`/`allowSyntheticDefaultImports` must stay `true`.
 - **Node**: 24+
 

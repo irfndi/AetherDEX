@@ -297,7 +297,7 @@ This reframes the existing AGENTS.md "Wave 3+" backlog around the Alpine LP thes
 
 ### Phase 4 — Monetization (gated by §11 decisions)
 - **Immutable 0.1% fee** on deposit/pool-creation in `AetherHook`/`AetherRouter`.
-- **Optional token flywheel**: if owner approves a token, weekly buyback-and-burn; otherwise route fees to treasury.
+- ~~**Token flywheel**~~ — **out of scope** (owner-resolved decision, §14: **no native token; flat 0.1% fee → treasury multisig**). Any token / buyback-and-burn is explicitly excluded, **not a planned option** — revisit only via an explicit owner scope change. Default: all protocol fees route to the treasury multisig.
 - ~~**Impact page**~~ — **out of scope** (locked scope drops standalone analytics pages; link to DexScreener instead). Requires an explicit owner scope change before inclusion.
 
 ---
