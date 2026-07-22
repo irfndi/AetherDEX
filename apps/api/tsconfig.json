@@ -1,6 +1,7 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "rootDir": "./src",
     "lib": ["es2025", "dom", "dom.iterable"],
     "types": [],
     "jsx": "preserve",

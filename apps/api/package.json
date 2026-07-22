@@ -15,7 +15,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "lint": "biome check src/ test/",
     "lint:fix": "biome check --write src/ test/",
     "format": "biome format --write src/ test/",
@@ -31,22 +31,21 @@
     "@effect/sql": "^0.52.0",
     "@effect/sql-d1": "^0.49.0",
     "effect": "^3.21.4",
-    "hono": "^4.12.27",
+    "hono": "^4.12.31",
     "siwe": "^3.0.0",
-    "viem": "^2.54.1"
+    "viem": "^2.55.5"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.2",
+    "@biomejs/biome": "^2.5.5",
     "@cloudflare/vitest-pool-workers": "^0.18.7",
-    "@types/node": "^26.1.0",
-    "@typescript/native-preview": "7.0.0-dev.20260701.1",
+    "@types/node": "^26.1.1",
     "@vitest/coverage-istanbul": "4.1.10",
-    "typescript": "7.0.1-rc",
-    "vitest": "^4.1.9",
-    "wrangler": "^4.106.0"
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.113.0"
   },
   "engines": {
-    "bun": ">=1.2.0",
+    "bun": ">=1.4.0",
     "node": ">=24.0.0"
   }
 }

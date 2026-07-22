@@ -12,7 +12,7 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "contracts:build": "cd packages/contracts && forge build",
     "contracts:test": "cd packages/contracts && forge test",
     "contracts:coverage": "cd packages/contracts && forge coverage",
@@ -28,13 +28,12 @@
     "packages/*"
   ],
   "devDependencies": {
-    "@biomejs/biome": "^2.5.1",
-    "@typescript/native-preview": "latest",
-    "typescript": "7.0.1-rc",
-    "vitest": "^4.1.9"
+    "@biomejs/biome": "^2.5.5",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   },
   "engines": {
-    "bun": ">=1.2.0",
+    "bun": ">=1.4.0",
     "node": ">=24.0.0"
   },
   "packageManager": "bun@canary",
