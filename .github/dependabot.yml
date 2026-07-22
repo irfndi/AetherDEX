@@ -1,28 +1,25 @@
+# Dependabot is RETAINED ONLY as a security-update fallback. Renovate owns all routine
+# dependency automation (npm/bun + github-actions) via renovate.json / renovate.yml.
+#
+# Why not per-directory npm version updates here? The monorepo uses a SINGLE root
+# bun.lock (Bun workspaces). Dependabot cannot read bun.lock and its root + /apps/web +
+# /apps/api npm entries produced conflicting, stormy PRs that all fight over the same
+# files. Those entries have been removed.
+#
+# `open-pull-requests-limit: 0` disables routine VERSION-update PRs while still letting
+# Dependabot open SECURITY-update PRs for GitHub Security Advisories (security updates
+# ignore this limit). This keeps a second, independent vulnerability layer alongside
+# Renovate's own `vulnerabilityAlerts`.
 version: 2
 updates:
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
       interval: "weekly"
-    groups:
-      bun-and-ts:
-        patterns:
-          - "bun*"
-          - "@biomejs/*"
-          - "typescript"
-          - "@typescript/*"
+    open-pull-requests-limit: 0
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
-
-  - package-ecosystem: "npm"
-    directory: "/apps/web"
-    schedule:
-      interval: "weekly"
-
-  - package-ecosystem: "npm"
-    directory: "/apps/api"
-    schedule:
-      interval: "weekly"
+    open-pull-requests-limit: 0
