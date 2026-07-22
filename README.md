@@ -1,16 +1,18 @@
 # AetherDEX
 
-A lean spot DEX built on Uniswap V4, deployed on Cloudflare stack.
+A non-custodial **autonomous concentrated-liquidity platform** on Uniswap V4 — visual-range LP, single-sided zaps, one-click rebalance, and V4-native TP/SL (via the `AetherHook` oracle — *planned, gated on the Phase-0 TWAP fix*). Robinhood-Chain-first, multi-chain (Ethereum + L2s), targeting the Cloudflare stack (**pre-deployment** — the first deployment is validated on Sepolia in Phase 0).
 
 ## Architecture
 
-- **Frontend** (`apps/web/`): Vite + React 19 + TanStack Router + Wagmi + DaisyUI
-- **Backend** (`apps/api/`): Cloudflare Workers + Hono + Effect TS + D1/R2/KV/Durable Objects
+- **Frontend** (`apps/web/`): Vite + React 19 + TanStack Suite (Router/Query/Form/Table/Virtual) + `@effect/rpc` client + Wagmi + DaisyUI
+- **Backend** (`apps/api/`): Cloudflare Workers + Hono + Effect TS v4 + `@effect/rpc` + D1/R2/KV/Durable Objects
 - **Contracts** (`packages/contracts/`): Solidity hooks on Uniswap V4-core + Foundry
+
+> **Architecture note — Effect v4 + `@effect/rpc` are the *target* (planned) architecture, not what is installed on this branch.** This branch is **pre-migration**: `apps/api/package.json` still pins **`effect@^3`** and has **no `@effect/rpc` dependency** yet, so the backend currently runs on Effect v3 and the client has no `@effect/rpc` resolver. The upgrade to **Effect v4** and the **end-to-end `@effect/rpc`** contract (server via `@hono/effect`, client via the TanStack-Query resolver) is delivered by **Workstream P (PR #302)**; the "Effect TS v4 + `@effect/rpc`" entries above describe where the architecture is heading, not the current dependency state. **The same applies to TypeScript:** the stack line below says "TypeScript 7 (native `tsc`)", but this branch still pins **`typescript@7.0.1-rc`** + `@typescript/native-preview` (`tsgo`); the **stable native `tsc`** (`typescript@^7.0.x`) is likewise delivered by **Workstream P (PR #302)**.
 
 ## Stack
 
-- Bun (canary) + tsgo (TypeScript 7.0 RC)
+- Bun (canary) + TypeScript 7 (native `tsc` — *target*; this branch is pre-migration, see the note above)
 - Biome for linting/formatting
 - Vitest for unit tests, Playwright for E2E
 - Cloudflare: Workers, D1, R2, KV, Durable Objects, Queues, Pages
@@ -48,6 +50,6 @@ bun run test:coverage
 
 ## Scope
 
-Lean spot DEX: Swap + Concentrated Liquidity + Token Search + Real-time Charts + Wallet Connect + Slippage/MEV protection.
+Autonomous concentrated-liquidity platform (Alpine-style). **Foundational:** spot swap, visual-range concentrated liquidity, single-sided zaps, one-click rebalance, token search, real-time charts, wallet connect (SIWE), slippage/MEV protection; non-custodial. **Planned (gated on Phase 0/2 — see roadmap):** V4-native TP/SL + off-chain keeper automation, gated on the Phase-0 TWAP read-path fix (G2.5). See the exploration plan (PR #301) for the full thesis + roadmap.
 
 See AGENTS.md for full agent context.
