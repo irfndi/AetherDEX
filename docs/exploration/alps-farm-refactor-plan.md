@@ -310,7 +310,7 @@ Two halves: **P1** modernizes the toolchain to latest; **P2** makes Effect the *
 
 ### P1 — Toolchain to latest
 
-The AGENTS.md baseline already names Bun canary + TypeScript 7 (via tsgo); this workstream *executes and completes* that mandate as a one-time catch-up plus ongoing discipline (AGENTS.md: "latest stable, no pinning; weekly Dependabot").
+The AGENTS.md baseline names Bun canary + TypeScript 7 (target: stable native `tsc`; the `tsgo`/`@typescript/native-preview` pin is **superseded**). This workstream *executes and completes* that mandate as a one-time catch-up; the **ongoing dependency-automation discipline is self-hosted Renovate — delivered by Workstream C (PR #303), which replaces Dependabot's per-package npm bumps** (Dependabot is retained only as a security-advisory fallback). Latest-always, no pinning.
 
 | Item | Action | Notes / breaking changes |
 |---|---|---|
@@ -323,7 +323,7 @@ The AGENTS.md baseline already names Bun canary + TypeScript 7 (via tsgo); this 
 
 AGENTS.md designates Effect TS as the backend paradigm (business logic, DI via `Layer`, typed errors, structured concurrency). Today the codebase (a) pins Effect **v3** with independent `0.x` `@effect/*` versions, and (b) **bypasses its own Effect services** — HTTP routes hit raw `c.env.DB.prepare()` instead of `PoolService`/`TokenService` (Gap #1 / Phase-0 G3). This workstream fixes both.
 
-**Step 2a — Upgrade to Effect v4.** *(v4 is currently in **beta** — `4.0.0-beta.x`. Decide: pin the latest beta now, or hold on latest v3 until v4 GA. See §11 fork 7.)* Breaking changes AetherDEX must absorb (from the official migration docs):
+**Step 2a — Upgrade to Effect v4.** *(v4 is currently in **beta** — `4.0.0-beta.x`. **Locked choice — §14 (resolved): adopt Effect v4 now, pin the latest `4.0.0-beta.x`**; beta churn is accepted, with v3 as a documented fallback until GA. §11 fork 7 is closed.)* Breaking changes AetherDEX must absorb (from the official migration docs):
 
 - **Single shared version.** All ecosystem packages align to one number: `effect@4.x` pairs with `@effect/sql-d1@4.x`, `@effect/sql@4.x`, `@effect/vitest@4.x`, `@hono/effect@4.x` at the *same* `4.x`. v3's independent `effect@3.x` + `@effect/sql@0.x` versioning is gone.
 - **Package consolidation.** `@effect/platform`, `@effect/rpc`, etc. are merged **into core `effect`**; the `@effect/sql-*` drivers **stay separate** (so `@effect/sql-d1` remains, bumped to `4.x`). Remove deps now merged into core.
@@ -335,7 +335,7 @@ AGENTS.md designates Effect TS as the backend paradigm (business logic, DI via `
 
 **Step 2c — Build all new backend on Effect v4 from day one.** The quote engine (V4 tick math), on-chain indexer, TP/SL keeper + 5-policy engine, and automation are written as Effect services/layers with `Data.TaggedError` typed errors and `Layer` DI — leveraging Effect's structured concurrency exactly where the keeper needs it. **This is why P runs parallel to the refactor, not after.**
 
-**Frontend stays Effect-free** per AGENTS.md (Wagmi/viem/TanStack Query). *Optional extension:* `@effect/rpc` for end-to-end typed contracts between the Hono+Effect API and the React client — see §11 fork 8.
+**Frontend stays Effect-free** for UI logic per AGENTS.md (Wagmi/viem/TanStack Query). `@effect/rpc` provides the **end-to-end typed API contract** between the Hono+Effect API and the React client — **locked choice — §14 (resolved); §11 fork 8 is closed** (the client consumes RPC via the TanStack-Query resolver; no Effect for UI state).
 
 ### P sequencing (parallel to phases)
 
