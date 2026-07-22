@@ -1,18 +1,18 @@
 /**
- * AetherDEX Liquidity Positions HTTP endpoints
+ * AetherDEX Liquidity Positions HTTP endpoints — Phase 0 G3
  *
  * GET /api/v1/users/:address/positions — public, list user's active LP positions
  * POST /api/v1/positions — auth required, record a new LP position
  *
- * Resolved through Effect queries (db/queries.ts) — D1 as single access path.
+ * Resolved through PositionService (Effect) — no raw D1 access in handlers.
  */
 
-import { Effect } from "effect"
+import { Effect, Layer } from "effect"
 import { Hono } from "hono"
 import { type AuthVariables, requireAuth } from "../auth/middleware"
 import { makeDbLayer } from "../db/client"
-import { getPositionsByUser, insertPosition } from "../db/queries"
 import { runEffect } from "../lib/effect-bridge"
+import { PositionService, PositionServiceLive } from "../services/position.service"
 
 type Bindings = {
   DB: D1Database
@@ -23,6 +23,8 @@ type Bindings = {
 }
 
 const positions = new Hono<{ Bindings: Bindings; Variables: AuthVariables }>()
+
+const positionLayer = (db: D1Database) => PositionServiceLive.pipe(Layer.provide(makeDbLayer(db)))
 
 /**
  * GET /api/v1/users/:address/positions
@@ -35,7 +37,11 @@ positions.get("/users/:address/positions", async (c) => {
   }
 
   try {
-    const list = await runEffect(getPositionsByUser(address, 100).pipe(Effect.provide(makeDbLayer(c.env.DB))))
+    const program = Effect.gen(function* () {
+      const positionService = yield* PositionService
+      return yield* positionService.listByUser(address, 100)
+    })
+    const list = await runEffect(program.pipe(Effect.provide(positionLayer(c.env.DB))))
     return c.json({ positions: list, count: list.length })
   } catch (err) {
     return c.json({ error: String(err) }, 500)
@@ -63,18 +69,22 @@ positions.post("/", requireAuth, async (c) => {
     return c.json({ error: "poolId, tickLower, tickUpper, liquidity required" }, 400)
   }
 
+  const { poolId, tickLower, tickUpper, liquidity } = body
+
   try {
-    const positionId = await runEffect(
-      insertPosition({
+    const program = Effect.gen(function* () {
+      const positionService = yield* PositionService
+      return yield* positionService.recordPosition({
         userAddress: session.userAddress,
-        poolId: body.poolId,
-        tickLower: body.tickLower,
-        tickUpper: body.tickUpper,
-        liquidity: body.liquidity,
+        poolId,
+        tickLower,
+        tickUpper,
+        liquidity,
         amount0: body.amount0 ?? "0",
         amount1: body.amount1 ?? "0",
-      }).pipe(Effect.provide(makeDbLayer(c.env.DB))),
-    )
+      })
+    })
+    const positionId = await runEffect(program.pipe(Effect.provide(positionLayer(c.env.DB))))
     return c.json({ ok: true, positionId })
   } catch (err) {
     return c.json({ error: String(err) }, 500)
