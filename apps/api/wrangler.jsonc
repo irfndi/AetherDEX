@@ -82,10 +82,19 @@
   },
 
   // Environment variables (non-secret)
+  // Contract addresses are deployment config (Phase-0 G5, owner RPC) — never hardcoded in source.
   "vars": {
     "CHAIN_ID": "11155111",
     "ROUTER_ADDRESS": "",
     "FACTORY_ADDRESS": "", // Sepolia for now
+    // Uniswap V4 on-chain read config for the quote engine (Phase-0 G2). Empty until G5 wires them.
+    "STATE_VIEW_ADDRESS": "",
+    "POOL_MANAGER_ADDRESS": "",
+    "RPC_URL": "",
+    // "auto" = V4 tick-math when STATE_VIEW_ADDRESS+RPC_URL are set, else legacy D1 approximation.
+    "QUOTE_ENGINE_MODE": "auto",
+    // Canonical Uniswap default token list (Phase-0 G4) — the only token list AetherDEX serves.
+    "TOKEN_LIST_URL": "https://tokens.uniswap.org",
     "ENVIRONMENT": "development"
   },
 
@@ -93,11 +102,31 @@
   "env": {
     "staging": {
       "name": "aetherdex-api-staging",
-      "vars": { "CHAIN_ID": "11155111", "ENVIRONMENT": "staging" }
+      "vars": {
+        "CHAIN_ID": "11155111",
+        "ROUTER_ADDRESS": "",
+        "FACTORY_ADDRESS": "",
+        "STATE_VIEW_ADDRESS": "",
+        "POOL_MANAGER_ADDRESS": "",
+        "RPC_URL": "",
+        "QUOTE_ENGINE_MODE": "auto",
+        "TOKEN_LIST_URL": "https://tokens.uniswap.org",
+        "ENVIRONMENT": "staging"
+      }
     },
     "production": {
       "name": "aetherdex-api-prod",
-      "vars": { "CHAIN_ID": "1", "ENVIRONMENT": "production" }
+      "vars": {
+        "CHAIN_ID": "1",
+        "ROUTER_ADDRESS": "",
+        "FACTORY_ADDRESS": "",
+        "STATE_VIEW_ADDRESS": "",
+        "POOL_MANAGER_ADDRESS": "",
+        "RPC_URL": "",
+        "QUOTE_ENGINE_MODE": "auto",
+        "TOKEN_LIST_URL": "https://tokens.uniswap.org",
+        "ENVIRONMENT": "production"
+      }
     }
   }
 }
