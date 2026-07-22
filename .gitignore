@@ -70,5 +70,6 @@ tmp/
 temp/
 slither-report*.json
 
-# beads local task-tracker DB (per-developer); tracked snapshot lives in ROADMAP.md
+# beads per-developer local working cache (regenerated from ROADMAP.md via `bd`).
+# ROADMAP.md is the tracked, authoritative snapshot — do not commit .beads/.
 .beads/

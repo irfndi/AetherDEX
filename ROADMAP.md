@@ -1,7 +1,7 @@
 # AetherDEX Roadmap
 
 > Operational backlog. Live tracker: **beads** (`bd list`, `bd ready`) — issue IDs `aetherdex-beads-*`.
-> This file is the shared snapshot; the authoritative state is the local beads DB (`.beads/`, gitignored per-developer).
+> This file is the **authoritative** shared snapshot. `.beads/` is a per-developer local working cache (gitignored) regenerated from this file — it is intentionally not committed, so `ROADMAP.md` is the source of truth on a fresh clone.
 > Run `bd setup claude` (or your agent's beads integration) to enable agent context. Updated 2026-07-22.
 
 ## Program (epic)
@@ -24,7 +24,7 @@
 
 ## Decisions & owner actions (open)
 
-- `aetherdex-beads-ura` (P0) — **OWNER ACTION**: add a `RENOVATE_TOKEN` PAT secret (`contents:write` + `pull_requests:write`) and enable branch protection requiring `ci-status`. **Unblocks merging [PR #303](https://github.com/irfndi/AetherDEX/pull/303).**
+- `aetherdex-beads-ura` (P0) — **OWNER ACTION**: add a `RENOVATE_TOKEN` PAT secret with **all three** permissions — `contents:write` + `pull_requests:write` + `Workflows: read and write` (Renovate's `github-actions` manager rewrites `.github/workflows/*`, so without the Workflows permission those updates fail) — and enable branch protection requiring `ci-status`. **Unblocks merging [PR #303](https://github.com/irfndi/AetherDEX/pull/303).**
 - `aetherdex-beads-71o` (P1) — **Configure Robinhood Chain (id 4663)**: RPC endpoints, Blockscout explorer, SIWE chain entry, deployment-target wiring (the beachhead).
 - `aetherdex-beads-7km` (P2) — **DECISION (open)**: Tailwind CSS v3 → v4? (Kept at v3 for DaisyUI 5 stability; revisit as a dedicated visual migration if approved.)
 - `aetherdex-beads-clr` (P3) — **WATCH**: Effect v4 is beta (`4.0.0-beta.100`) — track GA; migrate off beta when a stable v4 ships.
