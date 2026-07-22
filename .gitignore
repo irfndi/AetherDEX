@@ -69,3 +69,7 @@ coverage/
 tmp/
 temp/
 slither-report*.json
+
+# beads per-developer local working cache (regenerated from ROADMAP.md via `bd`).
+# ROADMAP.md is the tracked, authoritative snapshot — do not commit .beads/.
+.beads/
