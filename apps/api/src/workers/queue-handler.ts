@@ -158,7 +158,7 @@ async function handleTradeArchive(msg: TradeArchiveMessage, env: { DB: D1Databas
   console.log(`Archived ${result.results.length} trades to ${key}`)
 }
 
-async function fetchTokenPrice(tokenAddress: string, chainId: string): Promise<number> {
+async function fetchTokenPrice(tokenAddress: string, _chainId: string): Promise<number> {
   try {
     const res = await fetch(
       `https://api.coingecko.com/api/v3/simple/token_price/ethereum?contract_addresses=${tokenAddress}&vs_currencies=usd`,

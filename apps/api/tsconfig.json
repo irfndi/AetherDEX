@@ -3,7 +3,7 @@
   "compilerOptions": {
     "rootDir": "./src",
     "lib": ["es2025", "dom", "dom.iterable"],
-    "types": [],
+    "types": ["node"],
     "jsx": "preserve",
     "exactOptionalPropertyTypes": false,
     "noUncheckedIndexedAccess": false,

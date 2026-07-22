@@ -42,6 +42,7 @@ interface HubMessage {
 
 export class WebSocketHubDO implements DurableObject {
   private ctx: DurableObjectState
+  // biome-ignore lint/correctness/noUnusedPrivateClassMembers: env holds the CACHE KV binding reserved for Phase-0 WebSocket live-data reads
   private env: Env
   private subscribers: Map<WebSocket, Subscriber> = new Map()
   private knownPools: Set<string> = new Set()
