@@ -35,11 +35,19 @@ export interface PoolQueryOptions {
   filterByToken?: string
 }
 
+// --- Errors ---
+
+/** Raised when a pool read from D1 fails, so HTTP callers return 500 instead of 200 `[]`. */
+export class PoolListError {
+  readonly _tag = "PoolListError"
+  constructor(readonly cause: string) {}
+}
+
 // --- Service interface ---
 
 export interface PoolService {
   readonly getPool: (poolId: string) => Effect.Effect<PoolInfo | null>
-  readonly listPools: (options?: PoolQueryOptions) => Effect.Effect<PoolInfo[]>
+  readonly listPools: (options?: PoolQueryOptions) => Effect.Effect<PoolInfo[], PoolListError>
   readonly getPoolByTokens: (token0: string, token1: string, fee: number) => Effect.Effect<PoolInfo | null>
   readonly refreshPool: (poolId: string) => Effect.Effect<PoolInfo>
 }
@@ -63,7 +71,7 @@ const makePoolService = Effect.gen(function* () {
       return rowToPool(rows[0] as Record<string, unknown>)
     }).pipe(Effect.catch(() => Effect.succeed(null as PoolInfo | null)))
 
-  const listPools = (options?: PoolQueryOptions): Effect.Effect<PoolInfo[], never, never> =>
+  const listPools = (options?: PoolQueryOptions): Effect.Effect<PoolInfo[], PoolListError, never> =>
     Effect.gen(function* () {
       const limit = Math.min(options?.limit ?? 50, 200)
       const offset = options?.offset ?? 0
@@ -97,7 +105,7 @@ const makePoolService = Effect.gen(function* () {
         `) as unknown as readonly Record<string, unknown>[]
 
       return rows.map((r: Record<string, unknown>) => rowToPool(r))
-    }).pipe(Effect.catch(() => Effect.succeed([] as PoolInfo[])))
+    }).pipe(Effect.catch((error) => Effect.fail(new PoolListError(String(error)))))
 
   const getPoolByTokens = (token0: string, token1: string, fee: number): Effect.Effect<PoolInfo | null, never, never> =>
     Effect.gen(function* () {
