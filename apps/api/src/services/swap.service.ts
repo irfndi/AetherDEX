@@ -40,7 +40,7 @@ export interface SwapService {
   ) => Effect.Effect<{ to: string; data: string; value: string }>
 }
 
-export const SwapService = Context.GenericTag<SwapService>("@aetherdex/SwapService")
+export const SwapService = Context.Service<SwapService>("@aetherdex/SwapService")
 
 // --- Dependencies (D1 + env injected via Layer) ---
 
@@ -52,7 +52,7 @@ export interface SwapServiceDeps {
   factoryAddress: string
 }
 
-export const SwapServiceDeps = Context.GenericTag<SwapServiceDeps>("@aetherdex/SwapServiceDeps")
+export const SwapServiceDeps = Context.Service<SwapServiceDeps>("@aetherdex/SwapServiceDeps")
 
 // --- AetherRouter ABI (only the function we need) ---
 
@@ -333,7 +333,7 @@ const makeSwapService = (deps: SwapServiceDeps): SwapService => {
         data,
         value: "0", // ERC-20 swap, no ETH value
       }
-    }).pipe(Effect.catchAll((err) => Effect.die(err)))
+    }).pipe(Effect.catch((err) => Effect.die(err)))
 
   return {
     getQuote,

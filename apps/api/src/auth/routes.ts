@@ -11,7 +11,7 @@ auth.use("*", authMiddleware)
 auth.post("/nonce", async (c) => {
   const kv = (c.env as { CACHE: KVNamespace }).CACHE
 
-  const result = await Effect.runPromise(Effect.provide(issueNonce(kv), KVCacheService.Default)).catch((err) => ({
+  const result = await Effect.runPromise(issueNonce(kv).pipe(Effect.provide(KVCacheService.layer))).catch((err) => ({
     error: String(err),
   }))
 
@@ -31,9 +31,8 @@ auth.post("/verify", async (c) => {
   const kv = (c.env as { CACHE: KVNamespace }).CACHE
 
   const result = await Effect.runPromise(
-    Effect.provide(
-      verifyAndCreateSession(kv, { message: body.message, signature: body.signature }),
-      KVCacheService.Default,
+    verifyAndCreateSession(kv, { message: body.message, signature: body.signature }).pipe(
+      Effect.provide(KVCacheService.layer),
     ),
   ).catch((err) => ({ error: String(err) }))
 
@@ -56,7 +55,7 @@ auth.post("/logout", requireAuth, async (c) => {
   const token = c.get("sessionToken")
   if (token) {
     const kv = (c.env as { CACHE: KVNamespace }).CACHE
-    await Effect.runPromise(Effect.provide(deleteSession(kv, token), KVCacheService.Default))
+    await Effect.runPromise(deleteSession(kv, token).pipe(Effect.provide(KVCacheService.layer)))
   }
   return c.json({ ok: true })
 })

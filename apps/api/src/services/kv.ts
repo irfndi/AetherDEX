@@ -4,7 +4,7 @@
  * Uses KV's built-in TTL via expirationTtl
  */
 
-import { Effect, Option } from "effect"
+import { Context, Effect, Layer, Option } from "effect"
 
 export interface PriceEntry {
   tokenAddress: string
@@ -35,8 +35,8 @@ const KEY_PREFIXES = {
 /**
  * KV Cache Service — typed wrapper around KVNamespace
  */
-export class KVCacheService extends Effect.Service<KVCacheService>()("@aetherdex/KVCacheService", {
-  effect: Effect.succeed({
+export class KVCacheService extends Context.Service<KVCacheService>()("@aetherdex/KVCacheService", {
+  make: Effect.succeed({
     /* ============ PRICES ============ */
 
     /**
@@ -154,4 +154,6 @@ export class KVCacheService extends Effect.Service<KVCacheService>()("@aetherdex
         catch: (e) => new Error(`KV delete session failed: ${String(e)}`),
       }).pipe(Effect.asVoid),
   }),
-}) {}
+}) {
+  static readonly layer = Layer.effect(this, this.make)
+}

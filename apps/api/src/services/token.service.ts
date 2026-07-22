@@ -3,8 +3,8 @@
  * Tracks ERC20 tokens, metadata, verification status
  */
 
-import { SqlClient } from "@effect/sql"
 import { Context, Effect, Layer } from "effect"
+import { SqlClient } from "effect/unstable/sql"
 import { rowToToken } from "../db/schema"
 
 // --- Types ---
@@ -40,7 +40,7 @@ export interface TokenService {
 
 // --- Tag ---
 
-export const TokenService = Context.GenericTag<TokenService>("@aetherdex/TokenService")
+export const TokenService = Context.Service<TokenService>("@aetherdex/TokenService")
 
 // --- D1-backed implementation ---
 
@@ -55,7 +55,7 @@ const makeTokenService = Effect.gen(function* () {
       >[]
       if (rows.length === 0) return null
       return rowToToken(rows[0] as Record<string, unknown>)
-    }).pipe(Effect.catchAll(() => Effect.succeed(null as TokenInfo | null)))
+    }).pipe(Effect.catch(() => Effect.succeed(null as TokenInfo | null)))
 
   const listTokens = (options?: TokenSearchOptions): Effect.Effect<TokenInfo[], never, never> =>
     Effect.gen(function* () {
@@ -97,7 +97,7 @@ const makeTokenService = Effect.gen(function* () {
       }
 
       return rows.map((r: Record<string, unknown>) => rowToToken(r))
-    }).pipe(Effect.catchAll(() => Effect.succeed([] as TokenInfo[])))
+    }).pipe(Effect.catch(() => Effect.succeed([] as TokenInfo[])))
 
   const searchTokens = (query: string): Effect.Effect<TokenInfo[], never, never> =>
     Effect.gen(function* () {
@@ -110,7 +110,7 @@ const makeTokenService = Effect.gen(function* () {
         LIMIT 50
       `) as unknown as readonly Record<string, unknown>[]
       return rows.map((r: Record<string, unknown>) => rowToToken(r))
-    }).pipe(Effect.catchAll(() => Effect.succeed([] as TokenInfo[])))
+    }).pipe(Effect.catch(() => Effect.succeed([] as TokenInfo[])))
 
   const getVerifiedTokens = (): Effect.Effect<TokenInfo[], never, never> =>
     Effect.gen(function* () {
@@ -121,7 +121,7 @@ const makeTokenService = Effect.gen(function* () {
         LIMIT 100
       `) as unknown as readonly Record<string, unknown>[]
       return rows.map((r: Record<string, unknown>) => rowToToken(r))
-    }).pipe(Effect.catchAll(() => Effect.succeed([] as TokenInfo[])))
+    }).pipe(Effect.catch(() => Effect.succeed([] as TokenInfo[])))
 
   const upsertToken = (token: Omit<TokenInfo, "createdAt" | "updatedAt">): Effect.Effect<void, never, never> =>
     Effect.gen(function* () {
@@ -137,15 +137,15 @@ const makeTokenService = Effect.gen(function* () {
           total_supply = excluded.total_supply,
           updated_at = excluded.updated_at
       `
-    }).pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+    }).pipe(Effect.catch(() => Effect.succeed(undefined)))
 
-  return TokenService.of({
+  return {
     getToken,
     listTokens,
     searchTokens,
     getVerifiedTokens,
     upsertToken,
-  })
+  }
 })
 
 // --- Live layer (requires SqlClient.SqlClient from D1) ---

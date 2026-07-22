@@ -52,7 +52,7 @@ swap.get("/quote", async (c) => {
         slippageTolerance,
       })
     })
-    const quote = await Effect.runPromise(Effect.provide(program, SwapServiceLive.pipe(Layer.provide(depsLayer))))
+    const quote = await Effect.runPromise(program.pipe(Effect.provide(SwapServiceLive.pipe(Layer.provide(depsLayer)))))
     return c.json(quote)
   } catch (err) {
     return c.json({ error: String(err) }, 500)
@@ -96,7 +96,9 @@ swap.post("/build", async (c) => {
       const swapService = yield* SwapService
       return yield* swapService.buildCalldata(quote, recipient)
     })
-    const calldata = await Effect.runPromise(Effect.provide(program, SwapServiceLive.pipe(Layer.provide(depsLayer))))
+    const calldata = await Effect.runPromise(
+      program.pipe(Effect.provide(SwapServiceLive.pipe(Layer.provide(depsLayer)))),
+    )
     return c.json(calldata)
   } catch (err) {
     return c.json({ error: String(err) }, 500)

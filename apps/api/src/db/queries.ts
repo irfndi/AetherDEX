@@ -2,8 +2,8 @@
  * AetherDEX typed query helpers
  */
 
-import { SqlClient } from "@effect/sql"
 import { Effect } from "effect"
+import { SqlClient } from "effect/unstable/sql"
 import { type Pool, rowToPool, rowToToken, rowToTransaction, rowToUser, type Token, type Transaction } from "./schema"
 
 /* ============ TOKENS ============ */

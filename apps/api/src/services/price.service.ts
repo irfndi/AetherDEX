@@ -35,7 +35,7 @@ export interface PriceService {
 
 // --- Tag ---
 
-export const PriceService = Context.GenericTag<PriceService>("@aetherdex/PriceService")
+export const PriceService = Context.Service<PriceService>("@aetherdex/PriceService")
 
 // --- Dependencies (KV + D1 bindings injected via Layer) ---
 
@@ -44,7 +44,7 @@ export interface PriceServiceDeps {
   db: D1Database
 }
 
-export const PriceServiceDeps = Context.GenericTag<PriceServiceDeps>("@aetherdex/PriceServiceDeps")
+export const PriceServiceDeps = Context.Service<PriceServiceDeps>("@aetherdex/PriceServiceDeps")
 
 // --- Constants ---
 
@@ -156,7 +156,7 @@ function writeD1Price(db: D1Database, data: PriceData): Effect.Effect<void, neve
     catch: () => undefined, // best-effort — don't fail the caller
   })
     .pipe(Effect.asVoid)
-    .pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+    .pipe(Effect.catch(() => Effect.succeed(undefined)))
 }
 
 // --- KV cache read/write ---
@@ -175,7 +175,7 @@ function readKvPrice(kv: KVNamespace, tokenAddress: string): Effect.Effect<Optio
       })
     },
     catch: () => Option.none<PriceData>(),
-  }).pipe(Effect.catchAll(() => Effect.succeed(Option.none<PriceData>() as Option.Option<PriceData>)))
+  }).pipe(Effect.catch(() => Effect.succeed(Option.none<PriceData>() as Option.Option<PriceData>)))
 }
 
 function writeKvPrice(kv: KVNamespace, data: PriceData): Effect.Effect<void, never> {
@@ -190,7 +190,7 @@ function writeKvPrice(kv: KVNamespace, data: PriceData): Effect.Effect<void, nev
       )
     },
     catch: () => undefined, // best-effort
-  }).pipe(Effect.catchAll(() => Effect.succeed(undefined))) as Effect.Effect<void, never>
+  }).pipe(Effect.catch(() => Effect.succeed(undefined))) as Effect.Effect<void, never>
 }
 
 // --- Core: fetch from external sources and persist ---
@@ -202,7 +202,7 @@ function fetchExternalPrice(
 ): Effect.Effect<PriceData, PriceFetchError> {
   // Try CoinGecko first, fall back to DexScreener
   return fetchFromCoinGecko(tokenAddress).pipe(
-    Effect.catchAll(() => fetchFromDexScreener(tokenAddress)),
+    Effect.catch(() => fetchFromDexScreener(tokenAddress)),
     Effect.tap((data) => writeD1Price(db, data)),
     Effect.tap((data) => writeKvPrice(kv, data)),
   )
