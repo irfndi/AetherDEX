@@ -5,146 +5,502 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  # Echidna fuzzing runs on a weekly schedule (and on contract changes); every other
+  # job opts out of scheduled runs.
+  schedule:
+    - cron: "30 5 * * 1" # Weekly, Monday 05:30 UTC
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Deny-by-default: every job inherits read-only contents unless it declares more.
+permissions:
+  contents: read
+
+env:
+  # Pin Foundry to a reproducible release (matches the toolchain developers run locally).
+  FOUNDRY_VERSION: v1.7.1
+
 jobs:
-  contracts:
-    name: Contracts (Foundry)
+  # ---------------------------------------------------------------------------
+  # Change detection (path filters). Speeds CI by skipping untouched workspaces.
+  # ---------------------------------------------------------------------------
+  detect-changes:
+    name: Detect changes
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # dorny/paths-filter reads PR file lists on pull_request
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      contracts: ${{ steps.filter.outputs.contracts }}
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: foundry-rs/foundry-toolchain@v1
-      - uses: actions/setup-node@v7
+      - name: Filter by changed paths
+        if: ${{ github.event_name != 'schedule' }}
+        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4
+        id: filter
         with:
-          node-version: "24"
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: canary
-      - name: Install deps
-        run: bun install --frozen-lockfile
-      - name: Install forge dependencies
-        working-directory: packages/contracts
-        run: |
-          forge install foundry-rs/forge-std --no-git --shallow
-          forge install Uniswap/v4-core --no-git --shallow
-          forge install OpenZeppelin/openzeppelin-contracts@v5.5.0 --no-git --shallow
-      - name: Build contracts
-        working-directory: packages/contracts
-        run: forge build --via-ir
-      - name: Run tests
-        working-directory: packages/contracts
-        run: forge test -vvv
-      - name: Coverage
-        working-directory: packages/contracts
-        run: forge coverage --report summary --ir-minimum
-        continue-on-error: true
-      - name: Slither static analysis
-        working-directory: packages/contracts
-        run: |
-          if command -v slither &> /dev/null; then
-            slither . --filter-paths "lib/|test/" || true
-          else
-            echo "Slither not installed, skipping"
-          fi
-        continue-on-error: true
-      - name: Upload coverage
-        if: always()
-        uses: codecov/codecov-action@v7
-        with:
-          files: packages/contracts/coverage.lcov
-          flags: contracts
-          fail_ci_if_error: false
+          # Shared/root changes that can affect any workspace.
+          filters: |
+            code:
+              - 'src/**'
+              - 'tooling/**'
+              - 'apps/**'
+              - 'packages/**'
+              - 'package.json'
+              - 'bun.lock'
+              - 'tsconfig.json'
+              - 'apps/**/tsconfig.json'
+              - 'biome.json'
+              - 'vitest.config.ts'
+              - '.github/actions/**'
+              - '.github/workflows/ci.yml'
+            contracts:
+              - 'packages/contracts/**'
+              - 'package.json'
+              - 'bun.lock'
+              - '.github/actions/**'
+              - '.github/workflows/ci.yml'
+            backend:
+              - 'apps/api/**'
+              - 'package.json'
+              - 'bun.lock'
+              - 'tsconfig.json'
+              - 'biome.json'
+              - 'vitest.config.ts'
+              - '.github/actions/**'
+              - '.github/workflows/ci.yml'
+            frontend:
+              - 'apps/web/**'
+              - 'package.json'
+              - 'bun.lock'
+              - 'tsconfig.json'
+              - 'biome.json'
+              - 'vitest.config.ts'
+              - '.github/actions/**'
+              - '.github/workflows/ci.yml'
 
-  backend:
-    name: Backend (Workers + Effect)
+  # ---------------------------------------------------------------------------
+  # Fast quality gate: workspace typecheck + repo-wide Biome lint.
+  # Runs on any code change. (Root tsconfig excludes apps/**, so the per-workspace
+  # typechecks below cover the apps.)
+  # ---------------------------------------------------------------------------
+  quality:
+    name: Typecheck + Lint
     runs-on: ubuntu-latest
+    needs: detect-changes
+    if: ${{ github.event_name != 'schedule' && needs.detect-changes.outputs.code == 'true' }}
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "24"
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: canary
-      - name: Install deps
-        run: bun install --frozen-lockfile
+      - name: Setup workspace
+        uses: ./.github/actions/setup
       - name: Typecheck
         run: bun run typecheck
       - name: Lint
         run: bun run lint
+
+  # ---------------------------------------------------------------------------
+  # Contracts: Foundry build/test, enforced coverage (>=90%), gated Slither.
+  # ---------------------------------------------------------------------------
+  contracts:
+    name: Contracts (Foundry)
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: ${{ github.event_name != 'schedule' && needs.detect-changes.outputs.contracts == 'true' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Setup workspace
+        uses: ./.github/actions/setup
+
+      - name: Install Foundry (pinned)
+        uses: foundry-rs/foundry-toolchain@b00af27efadbc7b4ca8b82abbd903b17cc874d2a # v1
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+
+      # Cache the (otherwise uncommitted) Foundry libs and build artifacts so we do not
+      # re-clone v4-core / forge-std / OZ and recompile on every run.
+      - name: Cache Foundry libs + build artifacts
+        id: foundry-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            packages/contracts/lib
+            packages/contracts/out
+            packages/contracts/cache
+          key: ${{ runner.os }}-foundry-${{ env.FOUNDRY_VERSION }}-${{ hashFiles('packages/contracts/foundry.toml', 'packages/contracts/remappings.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-foundry-${{ env.FOUNDRY_VERSION }}-
+
+      # lib/ is tracked only as orphaned gitlinks (no .gitmodules), so a fresh checkout
+      # leaves it empty. Install pinned versions, but only on a cache miss.
+      - name: Install contract libs (pinned, cache-miss only)
+        if: steps.foundry-cache.outputs.cache-hit != 'true'
+        working-directory: packages/contracts
+        run: |
+          set -euo pipefail
+          rm -rf lib
+          # Pins reproduce the exact commits recorded as gitlinks in the working tree;
+          # OpenZeppelin is pinned to the v5.5.0 release tag.
+          forge install foundry-rs/forge-std@ebc60f500bc6870baaf321a0196fddc24d6edb03 --no-git
+          forge install Uniswap/v4-core@d153b048868a60c2403a3ef5b2301bb247884d46 --no-git
+          forge install OpenZeppelin/openzeppelin-contracts@v5.5.0 --no-git
+
+      - name: Build
+        working-directory: packages/contracts
+        run: forge build --via-ir
+
+      - name: Test
+        working-directory: packages/contracts
+        run: forge test -vvv
+
+      - name: Coverage (enforce >= 90%)
+        working-directory: packages/contracts
+        run: |
+          set -euo pipefail
+          forge coverage --report summary --report lcov --ir-minimum | tee coverage-summary.txt
+          python3 - <<'PY'
+          import re, sys
+
+          total = None
+          with open("coverage-summary.txt") as fh:
+              for line in fh:
+                  if line.strip().lower().startswith(("| total", "total")):
+                      total = line
+                      break
+
+          if total is None:
+              sys.exit("Could not find a 'Total' line in the forge coverage summary")
+
+          # A summary row (forge >= 1.x) looks like:
+          #   | Total | 66.67% (2/3) | 57.14% (4/7) | 0.00% (0/1) | 66.67% (2/3) |
+          # Columns are % Lines | % Statements | % Branches | % Funcs. Take the FIRST
+          # number in each of the four cells after 'Total' (the percentage); this is
+          # robust to the trailing "(hits/found)" hit-count annotation.
+          cells = [c.strip() for c in total.strip().strip("|").split("|")]
+
+          def first_num(cell):
+              m = re.search(r"(\d+(?:\.\d+)?)", cell)
+              return float(m.group(1)) if m else None
+
+          vals = [first_num(cell) for cell in cells[1:5]]
+          if len(vals) < 4 or any(v is None for v in vals):
+              sys.exit(f"Could not parse coverage columns from: {total!r}")
+
+          lines, statements, branches, funcs = vals
+          print(
+              f"Coverage -> lines: {lines}%  statements: {statements}%  "
+              f"branches: {branches}%  funcs: {funcs}%"
+          )
+
+          # Hard-gate on the canonical coverage metrics (line/statement/function). Branch
+          # coverage is reported but NOT gated: it is noisy and "coverage > 90%" denotes
+          # line/statement coverage, not branch coverage.
+          threshold = 90.0
+          gated = [("lines", lines), ("statements", statements), ("functions", funcs)]
+          failed = [f"{name} {value}% < {threshold}%" for name, value in gated if value < threshold]
+          if failed:
+              sys.exit("Coverage below 90% threshold -> " + "; ".join(failed))
+          print(f"Coverage meets the >= 90% threshold (branches {branches}% reported, not gated)")
+          PY
+
+      - name: Install Slither + solc
+        run: |
+          set -euo pipefail
+          pip3 install --no-cache-dir slither-analyzer solc-select
+          solc-select install 0.8.31
+          solc-select use 0.8.31
+
+      - name: Slither static analysis (gate on high/medium)
+        working-directory: packages/contracts
+        run: |
+          set -euo pipefail
+          # Hard gate: fail the job on any high or medium finding in project sources.
+          # Vendored deps (lib/) and tests/scripts/build artifacts are excluded.
+          slither . --fail-high --fail-medium --exclude-dependencies \
+            --filter-paths "lib|test|script|out|cache"
+
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
+        with:
+          files: packages/contracts/lcov.info
+          flags: contracts
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  # ---------------------------------------------------------------------------
+  # Backend (Cloudflare Workers + Effect). Typecheck + tests + enforced coverage.
+  # ---------------------------------------------------------------------------
+  backend:
+    name: Backend (Workers + Effect)
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: ${{ github.event_name != 'schedule' && needs.detect-changes.outputs.backend == 'true' }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - name: Setup workspace
+        uses: ./.github/actions/setup
+
+      - name: Typecheck
+        run: bun run typecheck
+
       - name: Test
         run: bun run test
-        continue-on-error: true  # apps don't have tests yet
-      - name: Coverage
+
+      - name: Coverage (collect)
         run: bun run test:coverage
-        continue-on-error: true
-      - name: Upload coverage
+
+      - name: Enforce 70% line coverage
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import sys
+
+          path = "coverage/lcov.info"
+          found = hit = 0
+          try:
+              with open(path) as fh:
+                  for line in fh:
+                      if line.startswith("LF:"):
+                          found += int(line.split(":", 1)[1].strip())
+                      elif line.startswith("LH:"):
+                          hit += int(line.split(":", 1)[1].strip())
+          except FileNotFoundError:
+              sys.exit(f"Coverage file not found: {path} (did `bun run test:coverage` run?)")
+
+          if found == 0:
+              sys.exit("No covered lines recorded (LF=0); cannot evaluate the threshold")
+
+          pct = hit / found * 100
+          print(f"Backend line coverage: {hit}/{found} = {pct:.2f}%")
+          if pct < 70.0:
+              sys.exit(f"Backend line coverage {pct:.2f}% is below the 70% threshold")
+          print("Backend coverage meets the >= 70% threshold")
+          PY
+
+      - name: Upload coverage to Codecov
         if: always()
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
         with:
           files: apps/api/coverage/lcov.info
           flags: backend
           fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
 
+  # ---------------------------------------------------------------------------
+  # Frontend (Vite + React). Route tree -> typecheck -> test -> build -> coverage.
+  # apps/web's vitest.config already enforces 70% coverage thresholds.
+  # ---------------------------------------------------------------------------
   frontend:
     name: Frontend (Vite + React)
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "24"
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: canary
-      - name: Install deps
-        run: bun install --frozen-lockfile
-      - name: Generate route tree
+    needs: detect-changes
+    if: ${{ github.event_name != 'schedule' && needs.detect-changes.outputs.frontend == 'true' }}
+    permissions:
+      contents: read
+    defaults:
+      run:
         working-directory: apps/web
-        run: bunx @tanstack/router-cli generate
+    steps:
+      - name: Setup workspace
+        uses: ./.github/actions/setup
+
+      - name: Generate route tree
+        run: bunx tsr generate
 
       - name: Typecheck
-        working-directory: apps/web
         run: bun run typecheck
-      - name: Lint
-        working-directory: apps/web
-        run: bun run lint
+
       - name: Test
-        working-directory: apps/web
         run: bun run test
-        continue-on-error: true
+
       - name: Build
-        working-directory: apps/web
         run: bun run build
-        continue-on-error: true  # apps don't have build yet
-      - name: Coverage
-        working-directory: apps/web
+
+      - name: Coverage (enforce >= 70%, configured in vitest.config.ts)
         run: bun run test:coverage
-        continue-on-error: true
-      - name: Upload coverage
+
+      - name: Upload coverage to Codecov
         if: always()
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
         with:
           files: apps/web/coverage/lcov.info
           flags: frontend
           fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
 
+  # ---------------------------------------------------------------------------
+  # Playwright E2E (apps/web test:e2e). Advisory for now: real failures show red on
+  # this job, but it is NOT wired into the ci-status gate until the suite stabilises.
+  # ---------------------------------------------------------------------------
+  e2e:
+    name: E2E (Playwright) — advisory
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: ${{ github.event_name != 'schedule' && needs.detect-changes.outputs.frontend == 'true' }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - name: Setup workspace
+        uses: ./.github/actions/setup
+
+      - name: Generate route tree
+        run: bunx tsr generate
+
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+
+      # Equivalent to apps/web's `test:e2e` (playwright test); called directly so the
+      # --pass-with-no-tests flag is unambiguous. The flag guards against a temporarily
+      # empty suite — existing specs in apps/web/test/e2e run and must pass.
+      - name: Run E2E
+        run: bunx playwright test --pass-with-no-tests
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # Echidna fuzzing (advisory). Real tooling is installed and run, but the existing
+  # suite is Foundry-style invariant fuzzing, not Echidna property/assertion harnesses.
+  # Promoting to a hard gate needs an Echidna config + `echidna_*` properties (owned by
+  # the contracts workstream, out of scope here) — so it is continue-on-error and is
+  # NOT part of the ci-status gate.
+  # ---------------------------------------------------------------------------
+  echidna:
+    name: Echidna fuzz — advisory
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: ${{ github.event_name == 'schedule' || needs.detect-changes.outputs.contracts == 'true' }}
+    permissions:
+      contents: read
+    continue-on-error: true
+    env:
+      ECHIDNA_VERSION: v2.3.2
+    steps:
+      - name: Setup workspace
+        uses: ./.github/actions/setup
+
+      - name: Install Foundry (pinned)
+        uses: foundry-rs/foundry-toolchain@b00af27efadbc7b4ca8b82abbd903b17cc874d2a # v1
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+
+      - name: Cache Foundry libs + build artifacts
+        id: echidna-foundry-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            packages/contracts/lib
+            packages/contracts/out
+            packages/contracts/cache
+          key: ${{ runner.os }}-foundry-${{ env.FOUNDRY_VERSION }}-${{ hashFiles('packages/contracts/foundry.toml', 'packages/contracts/remappings.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-foundry-${{ env.FOUNDRY_VERSION }}-
+
+      - name: Install contract libs (pinned, cache-miss only)
+        if: steps.echidna-foundry-cache.outputs.cache-hit != 'true'
+        working-directory: packages/contracts
+        run: |
+          set -euo pipefail
+          rm -rf lib
+          forge install foundry-rs/forge-std@ebc60f500bc6870baaf321a0196fddc24d6edb03 --no-git
+          forge install Uniswap/v4-core@d153b048868a60c2403a3ef5b2301bb247884d46 --no-git
+          forge install OpenZeppelin/openzeppelin-contracts@v5.5.0 --no-git
+
+      - name: Build contracts
+        working-directory: packages/contracts
+        run: forge build --via-ir
+
+      - name: Install Echidna + solc
+        run: |
+          set -euo pipefail
+          # Official static linux binary (x86_64) for Ubuntu runners.
+          url="https://github.com/crytic/echidna/releases/download/${ECHIDNA_VERSION}/echidna-${ECHIDNA_VERSION#v}-x86_64-linux.tar.gz"
+          curl -fsSL "$url" -o /tmp/echidna.tar.gz
+          tar -xzf /tmp/echidna.tar.gz -C /tmp echidna
+          sudo mv /tmp/echidna /usr/local/bin/echidna
+          echo "Echidna version: $(echidna --version)"
+          pip3 install --no-cache-dir solc-select
+          solc-select install 0.8.31
+          solc-select use 0.8.31
+
+      - name: Run Echidna (assertion mode)
+        working-directory: packages/contracts
+        run: |
+          set -euo pipefail
+          # Compile + fuzz the hook's bytecode for assertion violations. Crytic-compile
+          # auto-detects foundry.toml for import/remapping resolution. A dedicated
+          # Echidna config + property harness will sharpen and eventually gate this.
+          echidna src/hook/AetherHook.sol \
+            --contract AetherHook \
+            --test-mode assertion \
+            --corpus-dir /tmp/echidna-corpus \
+            --test-limit 50000
+
+  # ---------------------------------------------------------------------------
+  # Required status gate. Required jobs must be success or skipped (path-filtered out);
+  # 'cancelled' is treated as neutral (superseded/manual stop). failure/timed_out FAIL.
+  # ---------------------------------------------------------------------------
   ci-status:
     name: CI Status
     runs-on: ubuntu-latest
-    needs: [contracts, backend, frontend]
-    if: always()
+    needs: [detect-changes, quality, contracts, backend, frontend]
+    if: ${{ github.event_name != 'schedule' && always() }}
+    permissions:
+      contents: read
     steps:
-      - name: Check all jobs passed
+      - name: Evaluate required jobs
+        env:
+          DETECT: ${{ needs.detect-changes.result }}
+          QUALITY: ${{ needs.quality.result }}
+          CONTRACTS: ${{ needs.contracts.result }}
+          BACKEND: ${{ needs.backend.result }}
+          FRONTEND: ${{ needs.frontend.result }}
         run: |
-          if [ "${{ needs.contracts.result }}" != "success" ] || \
-             [ "${{ needs.backend.result }}" != "success" ] || \
-             [ "${{ needs.frontend.result }}" != "success" ]; then
-            echo "One or more jobs failed"
+          set -euo pipefail
+          fail=0
+          check() {
+            name="$1"
+            result="$2"
+            case "$result" in
+              success | skipped | cancelled)
+                echo "[${name}] ${result} -> OK"
+                ;;
+              *)
+                echo "[${name}] ${result} -> FAIL"
+                fail=1
+                ;;
+            esac
+          }
+          check "detect-changes" "${DETECT}"
+          check "quality" "${QUALITY}"
+          check "contracts" "${CONTRACTS}"
+          check "backend" "${BACKEND}"
+          check "frontend" "${FRONTEND}"
+
+          if [ "${fail}" -ne 0 ]; then
+            echo "One or more required jobs did not pass."
             exit 1
           fi
-          echo "All jobs passed"
+          echo "All required jobs passed (success/skipped/cancelled)."
