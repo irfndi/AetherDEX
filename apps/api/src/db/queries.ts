@@ -4,16 +4,7 @@
 
 import { Effect } from "effect"
 import { SqlClient } from "effect/unstable/sql"
-import {
-  type Pool,
-  rowToLiquidityPosition,
-  rowToPool,
-  rowToToken,
-  rowToTransaction,
-  rowToUser,
-  type Token,
-  type Transaction,
-} from "./schema"
+import { type Pool, rowToPool, rowToToken, rowToTransaction, rowToUser, type Token, type Transaction } from "./schema"
 
 /* ============ TOKENS ============ */
 
@@ -123,57 +114,6 @@ export const getUser = (address: string) =>
     const rows = yield* sql`SELECT * FROM users WHERE address = ${address}`
     if (rows.length === 0) return null
     return rowToUser(rows[0] as Record<string, unknown>)
-  })
-
-/* ============ LIQUIDITY POSITIONS ============ */
-
-export const getPositionsByUser = (userAddress: string, limit = 100) =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient
-    const rows = yield* sql`
-      SELECT * FROM liquidity_positions
-      WHERE user_address = ${userAddress} AND is_active = 1
-      ORDER BY created_at DESC
-      LIMIT ${limit}
-    `
-    return rows.map((r) => rowToLiquidityPosition(r as Record<string, unknown>))
-  })
-
-export interface InsertPositionInput {
-  userAddress: string
-  poolId: string
-  tickLower: number
-  tickUpper: number
-  liquidity: string
-  amount0: string
-  amount1: string
-}
-
-/** Raised when INSERT … RETURNING id yields no id, so a failed insert fails the Effect instead of returning a bogus `0` positionId. */
-export class InsertPositionError {
-  readonly _tag = "InsertPositionError"
-  constructor(readonly message: string) {}
-}
-
-export const insertPosition = (input: InsertPositionInput) =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient
-    const now = Date.now()
-    const rows = yield* sql`
-      INSERT INTO liquidity_positions
-        (user_address, pool_id, tick_lower, tick_upper, liquidity, amount0, amount1,
-         fees_earned_token0, fees_earned_token1, is_active, created_at, updated_at)
-      VALUES (${input.userAddress}, ${input.poolId}, ${input.tickLower}, ${input.tickUpper}, ${input.liquidity}, ${input.amount0}, ${input.amount1}, '0', '0', 1, ${now}, ${now})
-      RETURNING id
-    `
-    const first = rows[0] as Record<string, unknown> | undefined
-    const id = first?.id
-    if (typeof id !== "number") {
-      return yield* Effect.fail(
-        new InsertPositionError("INSERT INTO liquidity_positions returned no id — insert failed"),
-      )
-    }
-    return id
   })
 
 /* ============ SWAP RECORD ============ */

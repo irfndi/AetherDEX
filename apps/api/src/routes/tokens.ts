@@ -1,13 +1,22 @@
 /**
- * AetherDEX Token HTTP endpoints
- * Token list, detail, search — resolved through TokenService (Effect), D1 as single path.
+ * AetherDEX Token HTTP endpoints — Phase 0 G4
+ *
+ * Tokens come from the canonical Uniswap default token list (fetched +
+ * validated: schema + EIP-55 checksums + chainId filter), served through
+ * TokenListService. The D1 `tokens` table is only a write-through cache of
+ * that list — never a separately curated source.
  */
 
 import { Effect, Layer } from "effect"
 import { Hono } from "hono"
 import { makeDbLayer } from "../db/client"
 import { runEffect } from "../lib/effect-bridge"
-import { TokenService, TokenServiceLive } from "../services/token.service"
+import {
+  makeTokenListFetcherLayer,
+  TokenListService,
+  TokenListServiceDeps,
+  TokenListServiceLive,
+} from "../services/token-list.service"
 
 type Bindings = {
   DB: D1Database
@@ -15,27 +24,42 @@ type Bindings = {
   STORAGE: R2Bucket
   CHAIN_ID: string
   ENVIRONMENT: string
+  TOKEN_LIST_URL?: string
 }
+
+const DEFAULT_TOKEN_LIST_URL = "https://tokens.uniswap.org"
+const CACHE_TTL_SECONDS = 6 * 60 * 60
 
 const tokens = new Hono<{ Bindings: Bindings }>()
 
-const tokenLayer = (db: D1Database) => TokenServiceLive.pipe(Layer.provide(makeDbLayer(db)))
+const tokenListLayer = (env: Bindings) => {
+  const chainId = Number.parseInt(env.CHAIN_ID, 10)
+  const depsLayer = Layer.succeed(TokenListServiceDeps, {
+    kv: env.CACHE,
+    chainId: Number.isNaN(chainId) ? 1 : chainId,
+    cacheTtlSeconds: CACHE_TTL_SECONDS,
+  })
+  return TokenListServiceLive.pipe(
+    Layer.provide(makeTokenListFetcherLayer(env.TOKEN_LIST_URL ?? DEFAULT_TOKEN_LIST_URL)),
+    Layer.provide(makeDbLayer(env.DB)),
+    Layer.provide(depsLayer),
+  )
+}
 
 /**
  * GET /api/v1/tokens?verified=true&search=eth&limit=100
  */
 tokens.get("/", async (c) => {
   const limit = Math.min(Number.parseInt(c.req.query("limit") ?? "100", 10), 500)
-  const verified = c.req.query("verified") === "true"
   const search = c.req.query("search")
 
   try {
     const program = Effect.gen(function* () {
-      const tokenService = yield* TokenService
-      return yield* tokenService.listTokens({ limit, verified, query: search })
+      const tokenList = yield* TokenListService
+      return yield* tokenList.listTokens({ limit, query: search })
     })
-    const tokenList = await runEffect(program.pipe(Effect.provide(tokenLayer(c.env.DB))))
-    return c.json({ tokens: tokenList, count: tokenList.length })
+    const list = await runEffect(program.pipe(Effect.provide(tokenListLayer(c.env))))
+    return c.json({ tokens: list, count: list.length })
   } catch (err) {
     return c.json({ error: String(err) }, 500)
   }
@@ -52,10 +76,10 @@ tokens.get("/:address", async (c) => {
 
   try {
     const program = Effect.gen(function* () {
-      const tokenService = yield* TokenService
-      return yield* tokenService.getToken(address)
+      const tokenList = yield* TokenListService
+      return yield* tokenList.getToken(address)
     })
-    const token = await runEffect(program.pipe(Effect.provide(tokenLayer(c.env.DB))))
+    const token = await runEffect(program.pipe(Effect.provide(tokenListLayer(c.env))))
 
     if (!token) {
       return c.json({ error: "Token not found" }, 404)

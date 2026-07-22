@@ -1,5 +1,8 @@
+import type { Token as DefaultListToken } from "@aetherdex/shared"
+import { Effect } from "effect"
 import { Fragment, useCallback, useEffect, useRef, useState } from "react"
 import { isValidAddress, shortenAddress } from "../lib/address"
+import { fetchTokenByAddress, fetchTokens } from "../lib/api"
 
 export interface Token {
   address: string
@@ -7,6 +10,16 @@ export interface Token {
   name: string
   decimals: number
   logoURI?: string
+}
+
+function toToken(t: DefaultListToken): Token {
+  return {
+    address: t.address,
+    symbol: t.symbol,
+    name: t.name,
+    decimals: t.decimals,
+    ...(t.logoUrl ? { logoURI: t.logoUrl } : {}),
+  }
 }
 
 interface TokenSearchProps {
@@ -32,35 +45,7 @@ function isSafeImageUrl(url: string): boolean {
   }
 }
 
-const DEFAULT_TOKENS: Token[] = [
-  {
-    address: "0x0000000000000000000000000000000000000000",
-    symbol: "ETH",
-    name: "Ether",
-    decimals: 18,
-    logoURI: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png",
-  },
-  {
-    address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-    symbol: "USDC",
-    name: "USD Coin",
-    decimals: 6,
-    logoURI:
-      "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png",
-  },
-  {
-    address: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-    symbol: "USDT",
-    name: "Tether USD",
-    decimals: 6,
-  },
-  {
-    address: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
-    symbol: "DAI",
-    name: "Dai Stablecoin",
-    decimals: 18,
-  },
-]
+const DEFAULT_LIST_LIMIT = 100
 
 function TokenListItem({ token, isSelected, onSelect }: { token: Token; isSelected: boolean; onSelect: () => void }) {
   return (
@@ -88,11 +73,18 @@ function TokenListItem({ token, isSelected, onSelect }: { token: Token; isSelect
   )
 }
 
+/**
+ * Token search backed by the API's `/tokens` endpoint — the canonical Uniswap
+ * default token list (server-validated + chainId-filtered). No hardcoded or
+ * custom-curated lists.
+ */
 export function TokenSearch({ onSelect, selectedToken, placeholder = "Search token" }: TokenSearchProps) {
   const [query, setQuery] = useState("")
   const [isOpen, setIsOpen] = useState(false)
   const [results, setResults] = useState<Token[]>([])
+  const [defaultTokens, setDefaultTokens] = useState<Token[]>([])
   const [isSearching, setIsSearching] = useState(false)
+  const defaultsLoadedRef = useRef(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -106,6 +98,24 @@ export function TokenSearch({ onSelect, selectedToken, placeholder = "Search tok
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
+  // Load the default-list top tokens once, when the picker first opens.
+  useEffect(() => {
+    if (!isOpen || defaultsLoadedRef.current) return
+    defaultsLoadedRef.current = true
+    let cancelled = false
+    Effect.runPromise(fetchTokens({ limit: DEFAULT_LIST_LIMIT }))
+      .then((res) => {
+        if (cancelled) return
+        setDefaultTokens(res.tokens.map(toToken))
+      })
+      .catch(() => {
+        if (!cancelled) setDefaultTokens([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen])
+
   const searchTokens = useCallback(async (searchQuery: string) => {
     if (!searchQuery.trim()) {
       setResults([])
@@ -113,27 +123,15 @@ export function TokenSearch({ onSelect, selectedToken, placeholder = "Search tok
       return
     }
 
-    if (isValidAddress(searchQuery)) {
-      setIsSearching(true)
-      try {
-        const found = DEFAULT_TOKENS.find((t) => t.address.toLowerCase() === searchQuery.toLowerCase())
-        setResults(found ? [found] : [])
-      } catch {
-        setResults([])
-      } finally {
-        setIsSearching(false)
-      }
-      return
-    }
-
     setIsSearching(true)
     try {
-      const filtered = DEFAULT_TOKENS.filter(
-        (t) =>
-          t.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          t.name.toLowerCase().includes(searchQuery.toLowerCase()),
-      )
-      setResults(filtered)
+      if (isValidAddress(searchQuery)) {
+        const found = await Effect.runPromise(fetchTokenByAddress(searchQuery))
+        setResults(found ? [toToken(found)] : [])
+        return
+      }
+      const res = await Effect.runPromise(fetchTokens({ query: searchQuery, limit: 50 }))
+      setResults(res.tokens.map(toToken))
     } catch {
       setResults([])
     } finally {
@@ -218,7 +216,7 @@ export function TokenSearch({ onSelect, selectedToken, placeholder = "Search tok
             ))}
 
             {!query.trim() &&
-              DEFAULT_TOKENS.map((token) => (
+              defaultTokens.map((token) => (
                 <TokenListItem
                   key={token.address}
                   token={token}
