@@ -28,10 +28,20 @@ const respondJson = (body: unknown) =>
     new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } }),
   )
 
+const queryContext = () => ({ signal: new AbortController().signal })
+
+const runQueryFn = async (opts: ReturnType<typeof poolsQueryOptions>, context: { signal: AbortSignal }) => {
+  const queryFn = opts.queryFn as (ctx: { signal: AbortSignal }) => Promise<{ count: number; pools: unknown[] }>
+  return queryFn(context)
+}
+
 describe("shared typed pools resolver", () => {
-  it("exposes the shared query key", () => {
-    const opts = poolsQueryOptions(25)
-    expect(opts.queryKey).toEqual(["pools", { limit: 25, offset: 0 }])
+  it("exposes the shared query key including filters", () => {
+    const opts = poolsQueryOptions(25, 0, { sortBy: "volume", filterToken: "0xtok" })
+    expect(opts.queryKey).toEqual([
+      "pools",
+      { limit: 25, offset: 0, sortBy: "volume", sortDirection: "desc", filterToken: "0xtok" },
+    ])
   })
 
   it("decodes a valid payload through the shared PoolListResponseSchema", async () => {
@@ -45,10 +55,39 @@ describe("shared typed pools resolver", () => {
   it("runs through the TanStack queryFn", async () => {
     respondJson(validPayload)
     const opts = poolsQueryOptions(25)
-    const queryFn = opts.queryFn as () => Promise<{ count: number; pools: unknown[] }>
-    const result = await queryFn()
+    const result = await runQueryFn(opts, queryContext())
     expect(result.count).toBe(1)
     expect(result.pools).toHaveLength(1)
+  })
+
+  it("forwards the TanStack abort signal to the underlying fetch", async () => {
+    respondJson(validPayload)
+    const opts = poolsQueryOptions(25)
+    const context = queryContext()
+    await runQueryFn(opts, context)
+    const lastFetchCall = vi.mocked(globalThis.fetch).mock.calls.at(-1)
+    expect(lastFetchCall?.[1]?.signal).toBe(context.signal)
+  })
+
+  it("rejects when the query is aborted", async () => {
+    vi.mocked(globalThis.fetch).mockImplementationOnce(async (_input, init) => {
+      if (init?.signal?.aborted) {
+        throw new DOMException("The operation was aborted.", "AbortError")
+      }
+      return new Response(JSON.stringify(validPayload), { status: 200 })
+    })
+    const controller = new AbortController()
+    controller.abort()
+    await expect(runQueryFn(poolsQueryOptions(25), { signal: controller.signal })).rejects.toThrow()
+  })
+
+  it("sends sortBy and filterToken query params when provided", async () => {
+    respondJson(validPayload)
+    await Effect.runPromise(listPools(10, 5, { sortBy: "fees", filterToken: "0xtok" }))
+    const lastFetchCall = vi.mocked(globalThis.fetch).mock.calls.at(-1)
+    const url = String(lastFetchCall?.[0])
+    expect(url).toContain("sortBy=fees")
+    expect(url).toContain("filterToken=0xtok")
   })
 
   it("rejects payloads that violate the shared schema", async () => {
