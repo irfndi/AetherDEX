@@ -99,13 +99,16 @@ export function TokenSearch({ onSelect, selectedToken, placeholder = "Search tok
   }, [])
 
   // Load the default-list top tokens once, when the picker first opens.
+  // Mark "loaded" only after a RETAINED successful response — on failure or on
+  // unmount/cancel the flag stays unset so reopening the picker retries instead of
+  // showing an empty default list for the component's lifetime.
   useEffect(() => {
     if (!isOpen || defaultsLoadedRef.current) return
-    defaultsLoadedRef.current = true
     let cancelled = false
     Effect.runPromise(fetchTokens({ limit: DEFAULT_LIST_LIMIT }))
       .then((res) => {
         if (cancelled) return
+        defaultsLoadedRef.current = true
         setDefaultTokens(res.tokens.map(toToken))
       })
       .catch(() => {

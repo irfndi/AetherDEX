@@ -17,7 +17,7 @@
 import { Token } from "@uniswap/sdk-core"
 import { Pool } from "@uniswap/v4-sdk"
 import { Context, Effect, Layer } from "effect"
-import { createPublicClient, http } from "viem"
+import { createPublicClient, getAddress, http, isAddress } from "viem"
 import type { InitializedTick, PoolChainState, PoolKeyParams } from "./quote-engine"
 
 // ─── Service interface ──────────────────────────────────────────────────────
@@ -25,7 +25,7 @@ import type { InitializedTick, PoolChainState, PoolKeyParams } from "./quote-eng
 export class OnChainReadError {
   readonly _tag = "OnChainReadError"
   constructor(
-    readonly reason: "not_configured" | "rpc_error" | "pool_not_initialized",
+    readonly reason: "not_configured" | "rpc_error" | "pool_not_initialized" | "invalid_pool_key",
     readonly message: string,
   ) {}
 }
@@ -124,8 +124,14 @@ export const unconfiguredChainStateReaderLayer: Layer.Layer<ChainStateReader> = 
 
 /** Deterministic pool id used to key mock state and to query the StateView. */
 export function poolIdOf(chainId: number, key: PoolKeyParams): string {
-  const token0 = new Token(chainId, key.token0, 18)
-  const token1 = new Token(chainId, key.token1, 18)
+  // Validate + EIP-55-normalize BEFORE the Uniswap `Token` constructor, which throws
+  // (or rejects non-checksummed input) on malformed addresses. Callers that run this
+  // inside Effect.try map the rejection to OnChainReadError("invalid_pool_key") instead
+  // of letting it escape as an uncaught constructor exception.
+  if (!isAddress(key.token0)) throw new Error(`token0 is not a valid address: ${key.token0}`)
+  if (!isAddress(key.token1)) throw new Error(`token1 is not a valid address: ${key.token1}`)
+  const token0 = new Token(chainId, getAddress(key.token0), 18)
+  const token1 = new Token(chainId, getAddress(key.token1), 18)
   return Pool.getPoolId(token0, token1, key.fee, key.tickSpacing, key.hooks)
 }
 
@@ -141,7 +147,14 @@ export const makeStateViewReaderLayer = (config: StateViewReaderConfig): Layer.L
 
       const getPoolState = (key: PoolKeyParams): Effect.Effect<PoolChainState, OnChainReadError> =>
         Effect.gen(function* () {
-          const poolId = poolIdOf(config.chainId, key) as `0x${string}`
+          const poolId = (yield* Effect.try({
+            try: () => poolIdOf(config.chainId, key),
+            catch: (e) =>
+              new OnChainReadError(
+                "invalid_pool_key",
+                `Invalid pool key: ${e instanceof Error ? e.message : String(e)}`,
+              ),
+          })) as `0x${string}`
 
           // 1. Spot state: slot0 + current liquidity
           const [slot0, liquidity] = yield* Effect.tryPromise({
@@ -170,11 +183,17 @@ export const makeStateViewReaderLayer = (config: StateViewReaderConfig): Layer.L
             return yield* Effect.fail(new OnChainReadError("pool_not_initialized", `Pool ${poolId} is not initialized`))
           }
 
-          // 2. Initialized-tick window around the active tick (Phase-3 indexer replaces this scan)
-          const candidates: number[] = []
+          // 2. Initialized-tick window around the active tick (Phase-3 indexer replaces this scan).
+          //    Anchored to tick-spacing BOUNDARIES: initialized ticks are always multiples of
+          //    tickSpacing, but the active tick usually is NOT — scanning `tick ± k·spacing`
+          //    would probe invalid ticks (same remainder as `tick`) and miss every crossing.
+          //    Anchor to the boundary at/below the active tick and include it.
+          const spacing = key.tickSpacing
+          const anchor = Math.floor(tick / spacing) * spacing
+          const candidates: number[] = [anchor]
           for (let k = 1; k <= scan; k += 1) {
-            candidates.push(tick - k * key.tickSpacing)
-            candidates.push(tick + k * key.tickSpacing)
+            candidates.push(anchor - k * spacing)
+            candidates.push(anchor + k * spacing)
           }
 
           // Parallel per-tick `getTickLiquidity` probes (Phase-3 indexer replaces
@@ -203,7 +222,11 @@ export const makeStateViewReaderLayer = (config: StateViewReaderConfig): Layer.L
             .filter((t) => t.liquidityNet !== 0n)
             .sort((a, b) => a.tick - b.tick)
 
-          return { sqrtPriceX96, tick, liquidity, initializedTicks }
+          // The exact tick range this snapshot verified. Simulations that exit it are
+          // rejected by the quote engine (ticks outside are unverified, not "uninitialized").
+          const verifiedTickWindow: readonly [number, number] = [anchor - scan * spacing, anchor + scan * spacing]
+
+          return { sqrtPriceX96, tick, liquidity, initializedTicks, verifiedTickWindow }
         })
 
       return { getPoolState }

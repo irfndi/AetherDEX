@@ -439,7 +439,7 @@ contract AetherHookTest is Test {
         //   t=t0+30  : swap -> tick -2000 recorded, cum = 1000*30            =    30_000
         //   t=t0+90  : swap -> tick  3000 recorded, cum = 30_000 + (-2000)*60 =   -90_000
         //   [now]    : +10 more seconds at tick 3000 (extrapolated), cum now  =   -60_000
-        // Window = 100s (full, t=t0): avgTick = (-60_000 - 0) / 100 = -600 (floor toward zero)
+        // Window = 100s (full, t=t0): avgTick = (-60_000 - 0) / 100 = -600 (exact)
         _setTick(1000);
         _doSwap(true, 1e9, 1e9); // t0
 
@@ -463,9 +463,10 @@ contract AetherHookTest is Test {
         // Sub-window [now-90, now] spans the -2000 and +3000 spans only:
         //   cum(now)    = -60_000
         //   cum(now-90) = interp at t0+10: 0 + 1000*10 = 10_000
-        //   avg = (-60_000 - 10_000) / 90 = -777
+        //   avg = (-60_000 - 10_000) / 90 = -70_000/90 -> floor = -778
+        //   (truncation toward zero would give the biased -777).
         int24 avgSub = hook.getTwapTick(poolId, 90);
-        assertEq(avgSub, -777, "exact time-weighted tick over a sub-window");
+        assertEq(avgSub, -778, "negative avg tick must round DOWN (floor), not toward zero");
 
         // Price conversion is deterministic from the avg tick.
         uint256 price = hook.getCurrentTwap(poolId, 100);
@@ -647,8 +648,13 @@ contract AetherHookTest is Test {
         _advance(uint256(hold1));
 
         uint32 window = hold0 + hold1;
-        int256 expected =
-            (int256(tick0) * int256(uint256(hold0)) + int256(tick1) * int256(uint256(hold1))) / int256(uint256(window));
+        int256 numerator =
+            int256(tick0) * int256(uint256(hold0)) + int256(tick1) * int256(uint256(hold1));
+        int256 denom = int256(uint256(window));
+        // The hook floors negative averages (rounds toward negative infinity); mirror it here
+        // instead of Solidity's default truncation toward zero.
+        int256 expected = numerator / denom;
+        if (numerator < 0 && numerator % denom != 0) expected -= 1;
 
         int24 avgTick = hook.getTwapTick(poolId, window);
         assertEq(int256(avgTick), expected, "TWAP tick must be elapsed-time weighted");

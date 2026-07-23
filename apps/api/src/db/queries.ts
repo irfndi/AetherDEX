@@ -27,9 +27,9 @@ export const upsertToken = (token: Omit<Token, "createdAt" | "updatedAt">) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient
     yield* sql`
-      INSERT INTO tokens (address, symbol, name, decimals, logo_url, is_verified, is_native, total_supply, created_at, updated_at)
-      VALUES (${token.address}, ${token.symbol}, ${token.name}, ${token.decimals}, ${token.logoUrl}, ${token.isVerified ? 1 : 0}, ${token.isNative ? 1 : 0}, ${token.totalSupply}, ${Date.now()}, ${Date.now()})
-      ON CONFLICT(address) DO UPDATE SET
+      INSERT INTO tokens (chain_id, address, symbol, name, decimals, logo_url, is_verified, is_native, total_supply, created_at, updated_at)
+      VALUES (${token.chainId}, ${token.address}, ${token.symbol}, ${token.name}, ${token.decimals}, ${token.logoUrl}, ${token.isVerified ? 1 : 0}, ${token.isNative ? 1 : 0}, ${token.totalSupply}, ${Date.now()}, ${Date.now()})
+      ON CONFLICT(chain_id, address) DO UPDATE SET
         symbol = excluded.symbol,
         name = excluded.name,
         decimals = excluded.decimals,

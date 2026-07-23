@@ -40,6 +40,7 @@ export type PoolListResponse = Schema.Schema.Type<typeof PoolListResponseSchema>
  * chainId filter) before serving.
  */
 export const TokenSchema = Schema.Struct({
+  chainId: Schema.Number,
   address: Schema.String,
   symbol: Schema.String,
   name: Schema.String,

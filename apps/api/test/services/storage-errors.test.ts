@@ -2,7 +2,13 @@ import { Effect, Layer } from "effect"
 import { SqlClient } from "effect/unstable/sql"
 import { describe, expect, it } from "vitest"
 import { PoolReadError, PoolService, PoolServiceLive } from "../../src/services/pool.service"
-import { TokenListError, TokenReadError, TokenService, TokenServiceLive } from "../../src/services/token.service"
+import {
+  TokenListError,
+  TokenReadError,
+  TokenService,
+  TokenServiceDeps,
+  TokenServiceLive,
+} from "../../src/services/token.service"
 
 const POOL_ID = "0x2222222222222222222222222222222222222222222222222222222222222222"
 const TOKEN_ADDRESS = "0x1111111111111111111111111111111111111111"
@@ -17,6 +23,9 @@ const emptySqlLayer = () => {
   const emptySql = ((..._parts: ReadonlyArray<unknown>) => Effect.succeed([])) as unknown as SqlClient.SqlClient
   return Layer.succeed(SqlClient.SqlClient, emptySql)
 }
+
+const tokenServiceLayer = (sqlLayer: Layer.Layer<SqlClient.SqlClient>) =>
+  TokenServiceLive.pipe(Layer.provide(sqlLayer), Layer.provide(Layer.succeed(TokenServiceDeps, { chainId: 1 })))
 
 describe("PoolService storage failures", () => {
   it("fails getPool with PoolReadError instead of null when D1 rejects a valid id", async () => {
@@ -48,9 +57,7 @@ describe("TokenService storage failures", () => {
       const tokenService = yield* TokenService
       return yield* tokenService.getToken(TOKEN_ADDRESS)
     })
-    const err = await Effect.runPromise(
-      program.pipe(Effect.provide(TokenServiceLive.pipe(Layer.provide(failingSqlLayer()))), Effect.flip),
-    )
+    const err = await Effect.runPromise(program.pipe(Effect.provide(tokenServiceLayer(failingSqlLayer())), Effect.flip))
     expect(err).toBeInstanceOf(TokenReadError)
   })
 
@@ -59,9 +66,7 @@ describe("TokenService storage failures", () => {
       const tokenService = yield* TokenService
       return yield* tokenService.getToken(TOKEN_ADDRESS)
     })
-    const token = await Effect.runPromise(
-      program.pipe(Effect.provide(TokenServiceLive.pipe(Layer.provide(emptySqlLayer())))),
-    )
+    const token = await Effect.runPromise(program.pipe(Effect.provide(tokenServiceLayer(emptySqlLayer()))))
     expect(token).toBeNull()
   })
 
@@ -70,9 +75,7 @@ describe("TokenService storage failures", () => {
       const tokenService = yield* TokenService
       return yield* tokenService.listTokens()
     })
-    const err = await Effect.runPromise(
-      program.pipe(Effect.provide(TokenServiceLive.pipe(Layer.provide(failingSqlLayer()))), Effect.flip),
-    )
+    const err = await Effect.runPromise(program.pipe(Effect.provide(tokenServiceLayer(failingSqlLayer())), Effect.flip))
     expect(err).toBeInstanceOf(TokenListError)
   })
 })

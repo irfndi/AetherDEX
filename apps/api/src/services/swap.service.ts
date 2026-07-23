@@ -11,9 +11,9 @@
  * makes the V4 path strict; `legacy` forces the old approximation.
  */
 
-import { Context, Effect, Layer } from "effect"
+import { Context, Effect, Layer, Result } from "effect"
 import { type Address, encodeFunctionData, getAddress, type Hex } from "viem"
-import { ChainStateReader, OnChainReadError } from "./chain-state-reader"
+import { ChainStateReader } from "./chain-state-reader"
 import { PoolService } from "./pool.service"
 import {
   type PoolChainState,
@@ -49,7 +49,7 @@ export interface SwapQuoteParams {
 export class SwapQuoteError {
   readonly _tag = "SwapQuoteError"
   constructor(
-    readonly reason: "no_pool" | "insufficient_liquidity" | "invalid_amount" | "expired",
+    readonly reason: "no_pool" | "insufficient_liquidity" | "invalid_amount" | "expired" | "price_out_of_range",
     readonly message: string,
   ) {}
 }
@@ -232,17 +232,21 @@ const makeSwapService = (deps: SwapServiceDeps, pools: PoolService, reader: Chai
         tickSpacing: meta.tickSpacing,
         hooks: meta.hookAddress ?? ZERO_HOOK_ADDRESS,
       }
-      const state: PoolChainState = yield* reader
-        .getPoolState(key)
-        .pipe(
-          Effect.mapError(
-            (e) =>
-              new SwapQuoteError(
-                "no_pool",
-                e instanceof OnChainReadError ? `On-chain read failed (${e.reason}): ${e.message}` : String(e),
-              ),
-          ),
-        )
+      // Rollback path (auto mode ONLY): when on-chain reads are not wired yet
+      // (pre-G5 `not_configured`), degrade to the legacy constant-product quote at
+      // the read step itself. Later failures (zero in-range liquidity, simulation
+      // error, quote leaving the verified tick window) mean the V4 quote is
+      // authoritative and NEGATIVE — silently substituting a plausible-looking
+      // constant-product number would quote swaps that cannot execute.
+      const stateRead = yield* Effect.result(reader.getPoolState(key))
+      if (Result.isFailure(stateRead)) {
+        const e = stateRead.failure
+        if (mode === "auto" && e.reason === "not_configured") {
+          return yield* quoteLegacy(params, amountIn, meta)
+        }
+        return yield* Effect.fail(new SwapQuoteError("no_pool", `On-chain read failed (${e.reason}): ${e.message}`))
+      }
+      const state: PoolChainState = stateRead.success
 
       const result = yield* Effect.tryPromise({
         try: () => simulateExactInputSwap({ chainId, key, state, zeroForOne, amountIn }),
@@ -253,6 +257,9 @@ const makeSwapService = (deps: SwapServiceDeps, pools: PoolService, reader: Chai
           }
           if (err?.reason === "invalid_amount") {
             return new SwapQuoteError("invalid_amount", err.message)
+          }
+          if (err?.reason === "price_out_of_range") {
+            return new SwapQuoteError("price_out_of_range", err.message)
           }
           return new SwapQuoteError("no_pool", err?.message ?? String(e))
         },
@@ -304,16 +311,9 @@ const makeSwapService = (deps: SwapServiceDeps, pools: PoolService, reader: Chai
         return yield* quoteLegacy(params, amountIn, meta)
       }
 
-      return yield* quoteV4(params, amountIn, zeroForOne, meta).pipe(
-        Effect.catch((err) => {
-          // Rollback path: in auto mode, degrade to the legacy approximation
-          // when the V4 path cannot read on-chain state (e.g. undeployed pre-G5).
-          if (mode === "auto") {
-            return quoteLegacy(params, amountIn, meta)
-          }
-          return Effect.fail(err)
-        }),
-      )
+      // quoteV4 itself performs the (restricted) legacy rollback when — and only
+      // when — the chain-state reader reports `not_configured` in auto mode.
+      return yield* quoteV4(params, amountIn, zeroForOne, meta)
     })
 
   const buildCalldata = (

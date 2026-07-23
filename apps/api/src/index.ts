@@ -134,9 +134,12 @@ app.get("/ws/orderbook/:poolId", async (c) => {
   if (!/^0x[a-fA-F0-9]{64}$/.test(poolId)) {
     return c.json({ error: "Invalid poolId (must be 0x + 64 hex chars)" }, 400)
   }
+  // Canonicalize BEFORE selecting the DO / forwarding the key: the same bytes32
+  // pool spelled in different casings must map to ONE order book + snapshot key.
+  const canonicalPoolId = poolId.toLowerCase()
   const url = new URL(c.req.url)
-  url.searchParams.set("poolId", poolId)
-  const id = c.env.ORDER_BOOK.idFromName(poolId)
+  url.searchParams.set("poolId", canonicalPoolId)
+  const id = c.env.ORDER_BOOK.idFromName(canonicalPoolId)
   return c.env.ORDER_BOOK.get(id).fetch(
     new Request(url.toString(), { method: c.req.method, headers: c.req.raw.headers }),
   )
@@ -173,6 +176,7 @@ const worker = {
       DB: env.DB,
       CACHE: env.CACHE,
       STORAGE: env.STORAGE,
+      WEBSOCKET_HUB: env.WEBSOCKET_HUB,
       CHAIN_ID: env.CHAIN_ID,
     })
   },

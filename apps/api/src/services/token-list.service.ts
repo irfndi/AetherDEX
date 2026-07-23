@@ -81,8 +81,15 @@ export const TokenListService = Context.Service<TokenListService>("@aetherdex/To
 
 const kvKey = (chainId: number) => `token-list:v1:chain:${chainId}`
 
-function toTokenInfo(token: ValidatedToken): TokenInfo {
+/** KV cache payload: tokens + the single refresh-time stamp reused by every cached read. */
+interface TokenListCachePayload {
+  readonly asOf: number
+  readonly tokens: readonly ValidatedToken[]
+}
+
+function toTokenInfo(token: ValidatedToken, chainId: number, asOf: number): TokenInfo {
   return {
+    chainId,
     address: token.address,
     symbol: token.symbol,
     name: token.name,
@@ -91,8 +98,8 @@ function toTokenInfo(token: ValidatedToken): TokenInfo {
     isVerified: true,
     isNative: false,
     totalSupply: null,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    createdAt: asOf,
+    updatedAt: asOf,
   }
 }
 
@@ -116,21 +123,24 @@ const makeTokenListService = Effect.gen(function* () {
       try: async () => {
         const raw = await deps.kv.get(kvKey(deps.chainId))
         if (!raw) return null
-        const parsed = JSON.parse(raw) as ValidatedToken[]
-        if (!Array.isArray(parsed)) return null
-        return parsed.map(toTokenInfo)
+        const parsed = JSON.parse(raw) as TokenListCachePayload
+        // Accept only the versioned envelope; legacy/foreign payloads are treated as a miss.
+        if (!parsed || typeof parsed.asOf !== "number" || !Array.isArray(parsed.tokens)) return null
+        return parsed.tokens.map((t) => toTokenInfo(t, deps.chainId, parsed.asOf))
       },
       catch: (e) => new TokenListError(`KV cache read failed: ${String(e)}`),
     })
 
-  const writeThroughD1 = (tokens: readonly ValidatedToken[]): Effect.Effect<void, never> =>
+  const writeThroughD1 = (tokens: readonly ValidatedToken[], asOf: number): Effect.Effect<void, never> =>
     Effect.forEach(
       tokens,
       (token) =>
+        // Chain-scoped: tokens are keyed by (chain_id, address) — the same address on two
+        // chains is two different tokens and must not overwrite each other's cache rows.
         sql`
-          INSERT INTO tokens (address, symbol, name, decimals, logo_url, is_verified, is_native, total_supply, created_at, updated_at)
-          VALUES (${token.address}, ${token.symbol}, ${token.name}, ${token.decimals}, ${token.logoURI}, 1, 0, NULL, ${Date.now()}, ${Date.now()})
-          ON CONFLICT(address) DO UPDATE SET
+          INSERT INTO tokens (chain_id, address, symbol, name, decimals, logo_url, is_verified, is_native, total_supply, created_at, updated_at)
+          VALUES (${deps.chainId}, ${token.address}, ${token.symbol}, ${token.name}, ${token.decimals}, ${token.logoURI}, 1, 0, NULL, ${asOf}, ${asOf})
+          ON CONFLICT(chain_id, address) DO UPDATE SET
             symbol = excluded.symbol,
             name = excluded.name,
             decimals = excluded.decimals,
@@ -158,28 +168,42 @@ const makeTokenListService = Effect.gen(function* () {
         return yield* Effect.fail(new TokenListError(`Token list validation failed: ${message}`))
       }
 
+      // Stamp the refresh time ONCE: every cached read reuses it, so responses report when
+      // the list was actually cached/refreshed — never a fabricated per-request Date.now().
+      const asOf = Date.now()
+
       yield* Effect.tryPromise({
-        try: () => deps.kv.put(kvKey(deps.chainId), JSON.stringify(tokens), { expirationTtl: deps.cacheTtlSeconds }),
+        try: () =>
+          deps.kv.put(kvKey(deps.chainId), JSON.stringify({ asOf, tokens } satisfies TokenListCachePayload), {
+            expirationTtl: deps.cacheTtlSeconds,
+          }),
         catch: () => undefined,
       }).pipe(Effect.catch(() => Effect.void))
 
-      yield* writeThroughD1(tokens)
+      yield* writeThroughD1(tokens, asOf)
 
-      return tokens.map(toTokenInfo)
+      return tokens.map((t) => toTokenInfo(t, deps.chainId, asOf))
     })
 
   const readD1Cache = (): Effect.Effect<TokenInfo[], never> =>
+    // Chain-scoped read: never serve another chain's tokens from the shared table.
     sql`
       SELECT * FROM tokens
-      WHERE is_verified = 1
+      WHERE is_verified = 1 AND chain_id = ${deps.chainId}
       ORDER BY symbol ASC
       LIMIT 500
     `
       .pipe(Effect.map((rows) => rows.map((r) => rowToToken(r as Record<string, unknown>))))
       .pipe(Effect.catch(() => Effect.succeed([] as TokenInfo[])))
 
-  const applyOptions = (tokens: readonly TokenInfo[], options?: TokenSearchOptions): TokenInfo[] =>
-    tokens.filter((t) => matchesQuery(t, options?.query)).slice(0, Math.min(options?.limit ?? 100, 500))
+  const applyOptions = (tokens: readonly TokenInfo[], options?: TokenSearchOptions): TokenInfo[] => {
+    // Defensive: a non-finite limit (e.g. NaN from a bad caller) or a negative one must
+    // fall back to the default — NaN slices to an empty set (slice(0, NaN) → slice(0, 0))
+    // and a negative value silently drops trailing entries (slice(0, -n)).
+    const rawLimit = options?.limit
+    const limit = Math.min(rawLimit === undefined || !Number.isFinite(rawLimit) || rawLimit < 0 ? 100 : rawLimit, 500)
+    return tokens.filter((t) => matchesQuery(t, options?.query)).slice(0, limit)
+  }
 
   /** KV cache → fresh fetch (re-caching) → D1 cache; fail only if all miss. */
   const resolveTokens = (): Effect.Effect<TokenInfo[], TokenListError> =>

@@ -6,6 +6,7 @@ import { TokenSearch } from "../../src/components/TokenSearch"
 // Canonical-list shaped fixtures (what the API serves after validating the
 // Uniswap default token list: schema + EIP-55 checksums + chainId filter).
 const USDC = {
+  chainId: 1,
   address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
   symbol: "USDC",
   name: "USD Coin",
@@ -18,6 +19,7 @@ const USDC = {
   updatedAt: 1719715200,
 }
 const WETH = {
+  chainId: 1,
   address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
   symbol: "WETH",
   name: "Wrapped Ether",

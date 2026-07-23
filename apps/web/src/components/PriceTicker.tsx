@@ -1,12 +1,20 @@
 import { Minus, TrendingDown, TrendingUp } from "lucide-react"
-import { useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useWebSocket } from "../hooks/useWebSocket"
 
-interface PriceData {
+/** One refreshed token price as broadcast by the API's WebSocket hub DO. */
+interface PricePayload {
+  tokenAddress: string
   price: number
+  updatedAt?: number
   change24h?: number
   volume24h?: number
-  pair?: string
+}
+
+/** The hub wraps every frame in an envelope; the payload lives in `data`. */
+interface PriceEnvelope {
+  type: string
+  data?: PricePayload
 }
 
 interface PriceTickerProps {
@@ -45,7 +53,21 @@ export function PriceTicker({
   const defaultWs = `${import.meta.env.VITE_WS_URL ?? "ws://localhost:8080"}/ws/prices/${tokenAddress}?chainId=${chainId}`
   const url = wsUrl ?? defaultWs
 
-  const { data, isConnected, error } = useWebSocket<PriceData>({ url })
+  const { data: envelope, isConnected, error } = useWebSocket<PriceEnvelope>({ url })
+
+  // The hub broadcasts ALL token prices (it is a single shared instance); keep the
+  // latest payload for THIS ticker's token, unwrapped out of the frame envelope.
+  const [data, setData] = useState<PricePayload | null>(null)
+  useEffect(() => {
+    const payload = envelope?.data
+    if (
+      payload &&
+      typeof payload.price === "number" &&
+      payload.tokenAddress.toLowerCase() === tokenAddress.toLowerCase()
+    ) {
+      setData(payload)
+    }
+  }, [envelope, tokenAddress])
 
   const trend = useMemo(() => {
     if (!data?.change24h) return "neutral"

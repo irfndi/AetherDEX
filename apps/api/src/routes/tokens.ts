@@ -50,7 +50,11 @@ const tokenListLayer = (env: Bindings) => {
  * GET /api/v1/tokens?verified=true&search=eth&limit=100
  */
 tokens.get("/", async (c) => {
-  const limit = Math.min(Number.parseInt(c.req.query("limit") ?? "100", 10), 500)
+  // Non-numeric or negative `limit` must fall back to the default (100): NaN would
+  // propagate to slice(0, NaN) → slice(0, 0) (silent empty result), and a negative
+  // value would become slice(0, -n), which silently drops the last entries.
+  const parsedLimit = Number.parseInt(c.req.query("limit") ?? "100", 10)
+  const limit = Math.min(Number.isNaN(parsedLimit) || parsedLimit < 0 ? 100 : parsedLimit, 500)
   const search = c.req.query("search")
 
   try {

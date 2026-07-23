@@ -47,6 +47,15 @@ export interface PoolChainState {
   readonly liquidity: bigint
   /** Initialized ticks around the active price (from the quoter / StateView / indexer). */
   readonly initializedTicks: readonly InitializedTick[]
+  /**
+   * Inclusive [minTick, maxTick] range that `initializedTicks` was VERIFIED over.
+   * When present, simulations whose terminal tick exits this window are rejected
+   * (see `price_out_of_range`): outside the window, "no initialized tick found"
+   * means "unverified", NOT "uninitialized", so continuing would quote a wrong
+   * amount. Absent → the tick set is authoritative over the whole range
+   * (full-table providers: Phase-3 indexer, unit-test mocks).
+   */
+  readonly verifiedTickWindow?: readonly [number, number]
 }
 
 export interface QuoteResult {
@@ -68,7 +77,7 @@ export interface QuoteResult {
 export class QuoteEngineError extends Error {
   readonly _tag = "QuoteEngineError"
   constructor(
-    readonly reason: "invalid_amount" | "no_liquidity" | "simulation_failed",
+    readonly reason: "invalid_amount" | "no_liquidity" | "simulation_failed" | "price_out_of_range",
     message: string,
   ) {
     super(message)
@@ -88,8 +97,10 @@ export const ZERO_HOOK_ADDRESS = "0x0000000000000000000000000000000000000000"
  * table's `liquidityNet` to sum to zero — the full universe of ticks is only
  * available from the Phase-3 indexer, while G2 reads a window around the
  * active price from `StateView.getTickLiquidity`. Ticks outside the known set
- * are treated as uninitialized (no liquidity change), which makes quotes for
- * swaps that leave the window conservatively approximate rather than wrong.
+ * are treated as uninitialized (no liquidity change). The simulation rejects
+ * (rather than approximates) any swap whose terminal tick leaves the state's
+ * `verifiedTickWindow`, so this assumption is never applied to unverified
+ * territory — see `simulateExactInputSwap`.
  */
 class InMemoryTickDataProvider implements TickDataProvider {
   private readonly ticks: readonly Tick[]
@@ -217,6 +228,18 @@ export async function simulateExactInputSwap(params: SimulateExactInputParams): 
 
   // ── Crossed initialized ticks ──
   const tickAfter = poolAfter.tickCurrent
+
+  // The simulated price left the tick range the StateView snapshot verified: ticks
+  // beyond it were never read, so the accumulated liquidityNet cannot be trusted in
+  // EITHER direction. Reject rather than emit a non-conservative approximate quote.
+  const window = state.verifiedTickWindow
+  if (window && (tickAfter < window[0] || tickAfter > window[1])) {
+    throw new QuoteEngineError(
+      "price_out_of_range",
+      `Swap exits the verified tick window [${window[0]}, ${window[1]}] (tickAfter ${tickAfter}) — retry with a smaller amount`,
+    )
+  }
+
   const crossed = state.initializedTicks.filter((t) =>
     zeroForOne ? t.tick <= state.tick && t.tick > tickAfter : t.tick > state.tick && t.tick <= tickAfter,
   ).length
