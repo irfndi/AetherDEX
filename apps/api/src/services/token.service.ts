@@ -57,17 +57,28 @@ export interface TokenService {
 
 export const TokenService = Context.Service<TokenService>("@aetherdex/TokenService")
 
+// --- Dependencies ---
+
+/** The current chain: every tokens-table read must be scoped to it (tokens are keyed by (chain_id, address)). */
+export interface TokenServiceDeps {
+  readonly chainId: number
+}
+
+export const TokenServiceDeps = Context.Service<TokenServiceDeps>("@aetherdex/TokenServiceDeps")
+
 // --- D1-backed implementation ---
 
 const makeTokenService = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
+  const deps = yield* TokenServiceDeps
 
   const getToken = (address: string): Effect.Effect<TokenInfo | null, TokenReadError, never> =>
     Effect.gen(function* () {
-      const rows = (yield* sql`SELECT * FROM tokens WHERE address = ${address}`) as unknown as readonly Record<
-        string,
-        unknown
-      >[]
+      const rows =
+        (yield* sql`SELECT * FROM tokens WHERE address = ${address} AND chain_id = ${deps.chainId}`) as unknown as readonly Record<
+          string,
+          unknown
+        >[]
       if (rows.length === 0) return null
       return rowToToken(rows[0] as Record<string, unknown>)
     }).pipe(Effect.catch((error) => Effect.fail(new TokenReadError(String(error)))))
@@ -84,14 +95,14 @@ const makeTokenService = Effect.gen(function* () {
         const searchPattern = `%${search.toLowerCase()}%`
         rows = (yield* sql`
           SELECT * FROM tokens
-          WHERE is_verified = 1 AND (LOWER(symbol) LIKE ${searchPattern} OR LOWER(name) LIKE ${searchPattern})
+          WHERE chain_id = ${deps.chainId} AND is_verified = 1 AND (LOWER(symbol) LIKE ${searchPattern} OR LOWER(name) LIKE ${searchPattern})
           ORDER BY symbol ASC
           LIMIT ${limit}
         `) as unknown as readonly Record<string, unknown>[]
       } else if (verified === true) {
         rows = (yield* sql`
           SELECT * FROM tokens
-          WHERE is_verified = 1
+          WHERE chain_id = ${deps.chainId} AND is_verified = 1
           ORDER BY symbol ASC
           LIMIT ${limit}
         `) as unknown as readonly Record<string, unknown>[]
@@ -99,13 +110,14 @@ const makeTokenService = Effect.gen(function* () {
         const searchPattern = `%${search.toLowerCase()}%`
         rows = (yield* sql`
           SELECT * FROM tokens
-          WHERE LOWER(symbol) LIKE ${searchPattern} OR LOWER(name) LIKE ${searchPattern}
+          WHERE chain_id = ${deps.chainId} AND (LOWER(symbol) LIKE ${searchPattern} OR LOWER(name) LIKE ${searchPattern})
           ORDER BY is_verified DESC, symbol ASC
           LIMIT ${limit}
         `) as unknown as readonly Record<string, unknown>[]
       } else {
         rows = (yield* sql`
           SELECT * FROM tokens
+          WHERE chain_id = ${deps.chainId}
           ORDER BY is_verified DESC, symbol ASC
           LIMIT ${limit}
         `) as unknown as readonly Record<string, unknown>[]
@@ -120,7 +132,7 @@ const makeTokenService = Effect.gen(function* () {
       const searchPattern = `%${query.toLowerCase()}%`
       const rows = (yield* sql`
         SELECT * FROM tokens
-        WHERE LOWER(symbol) LIKE ${searchPattern} OR LOWER(name) LIKE ${searchPattern}
+        WHERE chain_id = ${deps.chainId} AND (LOWER(symbol) LIKE ${searchPattern} OR LOWER(name) LIKE ${searchPattern})
         ORDER BY is_verified DESC, symbol ASC
         LIMIT 50
       `) as unknown as readonly Record<string, unknown>[]
@@ -131,7 +143,7 @@ const makeTokenService = Effect.gen(function* () {
     Effect.gen(function* () {
       const rows = (yield* sql`
         SELECT * FROM tokens
-        WHERE is_verified = 1
+        WHERE chain_id = ${deps.chainId} AND is_verified = 1
         ORDER BY symbol ASC
         LIMIT 100
       `) as unknown as readonly Record<string, unknown>[]

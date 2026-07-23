@@ -84,13 +84,17 @@ async function handlePriceRefresh(
 
       // Publish the refresh to the WebSocket hub so connected clients (PriceTicker)
       // actually receive live updates — without this the /ws/prices route is only a
-      // handshake and subscribers never get a price.
-      await hub.fetch(
-        new Request("http://price-hub/price", {
-          method: "POST",
-          body: JSON.stringify({ tokenAddress: token, price: priceUsd, updatedAt }),
-        }),
-      )
+      // handshake and subscribers never get a price. Only broadcast VALID prices:
+      // fetchTokenPrice returns 0 on lookup failure, and replacing a ticker's last
+      // good value with $0 would be worse than no update at all.
+      if (priceUsd > 0) {
+        await hub.fetch(
+          new Request("http://price-hub/price", {
+            method: "POST",
+            body: JSON.stringify({ tokenAddress: token, price: priceUsd, updatedAt }),
+          }),
+        )
+      }
     } catch (error) {
       console.error(`Failed to refresh price for ${token}:`, error)
     }

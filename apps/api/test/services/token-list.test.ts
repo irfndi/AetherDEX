@@ -167,8 +167,9 @@ describe("TokenListService", () => {
     const layer = serviceLayer(fetcher.layer, kv)
     const first = await Effect.runPromise(listTokens(layer))
     const second = await Effect.runPromise(listTokens(layer))
-    // The second read is served from the KV cache: its stamps must equal the refresh
-    // time, not a fresh Date.now() minted at read time.
+    // Proof the second read came from the KV cache (and not a same-millisecond re-refresh):
+    expect(fetcher.calls()).toBe(1)
+    // Its stamps must equal the refresh time, not a fresh Date.now() minted at read time.
     expect(second.map((t) => t.updatedAt)).toEqual(first.map((t) => t.updatedAt))
     expect(second.every((t) => t.createdAt === t.updatedAt)).toBe(true)
   })
@@ -188,13 +189,22 @@ describe("TokenListService", () => {
   it("treats a non-finite limit as the default instead of slicing to an empty set", async () => {
     const { kv } = fakeKv()
     const fetcher = mockFetcherLayer(goodDoc)
-    const tokens = await Effect.runPromise(
+    const layer = serviceLayer(fetcher.layer, kv)
+    const nanTokens = await Effect.runPromise(
       Effect.gen(function* () {
         const svc = yield* TokenListService
         return yield* svc.listTokens({ limit: Number.NaN })
-      }).pipe(Effect.provide(serviceLayer(fetcher.layer, kv))),
+      }).pipe(Effect.provide(layer)),
     )
-    expect(tokens.map((t) => t.symbol).sort()).toEqual(["DAI", "USDC", "WETH"])
+    expect(nanTokens.map((t) => t.symbol).sort()).toEqual(["DAI", "USDC", "WETH"])
+    // A negative limit must not become slice(0, -n) (dropping the last entry) either.
+    const negativeTokens = await Effect.runPromise(
+      Effect.gen(function* () {
+        const svc = yield* TokenListService
+        return yield* svc.listTokens({ limit: -1 })
+      }).pipe(Effect.provide(layer)),
+    )
+    expect(negativeTokens.map((t) => t.symbol).sort()).toEqual(["DAI", "USDC", "WETH"])
   })
 
   it("falls back to the D1 cache when the fetch fails", async () => {

@@ -197,10 +197,11 @@ const makeTokenListService = Effect.gen(function* () {
       .pipe(Effect.catch(() => Effect.succeed([] as TokenInfo[])))
 
   const applyOptions = (tokens: readonly TokenInfo[], options?: TokenSearchOptions): TokenInfo[] => {
-    // Defensive: a non-finite limit (e.g. NaN from a bad caller) must fall back to the
-    // default, not slice(0, NaN) → an empty result.
+    // Defensive: a non-finite limit (e.g. NaN from a bad caller) or a negative one must
+    // fall back to the default — NaN slices to an empty set (slice(0, NaN) → slice(0, 0))
+    // and a negative value silently drops trailing entries (slice(0, -n)).
     const rawLimit = options?.limit
-    const limit = Math.min(rawLimit === undefined || !Number.isFinite(rawLimit) ? 100 : rawLimit, 500)
+    const limit = Math.min(rawLimit === undefined || !Number.isFinite(rawLimit) || rawLimit < 0 ? 100 : rawLimit, 500)
     return tokens.filter((t) => matchesQuery(t, options?.query)).slice(0, limit)
   }
 
