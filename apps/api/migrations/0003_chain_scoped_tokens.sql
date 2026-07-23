@@ -136,6 +136,74 @@ ALTER TABLE tokens_chain_scoped RENAME TO tokens;
 CREATE INDEX IF NOT EXISTS idx_tokens_symbol ON tokens(symbol);
 CREATE INDEX IF NOT EXISTS idx_tokens_verified ON tokens(chain_id, is_verified, symbol);
 
+-- Pass 2: restore the pool_id FOREIGN KEYs on transactions / liquidity_positions.
+-- They were only dropped so the pools table could be swapped above; pools now exists
+-- again with pool_id as its primary key, so the references can be reinstated (every
+-- surviving pool_id satisfies them by construction — the foreign_key_check below
+-- proves it). Only the pools → tokens(address) FK is permanently gone, by design:
+-- tokens is now keyed by (chain_id, address), and pool tokens are not guaranteed to
+-- appear in the default token list.
+CREATE TABLE IF NOT EXISTS transactions_final (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tx_hash TEXT UNIQUE NOT NULL,
+    user_address TEXT NOT NULL,
+    pool_id TEXT,                                     -- nullable for non-pool txs
+    tx_type TEXT NOT NULL,                            -- 'swap' | 'add_liquidity' | 'remove_liquidity' | 'create_pool'
+    token_in TEXT,
+    token_out TEXT,
+    amount_in TEXT,                                   -- big number as string
+    amount_out TEXT,                                  -- big number as string
+    amount_usd REAL,
+    gas_used INTEGER,
+    gas_price TEXT,
+    block_number INTEGER NOT NULL,
+    block_timestamp INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',           -- 'pending' | 'confirmed' | 'failed'
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_address) REFERENCES users(address),
+    FOREIGN KEY (pool_id) REFERENCES pools(pool_id)
+);
+INSERT OR IGNORE INTO transactions_final
+    (id, tx_hash, user_address, pool_id, tx_type, token_in, token_out, amount_in, amount_out, amount_usd,
+     gas_used, gas_price, block_number, block_timestamp, status, created_at)
+  SELECT id, tx_hash, user_address, pool_id, tx_type, token_in, token_out, amount_in, amount_out, amount_usd,
+         gas_used, gas_price, block_number, block_timestamp, status, created_at
+  FROM transactions;
+DROP TABLE transactions;
+ALTER TABLE transactions_final RENAME TO transactions;
+CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_address, block_timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_tx_pool ON transactions(pool_id, block_timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_tx_block ON transactions(block_number DESC);
+CREATE INDEX IF NOT EXISTS idx_tx_status ON transactions(status);
+
+CREATE TABLE IF NOT EXISTS liquidity_positions_final (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_address TEXT NOT NULL,
+    pool_id TEXT NOT NULL,
+    tick_lower INTEGER NOT NULL,
+    tick_upper INTEGER NOT NULL,
+    liquidity TEXT NOT NULL,                          -- LP tokens amount (big number as string)
+    amount0 TEXT NOT NULL,                            -- token0 amount
+    amount1 TEXT NOT NULL,                            -- token1 amount
+    fees_earned_token0 TEXT NOT NULL DEFAULT '0',
+    fees_earned_token1 TEXT NOT NULL DEFAULT '0',
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (user_address) REFERENCES users(address),
+    FOREIGN KEY (pool_id) REFERENCES pools(pool_id)
+);
+INSERT OR IGNORE INTO liquidity_positions_final
+    (id, user_address, pool_id, tick_lower, tick_upper, liquidity, amount0, amount1,
+     fees_earned_token0, fees_earned_token1, is_active, created_at, updated_at)
+  SELECT id, user_address, pool_id, tick_lower, tick_upper, liquidity, amount0, amount1,
+         fees_earned_token0, fees_earned_token1, is_active, created_at, updated_at
+  FROM liquidity_positions;
+DROP TABLE liquidity_positions;
+ALTER TABLE liquidity_positions_final RENAME TO liquidity_positions;
+CREATE INDEX IF NOT EXISTS idx_lp_user ON liquidity_positions(user_address, is_active);
+CREATE INDEX IF NOT EXISTS idx_lp_pool ON liquidity_positions(pool_id, is_active);
+
 -- Sanity: no dangling FKs after the rebuild (runs regardless of enforcement mode).
 PRAGMA foreign_key_check;
 PRAGMA foreign_keys = on;
