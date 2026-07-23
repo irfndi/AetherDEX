@@ -39,6 +39,20 @@ bun run deploy:staging
 bun run deploy:production
 ```
 
+## Dependency notes (explicit exceptions)
+
+The repo policy is "latest, always"; these pins are deliberate exceptions:
+
+- **`jsbi@^3.2.5`** — must match `@uniswap/v3-sdk`'s JSBI major version. The quote-engine
+  tests compose the canonical `SwapMath.computeSwapStep` primitive, which consumes and
+  returns JSBI values; mixing JSBI v4 (incompatible class identity) with the SDK's v3
+  values breaks the math interop.
+- **`ethers@^5` + `@ethersproject/*`** (dev) — required ONLY by the Workers test pool.
+  `siwe` and the Uniswap SDK barrels hard-import ethers v5 paths that workerd cannot
+  link; `test/shims/ethers-worker-shim.ts` (aliased in `vitest.config.ts`) viem-backs
+  those bare specifiers for tests, while production bundles the real packages via
+  esbuild. Not a runtime dependency of the Worker.
+
 ## Architecture
 
 See `AGENTS.md` for full architecture overview.

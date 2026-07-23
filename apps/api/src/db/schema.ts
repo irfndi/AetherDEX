@@ -13,6 +13,7 @@ export interface User {
 }
 
 export interface Token {
+  chainId: number
   address: string
   symbol: string
   name: string
@@ -92,6 +93,7 @@ export interface PriceCache {
  */
 export function rowToToken(row: Record<string, unknown>): Token {
   return {
+    chainId: (row.chain_id as number | undefined) ?? 1,
     address: row.address as string,
     symbol: row.symbol as string,
     name: row.name as string,

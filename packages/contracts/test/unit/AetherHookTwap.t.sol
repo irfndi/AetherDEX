@@ -58,7 +58,7 @@ contract AetherHookTwapTest is Test {
 
     /// @notice Schedule: tick -500 held 100s, then +1500 held 200s, then +200 held 50s.
     ///         Any window must equal the elapsed-time-weighted tick average, computed here
-    ///         independently and asserted exactly (integer division, floor toward zero).
+    ///         independently and asserted exactly (integer division, floored).
     function test_twap_exactKnownSequence_allWindows() public {
         _swapAtTick(-500); // obs0 @ t=0: cum 0
         _advance(100);
@@ -85,7 +85,7 @@ contract AetherHookTwapTest is Test {
 
         // Price at the full-window avg tick, exactly.
         assertEq(hook.getCurrentTwap(poolId, 350), _priceX18AtTick(742), "price(twap tick)");
-        assertEq(hook.getCurrentTwapInverted(poolId, 350), _invertPrice(_priceX18AtTick(742)), "reciprocal price");
+        assertEq(hook.getCurrentTwapInverted(poolId, 350), _invertPriceX18AtTick(742), "reciprocal price");
     }
 
     /// @notice Cross-tick sequence from the plan's example: +6000 for 30s then -6000 for 70s.
@@ -107,9 +107,9 @@ contract AetherHookTwapTest is Test {
         assertGt(twapPrice, _priceX18AtTick(-6000), "twap > low spot");
     }
 
-    /// @notice Time-weighting must dominate sample-counting: 1 sample at tick 0 held 99s +
-    ///         99 samples at tick 1000 held 1s each → TWAP(198s) ≈ 502, not ~990
-    ///         (sample-count average) nor 0. This is the bug G2.5 fixes.
+    /// @notice Time-weighting must dominate sample-counting: tick 0 held 1s, then 99 samples
+    ///         at tick 1000 spanning 99s → TWAP(100s) = 990 by elapsed time. The discriminating
+    ///         check is the [now-1, now] window (pure tick 1000). This is the bug G2.5 fixes.
     function test_twap_timeWeightsNotSampleCounts() public {
         _swapAtTick(0); // t=0
         for (uint256 i = 0; i < 99; i++) {
@@ -148,7 +148,7 @@ contract AetherHookTwapTest is Test {
         uint256 inverted = hook.getCurrentTwapInverted(poolId, 120);
 
         assertEq(direct, _priceX18AtTick(6000), "direct = spot price in token1/token0");
-        assertEq(inverted, _invertPrice(direct), "inverted = 1e18-scaled reciprocal");
+        assertEq(inverted, _invertPriceX18AtTick(6000), "inverted = full-precision 1e18-scaled reciprocal");
 
         // Round-trip product ≈ 1e36 within integer flooring (< 0.01% error).
         assertApproxEqRel(FullMath.mulDiv(direct, inverted, 1e18), 1e18, 1e14, "p * (1/p) ~= 1");
@@ -178,17 +178,22 @@ contract AetherHookTwapTest is Test {
         assertApproxEqRel(FullMath.mulDiv(direct, inverted, 1e18), 1e18, 1e14, "reciprocal identity");
     }
 
-    function test_twap_invertedZeroPrice_reverts() public {
-        // tick -460_517 -> price ~1e-20, which floors to 0 at 1e18 scale: the reciprocal
-        // read must reject it rather than divide by zero.
+    function test_twap_invertedReadable_evenWhenDirectFloorsToZero() public {
+        // tick -460_517 -> price ~1e-20, which floors to 0 at 1e18 scale. The reciprocal
+        // (~1e38 at this scale) IS representable, so a full-precision inverse computed
+        // directly from sqrtPriceX96 must return an accurate value instead of reverting
+        // on the already-rounded direct quote (which is exactly what keepers read in the
+        // reverse direction).
         _swapAtTick(-460_517);
         _advance(20);
         _swapAtTick(-460_517);
         _advance(20);
 
         assertEq(hook.getCurrentTwap(poolId, 40), 0, "direct price floors to zero at this tick");
-        vm.expectRevert(Errors.InvalidAmount.selector);
-        hook.getCurrentTwapInverted(poolId, 40);
+
+        uint256 inverted = hook.getCurrentTwapInverted(poolId, 40);
+        assertGt(inverted, 0, "reverse read stays representable when the direct quote rounds to zero");
+        assertEq(inverted, _invertPriceX18AtTick(-460_517), "full-precision reciprocal of the TWAP tick");
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -352,7 +357,11 @@ contract AetherHookTwapTest is Test {
         uint32 window = da + db + dc;
         int256 weighted =
             int256(a) * int256(uint256(da)) + int256(b) * int256(uint256(db)) + int256(c) * int256(uint256(dc));
-        int256 expectedTick = weighted / int256(uint256(window));
+        // The hook floors negative averages (rounds toward negative infinity) rather than
+        // truncating toward zero — mirror that here.
+        int256 denom = int256(uint256(window));
+        int256 expectedTick = weighted / denom;
+        if (weighted < 0 && weighted % denom != 0) expectedTick -= 1;
 
         int24 actual = hook.getTwapTick(poolId, window);
         assertEq(int256(actual), expectedTick, "exact elapsed-time weighting over 3 spans");
@@ -360,9 +369,8 @@ contract AetherHookTwapTest is Test {
         // Price must be the deterministic conversion of that exact tick.
         assertEq(hook.getCurrentTwap(poolId, window), _priceX18AtTick(actual), "price(tick) identity");
 
-        // Reciprocal read must be the exact 1e18-scaled reciprocal of the direct price.
-        uint256 direct = hook.getCurrentTwap(poolId, window);
-        assertEq(hook.getCurrentTwapInverted(poolId, window), _invertPrice(direct), "reciprocal identity");
+        // Reciprocal read must be the exact full-precision 1e18-scaled reciprocal of the tick.
+        assertEq(hook.getCurrentTwapInverted(poolId, window), _invertPriceX18AtTick(actual), "reciprocal identity");
     }
 
     function testFuzz_twapTickWithinObservedRange(int24 a, int24 b, uint32 da, uint32 db) public {
@@ -417,8 +425,13 @@ contract AetherHookTwapTest is Test {
         return FullMath.mulDiv(priceX96, 1e18, FixedPoint96.Q96);
     }
 
-    function _invertPrice(uint256 priceX18) internal pure returns (uint256) {
-        return FullMath.mulDiv(1e18, 1e18, priceX18);
+    /// @dev The exact 1e18-scaled reciprocal of `price(tick)`, computed at full precision
+    ///      directly from sqrtPriceX96: `Q96^2 * 1e18 / sqrtPriceX96^2` (mirrors the hook —
+    ///      NOT the naive 1e36/round(priceX18), which rounds away precision).
+    function _invertPriceX18AtTick(int24 tick) internal pure returns (uint256) {
+        uint256 p = uint256(TickMath.getSqrtPriceAtTick(tick));
+        uint256 q96SquaredOverSqrtP = FullMath.mulDiv(FixedPoint96.Q96, FixedPoint96.Q96, p);
+        return FullMath.mulDiv(q96SquaredOverSqrtP, 1e18, p);
     }
 
     /// @dev Advance time by `dt` seconds using the test-owned absolute clock.
@@ -447,9 +460,13 @@ contract AetherHookTwapTest is Test {
     }
 
     /// @dev The hook's TWAP over `window` must equal the trace-independent average
-    ///      `(cumNow - cumStart) / window`.
+    ///      `(cumNow - cumStart) / window`, floored toward negative infinity (the hook no
+    ///      longer truncates negative divisions toward zero).
     function _assertWindow(uint32 window, int256 cumNow, int256 cumStart, string memory label) internal view {
-        int256 expected = (cumNow - cumStart) / int256(uint256(window));
+        int256 numerator = cumNow - cumStart;
+        int256 denom = int256(uint256(window));
+        int256 expected = numerator / denom;
+        if (numerator < 0 && numerator % denom != 0) expected -= 1;
         assertEq(int256(hook.getTwapTick(poolId, window)), expected, label);
     }
 }

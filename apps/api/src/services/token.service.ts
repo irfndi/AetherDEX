@@ -10,6 +10,7 @@ import { rowToToken } from "../db/schema"
 // --- Types ---
 
 export interface TokenInfo {
+  chainId: number
   address: string
   symbol: string
   name: string
@@ -140,9 +141,9 @@ const makeTokenService = Effect.gen(function* () {
   const upsertToken = (token: Omit<TokenInfo, "createdAt" | "updatedAt">): Effect.Effect<void, never, never> =>
     Effect.gen(function* () {
       yield* sql`
-        INSERT INTO tokens (address, symbol, name, decimals, logo_url, is_verified, is_native, total_supply, created_at, updated_at)
-        VALUES (${token.address}, ${token.symbol}, ${token.name}, ${token.decimals}, ${token.logoUrl}, ${token.isVerified ? 1 : 0}, ${token.isNative ? 1 : 0}, ${token.totalSupply}, ${Date.now()}, ${Date.now()})
-        ON CONFLICT(address) DO UPDATE SET
+        INSERT INTO tokens (chain_id, address, symbol, name, decimals, logo_url, is_verified, is_native, total_supply, created_at, updated_at)
+        VALUES (${token.chainId}, ${token.address}, ${token.symbol}, ${token.name}, ${token.decimals}, ${token.logoUrl}, ${token.isVerified ? 1 : 0}, ${token.isNative ? 1 : 0}, ${token.totalSupply}, ${Date.now()}, ${Date.now()})
+        ON CONFLICT(chain_id, address) DO UPDATE SET
           symbol = excluded.symbol,
           name = excluded.name,
           decimals = excluded.decimals,

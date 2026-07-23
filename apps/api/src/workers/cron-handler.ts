@@ -76,10 +76,14 @@ async function refreshTopPools(env: CronEnv): Promise<void> {
 }
 
 async function enqueuePriceRefresh(env: CronEnv): Promise<void> {
-  // Refresh verified tokens every 5 minutes
-  const tokens = await env.DB.prepare("SELECT address FROM tokens WHERE is_verified = 1 LIMIT 200").all<{
-    address: string
-  }>()
+  // Refresh verified tokens every 5 minutes — scoped to this chain: tokens are keyed
+  // by (chain_id, address) and another chain's tokens must not be refreshed here.
+  const chainId = Number.parseInt(env.CHAIN_ID, 10)
+  const tokens = await env.DB.prepare("SELECT address FROM tokens WHERE is_verified = 1 AND chain_id = ? LIMIT 200")
+    .bind(Number.isNaN(chainId) ? 1 : chainId)
+    .all<{
+      address: string
+    }>()
 
   if (!tokens.results || tokens.results.length === 0) return
 

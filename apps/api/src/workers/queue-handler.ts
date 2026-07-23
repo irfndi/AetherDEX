@@ -27,6 +27,7 @@ interface QueueEnv {
   DB: D1Database
   CACHE: KVNamespace
   STORAGE: R2Bucket
+  WEBSOCKET_HUB: DurableObjectNamespace
   CHAIN_ID: string
 }
 
@@ -64,19 +65,32 @@ export const processQueueBatch = async (batch: MessageBatch<unknown>, env: Queue
 
 async function handlePriceRefresh(
   msg: PriceRefreshMessage,
-  env: { CACHE: KVNamespace; CHAIN_ID: string },
+  env: { CACHE: KVNamespace; WEBSOCKET_HUB: DurableObjectNamespace; CHAIN_ID: string },
 ): Promise<void> {
   console.log(`Refreshing prices for ${msg.tokens.length} tokens`)
+
+  const hub = env.WEBSOCKET_HUB.get(env.WEBSOCKET_HUB.idFromName("price-hub"))
 
   for (const token of msg.tokens) {
     try {
       // Fetch from external price feed
       const priceUsd = await fetchTokenPrice(token, env.CHAIN_ID)
+      const updatedAt = Date.now()
 
       // Store in KV with 60s TTL
-      await env.CACHE.put(`price:${token}`, JSON.stringify({ tokenAddress: token, priceUsd, updatedAt: Date.now() }), {
+      await env.CACHE.put(`price:${token}`, JSON.stringify({ tokenAddress: token, priceUsd, updatedAt }), {
         expirationTtl: 60,
       })
+
+      // Publish the refresh to the WebSocket hub so connected clients (PriceTicker)
+      // actually receive live updates — without this the /ws/prices route is only a
+      // handshake and subscribers never get a price.
+      await hub.fetch(
+        new Request("http://price-hub/price", {
+          method: "POST",
+          body: JSON.stringify({ tokenAddress: token, price: priceUsd, updatedAt }),
+        }),
+      )
     } catch (error) {
       console.error(`Failed to refresh price for ${token}:`, error)
     }

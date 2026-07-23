@@ -307,7 +307,8 @@ contract AetherHook is IHooks, Ownable {
     /// @notice Time-weighted average tick over the last `secondsAgo` seconds
     /// @param poolId The pool to query
     /// @param secondsAgo Length of the averaging window in seconds (must be > 0)
-    /// @return avgTick The time-weighted average terminal tick (floor division toward zero)
+    /// @return avgTick The time-weighted average terminal tick (rounded toward negative
+    ///         infinity — floor division — so negative, non-divisible deltas round DOWN).
     /// @dev Requires at least two observations, and the window start must lie within the
     ///      retained buffer. Reverts with {Errors.InsufficientObservations} or
     ///      {Errors.InsufficientElapsedTime} otherwise.
@@ -322,7 +323,15 @@ contract AetherHook is IHooks, Ownable {
         // Two's-complement subtraction (overflow-safe for deltas within int56 range),
         // mirroring Uniswap v3's oracle tick averaging.
         unchecked {
-            avgTick = int24((cumulativeNow - cumulativeThen) / int56(uint56(secondsAgo)));
+            int56 numerator = cumulativeNow - cumulativeThen;
+            int56 denominator = int56(uint56(secondsAgo));
+            int56 quotient = numerator / denominator;
+            // Solidity rounds integer division toward zero; for a negative, non-divisible
+            // delta that truncates the average UP by one tick (e.g. -70000/90 = -777 instead
+            // of the floor -778), biasing the TWAP price upward and risking spurious TP/SL
+            // crossings. Decrement the quotient on a negative remainder to floor it.
+            if (numerator < 0 && numerator % denominator != 0) quotient -= int56(1);
+            avgTick = int24(quotient);
         }
     }
 
@@ -498,10 +507,18 @@ contract AetherHook is IHooks, Ownable {
 
         if (!invert) return priceX18;
 
-        // Pair-direction normalization: reciprocal price = 1e18 / priceX18, kept at 1e18 scale.
-        // A zero price (extremely negative tick) has no representable reciprocal at this scale.
-        if (priceX18 == 0) revert Errors.InvalidAmount();
-        return FullMath.mulDiv(1e18, 1e18, priceX18);
+        // Pair-direction normalization: compute the reciprocal at FULL PRECISION directly
+        // from sqrtPriceX96 — NOT as 1/priceX18 of the already-rounded direct quote, which
+        // (a) reverts for negative ticks where priceX18 rounds to zero even though the
+        // reciprocal is perfectly representable, and (b) amplifies one-wei direct-price
+        // rounding into a large quote error when priceX18 is only a few units.
+        //
+        //   inverseX18 = 1e18 / price = Q96^2 * 1e18 / sqrtPriceX96^2
+        //
+        // sqrtPriceX96 is never zero for any tick in TickMath's range (MIN_SQRT_RATIO > 0),
+        // so both divisions below are safe. FullMath handles the 512-bit products.
+        uint256 q96SquaredOverSqrtP = FullMath.mulDiv(FixedPoint96.Q96, FixedPoint96.Q96, uint256(sqrtPriceX96));
+        return FullMath.mulDiv(q96SquaredOverSqrtP, 1e18, uint256(sqrtPriceX96));
     }
 
     /// @notice Modifier to ensure only PoolManager can call hook callbacks

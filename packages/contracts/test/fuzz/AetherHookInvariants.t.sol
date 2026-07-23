@@ -40,6 +40,12 @@ contract AetherHookHandler is Test {
     int256 public minTick = type(int256).max;
     int256 public maxTick = type(int256).min;
 
+    // Mirrors the hook's 1024-slot ring so the invariants can clamp queries to the
+    // OLDEST RETAINED observation once the buffer overflows (firstTime stays pinned to
+    // the first-ever swap, which falls out of the ring after 1024 distinct timestamps).
+    uint32[1024] internal _modelTimes;
+    uint16 public modelIndex;
+
     // Handler-owned absolute clock (test-frame block.timestamp can lag cheatcode warps).
     uint32 public clock = 1_000_000_000;
 
@@ -101,11 +107,15 @@ contract AetherHookHandler is Test {
             firstTime = now_;
             expectedCumNow = 0;
             modelObservations = 1;
+            modelIndex = 0;
+            _modelTimes[0] = now_;
         } else if (now_ != lastTime) {
             unchecked {
                 expectedCumNow += int56(int256(lastTick)) * int56(uint56(now_ - lastTime));
             }
             if (modelObservations < 1024) modelObservations += 1;
+            modelIndex = (modelIndex + 1) % 1024;
+            _modelTimes[modelIndex] = now_;
         } // else: identical timestamp → fold in place, cumulative unchanged
         lastTick = tick;
         lastTime = now_;
@@ -124,6 +134,13 @@ contract AetherHookHandler is Test {
 
         vm.prank(address(mockPoolManager));
         hook.afterSwap(address(0xDAD), key, params, delta, "");
+    }
+
+    /// @notice Timestamp of the oldest observation still retained in the model's ring
+    ///         (mirrors the hook's `_oldestIndex` once the 1024-slot buffer overflows).
+    function modelOldestTime() public view returns (uint32) {
+        uint16 count = modelObservations;
+        return _modelTimes[count < 1024 ? 0 : (modelIndex + 1) % 1024];
     }
 
     function _testPoolKey() internal pure returns (PoolKey memory) {
@@ -208,16 +225,23 @@ contract AetherHookInvariantTest is Test {
         );
     }
 
-    /// @notice Over the full recorded history, the TWAP tick stays within [min, max] observed
+    /// @notice Over the RETAINED observation history, the TWAP tick stays within the
+    ///         [min, max] observed across all history (the retained window is a subset,
+    ///         so its average cannot leave the overall bounds).
+    /// @dev The window is clamped to the oldest RETAINED observation (`modelOldestTime`),
+    ///      not the first-ever swap: once the 1024-slot ring overflows, `firstTime` falls
+    ///      out of the buffer and `getTwapTick` would (correctly) revert with
+    ///      InsufficientElapsedTime — failing the invariant on buffer overflow rather
+    ///      than on TWAP correctness.
     function invariant_twapTick_withinObservedRange() public view {
         if (handler.modelObservations() < 2) return;
 
-        uint32 first = handler.firstTime();
+        uint32 oldestRetained = handler.modelOldestTime();
         uint32 last = handler.lastTime();
-        if (last <= first) return;
+        if (last <= oldestRetained) return;
 
-        // Window [first, now]: the view call's frame sees the correctly warped "now".
-        uint32 window = last - first;
+        // Window [oldestRetained, now]: the view call's frame sees the correctly warped "now".
+        uint32 window = last - oldestRetained;
         int256 avg = int256(hook.getTwapTick(handler.poolId(), window));
         assertGe(avg, handler.minTick(), "TWAP tick must be >= min observed tick");
         assertLe(avg, handler.maxTick(), "TWAP tick must be <= max observed tick");
