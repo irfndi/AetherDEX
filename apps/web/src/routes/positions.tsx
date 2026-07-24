@@ -25,6 +25,7 @@ const initialValues: RebalanceFormValues = {
 interface IndexedPosition {
   readonly id: number
   readonly poolId: string
+  readonly tickSpacing: number
   readonly tickLower: number
   readonly tickUpper: number
   readonly liquidity: string
@@ -42,6 +43,7 @@ function isIndexedPosition(value: unknown): value is IndexedPosition {
   return (
     typeof position.id === "number" &&
     typeof position.poolId === "string" &&
+    typeof position.tickSpacing === "number" &&
     typeof position.tickLower === "number" &&
     typeof position.tickUpper === "number" &&
     typeof position.liquidity === "string"
@@ -63,7 +65,7 @@ function toRebalancePosition(position: IndexedPosition): RebalancePosition {
     token1: "Token 1",
     currentLowerTick: position.tickLower,
     currentUpperTick: position.tickUpper,
-    tickSpacing: 60,
+    tickSpacing: position.tickSpacing,
     liquidity: position.liquidity,
   }
 }

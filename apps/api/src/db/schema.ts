@@ -70,6 +70,7 @@ export interface LiquidityPosition {
   id: number
   userAddress: string
   poolId: string
+  tickSpacing: number
   tickLower: number
   tickUpper: number
   liquidity: string
@@ -164,6 +165,7 @@ export function rowToLiquidityPosition(row: Record<string, unknown>): LiquidityP
     id: row.id as number,
     userAddress: row.user_address as string,
     poolId: row.pool_id as string,
+    tickSpacing: (row.tick_spacing as number | undefined) ?? 0,
     tickLower: row.tick_lower as number,
     tickUpper: row.tick_upper as number,
     liquidity: row.liquidity as string,
