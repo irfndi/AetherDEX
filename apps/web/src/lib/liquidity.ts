@@ -29,6 +29,9 @@ export type LiquidityTransactionRequest = {
   readonly execution: {
     readonly status: "not-configured"
     readonly reason: "router-address-not-configured" | "v3-position-manager-not-configured"
+  } | {
+    readonly status: "submitted"
+    readonly txHash: `0x${string}`
   }
 }
 
