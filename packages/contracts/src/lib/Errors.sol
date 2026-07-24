@@ -20,6 +20,8 @@ library Errors {
     error InvalidLiquidityDelta();
     error PositionAlreadyOwned();
     error UnauthorizedPosition();
+    error InsufficientCallBalance();
+    error UnsupportedNativeCurrency();
     error PoolIndexOutOfBounds();
     /// @notice Oracle has not recorded enough observations to answer the query
     error InsufficientObservations();

@@ -77,6 +77,16 @@ describe("pool creation validation", () => {
     expect(result.request).toBeNull()
     expect(result.errors.priceInput).toBe("Initial price is outside the uint160 sqrt-price range.")
   })
+
+  it("rejects a positive decimal price that encodes to zero sqrtPriceX96", () => {
+    const result = validatePoolCreationForm({
+      ...validValues,
+      priceInput: { kind: "price", value: "0.000000000000000000000000000000001" },
+    })
+
+    expect(result.request).toBeNull()
+    expect(result.errors.priceInput).toBe("Initial price is too small to encode as sqrtPriceX96.")
+  })
 })
 
 describe("pool creation transaction intent", () => {

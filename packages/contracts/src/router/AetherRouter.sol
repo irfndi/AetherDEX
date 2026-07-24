@@ -243,6 +243,9 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
         if (params.amountIn == 0 || params.swapAmountIn == 0) revert Errors.ZeroAmount();
         if (params.swapAmountIn > params.amountIn) revert Errors.InvalidAmount();
         if (params.liquidityParams.liquidityDelta <= 0) revert Errors.InvalidLiquidityDelta();
+        if (params.poolKey.currency0.isAddressZero() || params.poolKey.currency1.isAddressZero()) {
+            revert Errors.UnsupportedNativeCurrency();
+        }
 
         bytes32 positionId = _positionId(params.poolKey, params.liquidityParams);
         if (positionOwner[positionId] != address(0)) revert Errors.PositionAlreadyOwned();
@@ -252,7 +255,9 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
         uint256 balance1Before = IERC20(Currency.unwrap(params.poolKey.currency1)).balanceOf(address(this));
         IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), params.amountIn);
 
-        bytes memory result = poolManager.unlock(abi.encode(Action.ADD_LIQUIDITY_SINGLE_SIDED, abi.encode(params)));
+        bytes memory result = poolManager.unlock(
+            abi.encode(Action.ADD_LIQUIDITY_SINGLE_SIDED, abi.encode(params, balance0Before, balance1Before))
+        );
         (delta, amountOut) = abi.decode(result, (BalanceDelta, uint256));
         if (amountOut < params.minSwapAmountOut) {
             revert Errors.SlippageExceeded(params.minSwapAmountOut, amountOut);
@@ -353,7 +358,9 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
                 abi.decode(actionData, (PoolKey, ModifyLiquidityParams));
             return _handleRemoveLiquidity(pKey, liqP);
         } else if (action == Action.ADD_LIQUIDITY_SINGLE_SIDED) {
-            return _handleAddLiquiditySingleSided(abi.decode(actionData, (SingleSidedLiquidityParams)));
+            (SingleSidedLiquidityParams memory params, uint256 balance0Before, uint256 balance1Before) =
+                abi.decode(actionData, (SingleSidedLiquidityParams, uint256, uint256));
+            return _handleAddLiquiditySingleSided(params, balance0Before, balance1Before);
         }
 
         revert Errors.InvalidPath();
@@ -460,7 +467,11 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
         return abi.encode(callerDelta);
     }
 
-    function _handleAddLiquiditySingleSided(SingleSidedLiquidityParams memory params) internal returns (bytes memory) {
+    function _handleAddLiquiditySingleSided(
+        SingleSidedLiquidityParams memory params,
+        uint256 balance0Before,
+        uint256 balance1Before
+    ) internal returns (bytes memory) {
         SwapParams memory swapParams = SwapParams({
             zeroForOne: params.zeroForOne,
             amountSpecified: -int256(int128(params.swapAmountIn)),
@@ -482,23 +493,31 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
         if (amountOut > 0) poolManager.take(currencyOut, address(this), amountOut);
 
         (BalanceDelta liquidityDelta,) = poolManager.modifyLiquidity(params.poolKey, params.liquidityParams, "");
-        _settleLiquidityDeltas(params.poolKey, liquidityDelta);
+        _settleLiquidityDeltas(params.poolKey, liquidityDelta, balance0Before, balance1Before);
         return abi.encode(liquidityDelta, amountOut);
     }
 
-    function _settleLiquidityDeltas(PoolKey memory poolKey, BalanceDelta delta) internal {
+    function _settleLiquidityDeltas(
+        PoolKey memory poolKey,
+        BalanceDelta delta,
+        uint256 balance0Before,
+        uint256 balance1Before
+    ) internal {
         uint256 owed0 = uint256(-int256(delta.amount0()));
         uint256 owed1 = uint256(-int256(delta.amount1()));
-        if (owed0 > 0) {
-            poolManager.sync(poolKey.currency0);
-            IERC20(Currency.unwrap(poolKey.currency0)).safeTransfer(address(poolManager), owed0);
-            poolManager.settle();
+        _settleCallScoped(poolKey.currency0, owed0, balance0Before);
+        _settleCallScoped(poolKey.currency1, owed1, balance1Before);
+    }
+
+    function _settleCallScoped(Currency currency, uint256 amount, uint256 balanceBefore) internal {
+        if (amount == 0) return;
+        uint256 balanceAfter = IERC20(Currency.unwrap(currency)).balanceOf(address(this));
+        if (balanceAfter < balanceBefore || balanceAfter - balanceBefore < amount) {
+            revert Errors.InsufficientCallBalance();
         }
-        if (owed1 > 0) {
-            poolManager.sync(poolKey.currency1);
-            IERC20(Currency.unwrap(poolKey.currency1)).safeTransfer(address(poolManager), owed1);
-            poolManager.settle();
-        }
+        poolManager.sync(currency);
+        IERC20(Currency.unwrap(currency)).safeTransfer(address(poolManager), amount);
+        poolManager.settle();
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -526,8 +545,10 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
     ) internal {
         address token0 = Currency.unwrap(poolKey.currency0);
         address token1 = Currency.unwrap(poolKey.currency1);
-        uint256 balance0 = IERC20(token0).balanceOf(address(this)) - balance0Before;
-        uint256 balance1 = IERC20(token1).balanceOf(address(this)) - balance1Before;
+        uint256 balance0After = IERC20(token0).balanceOf(address(this));
+        uint256 balance1After = IERC20(token1).balanceOf(address(this));
+        uint256 balance0 = balance0After > balance0Before ? balance0After - balance0Before : 0;
+        uint256 balance1 = balance1After > balance1Before ? balance1After - balance1Before : 0;
         if (balance0 > 0) IERC20(token0).safeTransfer(recipient, balance0);
         if (balance1 > 0) IERC20(token1).safeTransfer(recipient, balance1);
     }
