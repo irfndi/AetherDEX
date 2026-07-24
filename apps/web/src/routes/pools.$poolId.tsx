@@ -8,7 +8,9 @@ import { TokenChip } from "../components/TokenChip"
 import { Button, Card, CardBody, Input, Stat } from "../components/ui"
 import {
   buildLiquidityRequest,
+  LIQUIDITY_PROTOCOLS,
   type LiquidityFormValues,
+  type LiquidityProtocol,
   type LiquiditySide,
   type LiquidityTransactionRequest,
   validateLiquidityForm,
@@ -162,6 +164,7 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
   const { open } = useAppKit()
   const { address, isConnected } = useAccount()
   const [values, setValues] = useState<LiquidityFormValues>({
+    protocol: "v4",
     tokenSide: "token0",
     amount: "",
     lowerTick: "-600",
@@ -222,6 +225,27 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
         </div>
 
         <form onSubmit={submit} noValidate className="space-y-4">
+          <fieldset>
+            <legend className="label-text mb-2 block text-sm font-medium">Pool protocol</legend>
+            <div className="join mb-4 w-full">
+              {LIQUIDITY_PROTOCOLS.map((protocol: LiquidityProtocol) => (
+                <button
+                  className={`join-item btn btn-sm flex-1 ${values.protocol === protocol ? "btn-primary" : "btn-ghost"}`}
+                  key={protocol}
+                  type="button"
+                  aria-pressed={values.protocol === protocol}
+                  onClick={() => updateValue("protocol", protocol)}
+                >
+                  Uniswap {protocol}
+                </button>
+              ))}
+            </div>
+            <p className="mb-4 text-xs text-base-content/60">
+              V3 uses the position NFT manager; V4 uses the Aether position manager. Both remain execution-gated until
+              their deployed addresses and protected submission route are configured.
+            </p>
+          </fieldset>
+
           <fieldset>
             <legend className="label-text mb-2 block text-sm font-medium">Deposit from</legend>
             <div className="join w-full">
