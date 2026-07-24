@@ -3,6 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router"
 import { type FormEvent, useEffect, useState } from "react"
 import { useAccount } from "wagmi"
 import { DexScreenerChart } from "../components/DexScreenerChart"
+import { RangeSelector } from "../components/RangeSelector"
 import { TokenChip } from "../components/TokenChip"
 import { Button, Card, CardBody, Input, Stat } from "../components/ui"
 import {
@@ -258,6 +259,16 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
               <span className="label-text text-sm font-medium">Price range</span>
               <span className="text-xs text-base-content/60">Tick spacing: {pool.tickSpacing}</span>
             </div>
+            <RangeSelector
+              currentTick={pool.currentTick}
+              lowerTick={parseTick(values.lowerTick, pool.currentTick - pool.tickSpacing * 10)}
+              tickSpacing={pool.tickSpacing}
+              upperTick={parseTick(values.upperTick, pool.currentTick + pool.tickSpacing * 10)}
+              onChange={({ lowerTick, upperTick }) => {
+                setValues((current) => ({ ...current, lowerTick: String(lowerTick), upperTick: String(upperTick) }))
+                setRequest(null)
+              }}
+            />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Input
                 id="liquidity-lower-tick"
@@ -355,6 +366,11 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
       </CardBody>
     </Card>
   )
+}
+
+function parseTick(value: string, fallback: number): number {
+  const parsed = Number(value)
+  return Number.isSafeInteger(parsed) ? parsed : fallback
 }
 
 function formatUsd(value: number): string {
