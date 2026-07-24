@@ -1,6 +1,6 @@
 import type { Pool } from "@aetherdex/shared"
 import { useQuery } from "@tanstack/react-query"
-import { createFileRoute, Link } from "@tanstack/react-router"
+import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router"
 import { useEffect, useState } from "react"
 import { TokenChip } from "../components/TokenChip"
 import { Card, CardBody, Input, Stat } from "../components/ui"
@@ -35,6 +35,14 @@ export const Route = createFileRoute("/pools")({
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080/api/v1"
 
 function PoolsPage() {
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
+
+  if (pathname !== "/pools") return <Outlet />
+
+  return <PoolsIndexPage />
+}
+
+function PoolsIndexPage() {
   const { sortBy, filterToken } = Route.useSearch()
   const navigate = Route.useNavigate()
   const [tokens, setTokens] = useState<Record<string, Token>>({})
