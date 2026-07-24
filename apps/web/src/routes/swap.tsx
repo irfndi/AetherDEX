@@ -2,12 +2,13 @@ import { createFileRoute } from "@tanstack/react-router"
 import { AnimatePresence, motion } from "framer-motion"
 import { AlertCircle, ArrowDown, CheckCircle2, Settings2 } from "lucide-react"
 import { useEffect, useState } from "react"
-import { useAccount, useSendTransaction, useWaitForTransactionReceipt } from "wagmi"
+import { useAccount, useWaitForTransactionReceipt, useWalletClient } from "wagmi"
 import { TokenChip } from "../components/TokenChip"
 import { type Token, TokenSearch } from "../components/TokenSearch"
 import { Button } from "../components/ui/Button"
 import { Card, CardBody } from "../components/ui/Card"
 import { useSiweAuth } from "../hooks/useSiweAuth"
+import { submitProtectedRawTransaction } from "../lib/protected-submission"
 
 export const Route = createFileRoute("/swap")({
   component: SwapPage,
@@ -44,7 +45,7 @@ function SwapPage() {
   const [swapState, setSwapState] = useState<SwapState>("idle")
   const [txHash, setTxHash] = useState<`0x${string}` | undefined>(undefined)
 
-  const { sendTransactionAsync } = useSendTransaction()
+  const { data: walletClient } = useWalletClient()
   const {
     isLoading: isConfirming,
     isSuccess: isConfirmed,
@@ -131,14 +132,24 @@ function SwapPage() {
       if (!buildRes.ok) throw new Error("Failed to build swap calldata")
       const calldata = (await buildRes.json()) as { to: string; data: string; value: string }
 
-      setSwapState("signing")
       if (!/^0x[a-fA-F0-9]{40}$/.test(calldata.to)) {
         throw new Error(`Invalid router address from API: ${calldata.to}`)
       }
-      const hash = await sendTransactionAsync({
+      const privateRpcUrl = import.meta.env.VITE_PRIVATE_RPC_URL
+      if (!privateRpcUrl) throw new Error("Protected submission is not configured")
+      if (!walletClient) throw new Error("Wallet client is not ready")
+      const prepared = await walletClient.prepareTransactionRequest({
+        account: address,
         to: calldata.to as `0x${string}`,
         data: calldata.data as `0x${string}`,
         value: BigInt(calldata.value || "0"),
+      })
+      const signedTransaction = await walletClient.signTransaction(prepared)
+
+      setSwapState("signing")
+      const hash = await submitProtectedRawTransaction({
+        rpcUrl: privateRpcUrl,
+        signedTransaction,
       })
 
       setTxHash(hash)
