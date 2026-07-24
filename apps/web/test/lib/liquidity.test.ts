@@ -31,6 +31,14 @@ describe("liquidity form helpers", () => {
     })
   })
 
+  it("rejects an invalid pool tick spacing", () => {
+    const result = validateLiquidityForm(validValues, 0)
+
+    expect(result.valid).toBe(false)
+    expect(result.errors.lowerTick).toBe("This pool has no valid tick spacing.")
+    expect(result.errors.upperTick).toBe("This pool has no valid tick spacing.")
+  })
+
   it("builds an honest typed request without inventing a router address", () => {
     expect(buildLiquidityRequest("0xpool", validValues, 60)).toEqual({
       kind: "aetherdex.addLiquidity",
