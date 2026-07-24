@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Exploration / proposal — no implementation committed |
+| **Status** | Phase 1A implementation in progress |
 | **Branch** | `explore/alps-farm-refactor` |
 | **Author** | Sisyphus (AetherDEX) |
 | **Decision needed from** | Project owner |
@@ -273,6 +273,8 @@ This reframes the existing AGENTS.md "Wave 3+" backlog around the Alpine LP thes
 - **One-click rebalance** flow on `/positions`.
 - **Pool creation flow** with execution-time price re-check.
 - **Portfolio / Folio** page: positions + PnL (start with D1 + on-chain event parse).
+
+**Phase 1A implementation status (2026-07-24):** the first contract increment now adds an atomic V4 swap-plus-liquidity zap with deadline, swap slippage, minimum liquidity-consumption, dust-refund, and reentrancy guards. Existing router positions also have an owner ledger that blocks arbitrary public removal. A standalone `AetherPositionManager` receipt-NFT foundation is implemented and tested for owner/approved removal, transfer authority, partial burns, native-currency settlement, callback authorization, and reentrancy; router wiring to that manager remains the next ownership migration step before calling the flow fully non-custodial. The ledger is a security containment layer, not a substitute for native V4 PositionManager integration.
 
 ### Phase 2 — V4-native automation (the differentiator)
 
