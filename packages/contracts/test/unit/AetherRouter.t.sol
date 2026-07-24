@@ -366,6 +366,9 @@ contract AetherRouterTest is Test {
     // ═══════════════════════════════════════════════════════════════════════════
 
     function test_removeLiquidity_succeeds() public {
+        mockPM.setModifyLiquidityDelta(toBalanceDelta(-int128(0.5 ether), -int128(0.5 ether)));
+        vm.prank(user);
+        router.addLiquidity(_testPoolKey(), _modifyLiqParams(), 0.6 ether, 0.6 ether, block.timestamp + 100);
         mockPM.setModifyLiquidityDelta(toBalanceDelta(int128(0.5 ether), int128(0.5 ether)));
 
         uint256 userBal0Before = token0.balanceOf(user);
@@ -375,7 +378,7 @@ contract AetherRouterTest is Test {
         vm.prank(user);
         router.removeLiquidity(
             _testPoolKey(),
-            _modifyLiqParams(),
+            _removeLiqParams(),
             0,
             0,
             block.timestamp + 100
@@ -386,6 +389,9 @@ contract AetherRouterTest is Test {
     }
 
     function test_removeLiquidity_slippageReverts() public {
+        mockPM.setModifyLiquidityDelta(toBalanceDelta(-int128(0.5 ether), -int128(0.5 ether)));
+        vm.prank(user);
+        router.addLiquidity(_testPoolKey(), _modifyLiqParams(), 0.6 ether, 0.6 ether, block.timestamp + 100);
         mockPM.setModifyLiquidityDelta(toBalanceDelta(int128(0.3 ether), int128(0.3 ether)));
 
         vm.warp(1);
@@ -393,7 +399,7 @@ contract AetherRouterTest is Test {
         vm.expectRevert();
         router.removeLiquidity(
             _testPoolKey(),
-            _modifyLiqParams(),
+            _removeLiqParams(),
             uint256(0.5 ether),
             0,
             block.timestamp + 100
@@ -401,6 +407,9 @@ contract AetherRouterTest is Test {
     }
 
     function test_removeLiquidity_emitsEvent() public {
+        mockPM.setModifyLiquidityDelta(toBalanceDelta(-int128(0.5 ether), -int128(0.5 ether)));
+        vm.prank(user);
+        router.addLiquidity(_testPoolKey(), _modifyLiqParams(), 0.6 ether, 0.6 ether, block.timestamp + 100);
         mockPM.setModifyLiquidityDelta(toBalanceDelta(int128(0.5 ether), int128(0.5 ether)));
 
         vm.warp(1);
@@ -408,7 +417,137 @@ contract AetherRouterTest is Test {
         PoolKey memory key = _testPoolKey();
         vm.expectEmit(true, true, true, true);
         emit AetherRouter.LiquidityRemoved(user, keccak256(abi.encode(key)), 0.5 ether, 0.5 ether);
-        router.removeLiquidity(key, _modifyLiqParams(), 0, 0, block.timestamp + 100);
+        router.removeLiquidity(key, _removeLiqParams(), 0, 0, block.timestamp + 100);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  SINGLE-SIDED ZAP — ATOMIC SWAP + LIQUIDITY
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    function test_addLiquiditySingleSided_swapsAddsAndRefundsDust() public {
+        mockPM.setSwapDelta(toBalanceDelta(-int128(0.4 ether), int128(0.3 ether)));
+        mockPM.setModifyLiquidityDelta(toBalanceDelta(-int128(0.5 ether), -int128(0.2 ether)));
+
+        uint256 token0Before = token0.balanceOf(user);
+        uint256 token1Before = token1.balanceOf(user);
+        vm.warp(1);
+        vm.prank(user);
+        router.addLiquiditySingleSided(
+            AetherRouter.SingleSidedLiquidityParams({
+                poolKey: _testPoolKey(),
+                liquidityParams: _modifyLiqParams(),
+                zeroForOne: true,
+                amountIn: 1 ether,
+                swapAmountIn: 0.4 ether,
+                minSwapAmountOut: 0.29 ether,
+                minAmount0: 0.5 ether,
+                minAmount1: 0.2 ether,
+                deadline: block.timestamp + 100,
+                hookData: ""
+            })
+        );
+
+        assertEq(token0.balanceOf(user), token0Before - 0.9 ether);
+        assertEq(token1.balanceOf(user), token1Before + 0.1 ether);
+        PoolKey memory key = _testPoolKey();
+        bytes32 positionId = keccak256(abi.encode(keccak256(abi.encode(key)), int24(-887220), int24(887220), bytes32(0)));
+        assertEq(router.positionOwner(positionId), user);
+    }
+
+    function test_addLiquiditySingleSided_revertsOnSwapSlippage() public {
+        mockPM.setSwapDelta(toBalanceDelta(-int128(0.4 ether), int128(0.1 ether)));
+        vm.warp(1);
+        vm.prank(user);
+        vm.expectRevert();
+        router.addLiquiditySingleSided(
+            AetherRouter.SingleSidedLiquidityParams({
+                poolKey: _testPoolKey(),
+                liquidityParams: _modifyLiqParams(),
+                zeroForOne: true,
+                amountIn: 1 ether,
+                swapAmountIn: 0.4 ether,
+                minSwapAmountOut: 0.2 ether,
+                minAmount0: 0,
+                minAmount1: 0,
+                deadline: block.timestamp + 100,
+                hookData: ""
+            })
+        );
+    }
+
+    function test_removeLiquidity_revertsForNonOwner() public {
+        mockPM.setModifyLiquidityDelta(toBalanceDelta(-int128(0.5 ether), -int128(0.5 ether)));
+        vm.prank(user);
+        router.addLiquidity(_testPoolKey(), _modifyLiqParams(), 0.6 ether, 0.6 ether, block.timestamp + 100);
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(Errors.UnauthorizedPosition.selector);
+        router.removeLiquidity(_testPoolKey(), _removeLiqParams(), 0, 0, block.timestamp + 100);
+    }
+
+    function test_removeLiquidity_partialRemovalRetainsAuthority() public {
+        mockPM.setModifyLiquidityDelta(toBalanceDelta(-int128(0.5 ether), -int128(0.5 ether)));
+        vm.prank(user);
+        router.addLiquidity(_testPoolKey(), _modifyLiqParams(), 0.6 ether, 0.6 ether, block.timestamp + 100);
+
+        ModifyLiquidityParams memory partialParams = ModifyLiquidityParams({
+            tickLower: -887220,
+            tickUpper: 887220,
+            liquidityDelta: -0.4 ether,
+            salt: 0
+        });
+        mockPM.setModifyLiquidityDelta(toBalanceDelta(int128(0.1 ether), int128(0.1 ether)));
+        vm.prank(user);
+        router.removeLiquidity(_testPoolKey(), partialParams, 0, 0, block.timestamp + 100);
+
+        bytes32 positionId = keccak256(abi.encode(keccak256(abi.encode(_testPoolKey())), int24(-887220), int24(887220), bytes32(0)));
+        assertEq(router.positionOwner(positionId), user);
+        assertEq(router.positionLiquidity(positionId), 0.6 ether);
+    }
+
+    function test_addLiquiditySingleSided_allowsPreExistingTokenDust() public {
+        token0.mint(address(router), 1);
+        mockPM.setSwapDelta(toBalanceDelta(-int128(0.4 ether), int128(0.3 ether)));
+        mockPM.setModifyLiquidityDelta(toBalanceDelta(-int128(0.5 ether), -int128(0.2 ether)));
+
+        vm.warp(1);
+        vm.prank(user);
+        router.addLiquiditySingleSided(
+            AetherRouter.SingleSidedLiquidityParams({
+                poolKey: _testPoolKey(),
+                liquidityParams: _modifyLiqParams(),
+                zeroForOne: true,
+                amountIn: 1 ether,
+                swapAmountIn: 0.4 ether,
+                minSwapAmountOut: 0.29 ether,
+                minAmount0: 0.5 ether,
+                minAmount1: 0.2 ether,
+                deadline: block.timestamp + 100,
+                hookData: ""
+            })
+        );
+        assertEq(token0.balanceOf(address(router)), 1);
+    }
+
+    function test_addLiquiditySingleSided_settlesActualPartialSwapInput() public {
+        mockPM.setSwapDelta(toBalanceDelta(-int128(0.2 ether), int128(0.15 ether)));
+        mockPM.setModifyLiquidityDelta(toBalanceDelta(-int128(0.5 ether), -int128(0.1 ether)));
+
+        vm.warp(1);
+        vm.prank(user);
+        router.addLiquiditySingleSided(
+            AetherRouter.SingleSidedLiquidityParams({
+                poolKey: _testPoolKey(),
+                liquidityParams: _modifyLiqParams(),
+                zeroForOne: true,
+                amountIn: 1 ether,
+                swapAmountIn: 0.4 ether,
+                minSwapAmountOut: 0.14 ether,
+                minAmount0: 0.5 ether,
+                minAmount1: 0.1 ether,
+                deadline: block.timestamp + 100,
+                hookData: ""
+            })
+        );
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -471,6 +610,10 @@ contract AetherRouterTest is Test {
     function _modifyLiqParams() internal pure returns (ModifyLiquidityParams memory) {
         return ModifyLiquidityParams({tickLower: -887220, tickUpper: 887220, liquidityDelta: 1e18, salt: 0});
     }
+
+    function _removeLiqParams() internal pure returns (ModifyLiquidityParams memory) {
+        return ModifyLiquidityParams({tickLower: -887220, tickUpper: 887220, liquidityDelta: -1e18, salt: 0});
+    }
 }
 
 /// @notice Mock PoolManager that supports the subset of IPoolManager used by AetherRouter
@@ -480,6 +623,15 @@ contract MockPoolManager {
 
     BalanceDelta public swapDelta;
     BalanceDelta public modifyLiquidityDelta;
+    bool internal strictZap;
+    bool internal unlocked;
+    Currency internal syncedCurrency;
+    uint256 internal syncedBalance;
+    uint256 internal expectedSettle;
+    uint256 internal expectedTake;
+    bool internal modifying;
+    Currency internal modifyCurrency0;
+    Currency internal modifyCurrency1;
 
     function setSwapDelta(BalanceDelta delta) external {
         swapDelta = delta;
@@ -494,27 +646,61 @@ contract MockPoolManager {
     }
 
     function unlock(bytes calldata data) external returns (bytes memory) {
-        return IUnlockCallback(msg.sender).unlockCallback(data);
+        (uint8 action,) = abi.decode(data, (uint8, bytes));
+        strictZap = action == 4;
+        unlocked = true;
+        bytes memory result = IUnlockCallback(msg.sender).unlockCallback(data);
+        if (strictZap && (expectedSettle != 0 || expectedTake != 0)) revert("unsettled");
+        unlocked = false;
+        strictZap = false;
+        return result;
     }
 
-    function swap(PoolKey memory, SwapParams memory, bytes calldata) external returns (BalanceDelta) {
+    function swap(PoolKey memory, SwapParams memory params, bytes calldata) external returns (BalanceDelta) {
+        if (strictZap) {
+            expectedSettle = params.zeroForOne ? uint256(-int256(swapDelta.amount0())) : uint256(-int256(swapDelta.amount1()));
+            expectedTake = params.zeroForOne ? uint256(int256(swapDelta.amount1())) : uint256(int256(swapDelta.amount0()));
+            modifying = false;
+        }
         return swapDelta;
     }
 
-    function modifyLiquidity(PoolKey memory, ModifyLiquidityParams memory, bytes calldata)
+    function modifyLiquidity(PoolKey memory key, ModifyLiquidityParams memory, bytes calldata)
         external
         returns (BalanceDelta callerDelta, BalanceDelta)
     {
+        if (strictZap) {
+            modifying = true;
+            modifyCurrency0 = key.currency0;
+            modifyCurrency1 = key.currency1;
+        }
         return (modifyLiquidityDelta, BalanceDelta.wrap(0));
     }
 
-    function sync(Currency) external {}
+    function sync(Currency currency) external {
+        if (strictZap) {
+            syncedCurrency = currency;
+            syncedBalance = currency.balanceOfSelf();
+            if (modifying) {
+                expectedSettle = currency == modifyCurrency0
+                    ? uint256(-int256(modifyLiquidityDelta.amount0()))
+                    : uint256(-int256(modifyLiquidityDelta.amount1()));
+            }
+        }
+    }
 
     function settle() external payable returns (uint256) {
+        if (strictZap) {
+            uint256 paid = msg.value > 0 ? msg.value : syncedCurrency.balanceOfSelf() - syncedBalance;
+            if (paid != expectedSettle) revert("bad settle");
+            expectedSettle = 0;
+        }
         return 0;
     }
 
     function take(Currency currency, address to, uint256 amount) external {
+        if (strictZap && amount != expectedTake) revert("bad take");
+        if (strictZap) expectedTake = 0;
         IERC20(Currency.unwrap(currency)).safeTransfer(to, amount);
     }
 }
