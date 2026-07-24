@@ -65,9 +65,10 @@ describe("pool creation transaction intent", () => {
     if (!result.request) throw new Error("expected valid request")
 
     const intent = buildPoolCreationTransactionIntent(result.request)
-    expect(intent.functionName).toBe("createPool")
+    expect(intent.functionName).toBe("createPoolWithDeadline")
     expect(intent.args.slice(0, 4)).toEqual([token0, token1, 3000, 60])
     expect(intent.args[4]).toBeGreaterThan(0n)
+    expect(intent.args[5]).toBe(BigInt(result.request.deadline))
     expect("address" in intent).toBe(false)
   })
 })

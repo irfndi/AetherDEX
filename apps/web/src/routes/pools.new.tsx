@@ -1,26 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { useState } from "react"
 import { getAddress, isAddress } from "viem"
-import { useAccount, useChainId, useWriteContract } from "wagmi"
+import { useAccount } from "wagmi"
 import { Button, Card, CardBody, CardTitle, Input } from "../components/ui"
 
 const Q96 = 2n ** 96n
-const FACTORY_ABI = [
-  {
-    type: "function",
-    name: "createPool",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "token0", type: "address" },
-      { name: "token1", type: "address" },
-      { name: "fee", type: "uint24" },
-      { name: "tickSpacing", type: "int24" },
-      { name: "sqrtPriceX96", type: "uint160" },
-    ],
-    outputs: [{ name: "poolId", type: "bytes32" }],
-  },
-] as const
-
 type PriceInput =
   | { readonly kind: "price"; readonly value: string }
   | { readonly kind: "sqrtPriceX96"; readonly value: string }
@@ -104,8 +88,15 @@ export function buildPoolCreationTransactionIntent(request: PoolCreationRequest)
       ? BigInt(request.initialPrice.value)
       : decimalToSqrtPriceX96(request.initialPrice.value)
   return {
-    functionName: "createPool" as const,
-    args: [request.token0, request.token1, request.fee, request.tickSpacing, sqrtPriceX96] as const,
+    functionName: "createPoolWithDeadline" as const,
+    args: [
+      request.token0,
+      request.token1,
+      request.fee,
+      request.tickSpacing,
+      sqrtPriceX96,
+      BigInt(request.deadline),
+    ] as const,
     deadline: request.deadline,
   }
 }
@@ -150,34 +141,24 @@ function deploymentConfig(): { readonly address: `0x${string}`; readonly chainId
 export const Route = createFileRoute("/pools/new")({ component: NewPoolPage })
 
 function NewPoolPage() {
-  const { address, isConnected } = useAccount()
-  const chainId = useChainId()
-  const { writeContractAsync, isPending } = useWriteContract()
+  const { isConnected } = useAccount()
   const config = deploymentConfig()
   const [values, setValues] = useStateWithFormDefaults()
   const [submitted, setSubmitted] = useState(false)
   const [recheckAcknowledged, setRecheckAcknowledged] = useState(false)
+  const [intentPrepared, setIntentPrepared] = useState(false)
   const validation = validatePoolCreationForm(values)
-  const chainReady = config !== null && (config.chainId === null || config.chainId === chainId)
-  const canSubmit = Boolean(
-    address && isConnected && chainReady && validation.request && recheckAcknowledged && !isPending,
-  )
+  const canPrepare = Boolean(isConnected && validation.request && recheckAcknowledged)
 
   const update = (field: keyof PoolCreationFormValues, value: string) => {
     setValues((current) => ({ ...current, [field]: value }))
     setSubmitted(false)
+    setIntentPrepared(false)
   }
 
-  const submit = async () => {
+  const submit = () => {
     setSubmitted(true)
-    if (!canSubmit || !validation.request || !config) return
-    const intent = buildPoolCreationTransactionIntent(validation.request)
-    await writeContractAsync({
-      address: config.address,
-      abi: FACTORY_ABI,
-      functionName: intent.functionName,
-      args: intent.args,
-    })
+    if (canPrepare && validation.request) setIntentPrepared(true)
   }
 
   const displayError = (field: keyof PoolCreationFormValues | "pair") =>
@@ -189,8 +170,8 @@ function NewPoolPage() {
         <p className="mb-2 text-sm font-medium uppercase tracking-wide text-primary">Phase 1 · Pool creation</p>
         <h1 className="text-3xl font-bold">Create a new pool</h1>
         <p className="mt-2 max-w-2xl text-base-content/65">
-          Define the pool key and opening price. The final transaction is guarded by a fresh execution-time price check
-          before it can be submitted.
+          Define the pool key and opening price. Submission is gated by fresh form validation and an explicit
+          execution-time price re-check acknowledgement.
         </p>
       </div>
 
@@ -298,8 +279,8 @@ function NewPoolPage() {
             <div>
               <p className="font-semibold">Execution-time price re-check required</p>
               <p>
-                Pool creation must be re-checked against the current chain state immediately before signing. A stale
-                price or expired deadline must be rejected.
+                This acknowledgement is required, but the current UI does not read a live oracle. A deployed factory or
+                API price guard must be added before production submission is enabled.
               </p>
             </div>
           </div>
@@ -315,17 +296,25 @@ function NewPoolPage() {
 
           {!config ? (
             <p className="text-sm text-warning">
-              Pool factory deployment is not configured for this environment. Protected submission is unavailable.
+              Pool factory deployment is not configured for this environment. Intent preparation remains local.
             </p>
           ) : null}
-          {config && !chainReady ? (
-            <p className="text-sm text-error">Switch to the configured deployment network before submitting.</p>
+          {config ? (
+            <p className="text-sm text-warning">
+              Factory address detected, but the live price guard is not configured. No transaction will be submitted.
+            </p>
           ) : null}
           {!isConnected ? (
             <p className="text-sm text-base-content/60">Connect a wallet to prepare a protected transaction.</p>
           ) : null}
-          <Button type="button" fullWidth loading={isPending} disabled={!canSubmit} onClick={() => void submit()}>
-            {isPending ? "Confirming in wallet…" : "Create pool"}
+          {intentPrepared ? (
+            <p className="alert alert-warning text-sm" role="status">
+              Pool creation intent prepared locally. No transaction was submitted because the live price guard is not
+              configured.
+            </p>
+          ) : null}
+          <Button type="button" fullWidth disabled={!canPrepare} onClick={submit}>
+            Prepare pool creation intent
           </Button>
         </CardBody>
       </Card>
