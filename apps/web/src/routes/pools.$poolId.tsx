@@ -1,7 +1,8 @@
 import { useAppKit } from "@reown/appkit/react"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { type FormEvent, useEffect, useState } from "react"
-import { useAccount } from "wagmi"
+import { encodeFunctionData, getAddress, isAddress, parseUnits } from "viem"
+import { useAccount, usePublicClient, useWalletClient } from "wagmi"
 import { DexScreenerChart } from "../components/DexScreenerChart"
 import { RangeSelector } from "../components/RangeSelector"
 import { TokenChip } from "../components/TokenChip"
@@ -15,11 +16,14 @@ import {
   type LiquidityTransactionRequest,
   validateLiquidityForm,
 } from "../lib/liquidity"
+import { submitProtectedRawTransaction } from "../lib/protected-submission"
+import { buildV4SingleSidedCall, findV4SwapAmount } from "../lib/v4-liquidity"
 
 interface Pool {
   poolId: string
   token0Address: string
   token1Address: string
+  hookAddress: string | null
   fee: number
   tickSpacing: number
   sqrtPriceX96: string
@@ -45,6 +49,29 @@ export const Route = createFileRoute("/pools/$poolId")({
 })
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080/api/v1"
+const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID ?? "11155111")
+const ERC20_ABI = [
+  {
+    name: "allowance",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "spender", type: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "approve",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "spender", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+] as const
 
 function PoolDetailPage() {
   const { poolId } = Route.useLoaderData()
@@ -163,6 +190,8 @@ interface LiquidityFormProps {
 function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
   const { open } = useAppKit()
   const { address, isConnected } = useAccount()
+  const publicClient = usePublicClient()
+  const { data: walletClient } = useWalletClient()
   const [values, setValues] = useState<LiquidityFormValues>({
     protocol: "v4",
     tokenSide: "token0",
@@ -174,6 +203,8 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
   })
   const [submitted, setSubmitted] = useState(false)
   const [request, setRequest] = useState<LiquidityTransactionRequest | null>(null)
+  const [preparing, setPreparing] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const validation = validateLiquidityForm(values, pool.tickSpacing)
   const errors = submitted ? validation.errors : {}
@@ -184,9 +215,10 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
   const updateValue = (field: keyof LiquidityFormValues, value: string) => {
     setValues((current) => ({ ...current, [field]: value }))
     setRequest(null)
+    setErrorMessage(null)
   }
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setSubmitted(true)
     if (!isConnected) {
@@ -195,7 +227,104 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
     }
 
     const nextRequest = buildLiquidityRequest(pool.poolId, values, pool.tickSpacing)
-    if (nextRequest) setRequest(nextRequest)
+    if (!nextRequest) return
+    setErrorMessage(null)
+    setPreparing(true)
+    try {
+      if (values.protocol === "v3") {
+        setRequest(nextRequest)
+        return
+      }
+      if (!address || !walletClient || !publicClient) throw new Error("Wallet client is not ready")
+      const routerAddress = import.meta.env.VITE_ROUTER_ADDRESS
+      const privateRpcUrl = import.meta.env.VITE_PRIVATE_RPC_URL
+      if (!routerAddress || !isAddress(routerAddress)) throw new Error("V4 router address is not configured")
+      if (!privateRpcUrl) throw new Error("Protected submission is not configured")
+      if (!selectedToken || !otherToken || !token0 || !token1 || !pool.hookAddress || !isAddress(pool.hookAddress)) {
+        throw new Error("Pool token metadata is incomplete")
+      }
+      const amountIn = parseUnits(values.amount.trim(), selectedToken.decimals)
+      const zeroForOne = selectedToken.address.toLowerCase() === pool.token0Address.toLowerCase()
+      if (!zeroForOne && selectedToken.address.toLowerCase() !== pool.token1Address.toLowerCase()) {
+        throw new Error("Selected token is not part of this pool")
+      }
+      const quote = async (swapAmountIn: bigint) => {
+        const response = await fetch(
+          `${API_URL}/quote?tokenIn=${selectedToken.address}&tokenOut=${otherToken.address}&amountIn=${swapAmountIn}&slippage=${values.slippage}`,
+        )
+        if (!response.ok) throw new Error(`Quote failed with HTTP ${response.status}`)
+        const data = parseSwapQuote(await response.json())
+        return { amountOut: BigInt(data.amountOut), minAmountOut: BigInt(data.minAmountOut) }
+      }
+      const poolInput = {
+        chainId: CHAIN_ID,
+        token0: getAddress(pool.token0Address),
+        token1: getAddress(pool.token1Address),
+        token0Decimals: token0.decimals,
+        token1Decimals: token1.decimals,
+        fee: pool.fee,
+        tickSpacing: pool.tickSpacing,
+        hooks: getAddress(pool.hookAddress),
+        sqrtPriceX96: BigInt(pool.sqrtPriceX96),
+        liquidity: BigInt(pool.liquidity),
+        currentTick: pool.currentTick,
+      } as const
+      const search = await findV4SwapAmount({
+        pool: poolInput,
+        tickLower: Number(values.lowerTick),
+        tickUpper: Number(values.upperTick),
+        zeroForOne,
+        amountIn,
+        quote,
+      })
+      const call = buildV4SingleSidedCall({
+        pool: poolInput,
+        tickLower: Number(values.lowerTick),
+        tickUpper: Number(values.upperTick),
+        zeroForOne,
+        amountIn,
+        swapAmountIn: search.swapAmountIn,
+        quotedAmountOut: search.quote.amountOut,
+        minSwapAmountOut: search.quote.minAmountOut,
+        slippageBps: nextRequest.slippageBps,
+        deadline: BigInt(Math.floor(Date.now() / 1000) + nextRequest.deadlineSeconds),
+      })
+      const tokenAddress = getAddress(selectedToken.address)
+      const router = getAddress(routerAddress)
+      const allowance = await publicClient.readContract({
+        address: tokenAddress,
+        abi: ERC20_ABI,
+        functionName: "allowance",
+        args: [address, router],
+      })
+      if (allowance < amountIn) {
+        const approvalPrepared = await walletClient.prepareTransactionRequest({
+          account: address,
+          to: tokenAddress,
+          data: encodeFunctionData({ abi: ERC20_ABI, functionName: "approve", args: [router, amountIn] }),
+          value: 0n,
+        })
+        const approvalSigned = await walletClient.signTransaction(approvalPrepared)
+        const approvalHash = await submitProtectedRawTransaction({
+          rpcUrl: privateRpcUrl,
+          signedTransaction: approvalSigned,
+        })
+        await publicClient.waitForTransactionReceipt({ hash: approvalHash })
+      }
+      const prepared = await walletClient.prepareTransactionRequest({
+        account: address,
+        to: router,
+        data: call.calldata,
+        value: 0n,
+      })
+      const signedTransaction = await walletClient.signTransaction(prepared)
+      const txHash = await submitProtectedRawTransaction({ rpcUrl: privateRpcUrl, signedTransaction })
+      setRequest({ ...nextRequest, execution: { status: "submitted", txHash } })
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to prepare liquidity transaction")
+    } finally {
+      setPreparing(false)
+    }
   }
 
   return (
@@ -356,10 +485,16 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
           {request ? (
             <div role="status" className="alert alert-warning text-sm">
               <span>
-                Request prepared locally. The router address is not configured yet, so nothing was submitted and no
-                transaction succeeded.
+                {request.execution.status === "submitted"
+                  ? `Protected transaction submitted: ${request.execution.txHash}`
+                  : "V3 execution remains gated until its position manager and protected batch route are configured."}
               </span>
             </div>
+          ) : null}
+          {errorMessage ? (
+            <p className="text-sm text-error" role="alert">
+              {errorMessage}
+            </p>
           ) : null}
 
           <Button
@@ -368,11 +503,13 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
             fullWidth
             disabled={isConnected && (!validation.valid || request !== null)}
           >
-            {request
-              ? "Transaction unavailable"
-              : isConnected
-                ? "Prepare liquidity request"
-                : "Connect wallet to continue"}
+            {preparing
+              ? "Preparing protected transaction…"
+              : request
+                ? "Transaction submitted"
+                : isConnected
+                  ? "Add liquidity privately"
+                  : "Connect wallet to continue"}
           </Button>
         </form>
 
@@ -395,6 +532,15 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
 function parseTick(value: string, fallback: number): number {
   const parsed = Number(value)
   return Number.isSafeInteger(parsed) ? parsed : fallback
+}
+
+function parseSwapQuote(value: unknown): { readonly amountOut: string; readonly minAmountOut: string } {
+  if (typeof value !== "object" || value === null) throw new Error("Unexpected quote response")
+  const quote = value as { readonly amountOut?: unknown; readonly minAmountOut?: unknown }
+  if (typeof quote.amountOut !== "string" || typeof quote.minAmountOut !== "string") {
+    throw new Error("Quote response is missing amount bounds")
+  }
+  return { amountOut: quote.amountOut, minAmountOut: quote.minAmountOut }
 }
 
 function formatUsd(value: number): string {
