@@ -86,7 +86,7 @@ export type V3LiquidityEvent = {
   readonly amount1: string | null
 }
 
-type RawLog = {
+export type RawLog = {
   readonly address: `0x${string}`
   readonly data: Hex
   readonly topics: readonly Hex[]
