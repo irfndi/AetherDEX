@@ -63,6 +63,9 @@ export function validatePoolCreationForm(
   if (values.priceInput.kind === "price" && isPositiveDecimal(price) && !isDecimalSqrtPriceWithinUint160(price)) {
     errors.priceInput = "Initial price is outside the uint160 sqrt-price range."
   }
+  if (values.priceInput.kind === "price" && isPositiveDecimal(price) && decimalToSqrtPriceX96(price) === 0n) {
+    errors.priceInput = "Initial price is too small to encode as sqrtPriceX96."
+  }
   if (deadline === null || deadline <= now) errors.deadline = "Deadline must be a future date and time."
 
   if (

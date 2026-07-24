@@ -491,12 +491,13 @@ contract AetherRouterTest is Test {
 
         vm.warp(1);
         vm.prank(user);
+        vm.expectRevert(Errors.InsufficientCallBalance.selector);
         router.addLiquiditySingleSided(
             AetherRouter.SingleSidedLiquidityParams({
                 poolKey: _testPoolKey(),
                 liquidityParams: _modifyLiqParams(),
                 zeroForOne: true,
-                amountIn: 1 ether,
+                amountIn: 0.4 ether,
                 swapAmountIn: 0.4 ether,
                 minSwapAmountOut: 0.29 ether,
                 minAmount0: 0.5 ether,
@@ -506,6 +507,27 @@ contract AetherRouterTest is Test {
             })
         );
         assertEq(token0.balanceOf(address(router)), 1);
+    }
+
+    function test_addLiquiditySingleSided_rejectsNativeCurrency() public {
+        PoolKey memory key = _testPoolKey();
+        key.currency0 = Currency.wrap(address(0));
+        vm.prank(user);
+        vm.expectRevert(Errors.UnsupportedNativeCurrency.selector);
+        router.addLiquiditySingleSided(
+            AetherRouter.SingleSidedLiquidityParams({
+                poolKey: key,
+                liquidityParams: _modifyLiqParams(),
+                zeroForOne: true,
+                amountIn: 1 ether,
+                swapAmountIn: 0.4 ether,
+                minSwapAmountOut: 0,
+                minAmount0: 0,
+                minAmount1: 0,
+                deadline: block.timestamp + 100,
+                hookData: ""
+            })
+        );
     }
 
     function test_addLiquiditySingleSided_settlesActualPartialSwapInput() public {

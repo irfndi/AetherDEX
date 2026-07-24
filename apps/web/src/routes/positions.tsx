@@ -70,15 +70,24 @@ function toRebalancePosition(position: IndexedPosition): RebalancePosition {
   }
 }
 
+export function selectIndexedPosition(
+  positions: readonly IndexedPosition[],
+  selectedId: number | null,
+): IndexedPosition | null {
+  return positions.find((position) => position.id === selectedId) ?? positions[0] ?? null
+}
+
 function PositionsPage() {
   const { open } = useAppKit()
   const { address, isConnected } = useAccount()
   const [positions, setPositions] = useState<IndexedPosition[]>([])
   const [isPending, setIsPending] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [selectedPositionId, setSelectedPositionId] = useState<number | null>(null)
   const [values, setValues] = useState<RebalanceFormValues>(initialValues)
   const [submitted, setSubmitted] = useState(false)
-  const selectedPosition = positions[0] ? toRebalancePosition(positions[0]) : null
+  const indexedSelectedPosition = selectIndexedPosition(positions, selectedPositionId)
+  const selectedPosition = indexedSelectedPosition ? toRebalancePosition(indexedSelectedPosition) : null
   const validation = useMemo(
     () => validateRebalanceForm(values, selectedPosition?.tickSpacing ?? 60),
     [values, selectedPosition],
@@ -91,10 +100,12 @@ function PositionsPage() {
   useEffect(() => {
     if (!isConnected || !address) {
       setPositions([])
+      setSelectedPositionId(null)
       setErrorMessage(null)
       return
     }
     const controller = new AbortController()
+    let active = true
     setIsPending(true)
     setErrorMessage(null)
     fetch(`${API_URL}/users/${encodeURIComponent(address)}/positions`, { signal: controller.signal })
@@ -104,15 +115,29 @@ function PositionsPage() {
       })
       .then((response: unknown) => {
         if (!isIndexedPositionResponse(response)) throw new Error("Unexpected positions response")
+        if (!active) return
         setPositions([...response.positions])
+        setSelectedPositionId((current) =>
+          response.positions.some((position) => position.id === current)
+            ? current
+            : (response.positions[0]?.id ?? null),
+        )
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === "AbortError") return
-        setPositions([])
-        setErrorMessage(error instanceof Error ? error.message : "Unknown request error")
+        if (active) {
+          setPositions([])
+          setSelectedPositionId(null)
+          setErrorMessage(error instanceof Error ? error.message : "Unknown request error")
+        }
       })
-      .finally(() => setIsPending(false))
-    return () => controller.abort()
+      .finally(() => {
+        if (active) setIsPending(false)
+      })
+    return () => {
+      active = false
+      controller.abort()
+    }
   }, [address, isConnected])
 
   const updateValue = (field: keyof RebalanceFormValues, value: string) => {
@@ -198,6 +223,22 @@ function PositionsPage() {
             </div>
             <span className="badge badge-success badge-outline">From position index</span>
           </div>
+          {positions.length > 1 ? (
+            <label className="form-control mt-5 max-w-md">
+              <span className="label-text text-xs uppercase tracking-[0.18em] text-base-content/50">Position</span>
+              <select
+                className="select select-bordered mt-2 w-full font-mono text-sm"
+                value={selectedPositionId ?? ""}
+                onChange={(event) => setSelectedPositionId(Number(event.target.value))}
+              >
+                {positions.map((position) => (
+                  <option key={position.id} value={position.id}>
+                    #{position.id} · {position.tickLower} to {position.tickUpper}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <div className="mt-5 grid gap-4 sm:grid-cols-3">
             <PositionValue
               label="Current range"
