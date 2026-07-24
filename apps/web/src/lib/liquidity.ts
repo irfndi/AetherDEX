@@ -1,7 +1,10 @@
 export const LIQUIDITY_SIDES = ["token0", "token1"] as const
 export type LiquiditySide = (typeof LIQUIDITY_SIDES)[number]
+export const LIQUIDITY_PROTOCOLS = ["v4", "v3"] as const
+export type LiquidityProtocol = (typeof LIQUIDITY_PROTOCOLS)[number]
 
 export type LiquidityFormValues = {
+  readonly protocol: LiquidityProtocol
   readonly tokenSide: LiquiditySide
   readonly amount: string
   readonly lowerTick: string
@@ -15,6 +18,7 @@ export type LiquidityErrors = Partial<Record<LiquidityField, string>>
 
 export type LiquidityTransactionRequest = {
   readonly kind: "aetherdex.addLiquidity"
+  readonly protocol: LiquidityProtocol
   readonly poolId: string
   readonly tokenSide: LiquiditySide
   readonly amount: string
@@ -24,7 +28,7 @@ export type LiquidityTransactionRequest = {
   readonly deadlineSeconds: number
   readonly execution: {
     readonly status: "not-configured"
-    readonly reason: "router-address-not-configured"
+    readonly reason: "router-address-not-configured" | "v3-position-manager-not-configured"
   }
 }
 
@@ -90,6 +94,7 @@ export function buildLiquidityRequest(
 
   return {
     kind: "aetherdex.addLiquidity",
+    protocol: values.protocol,
     poolId,
     tokenSide: values.tokenSide,
     amount: values.amount.trim(),
@@ -99,7 +104,8 @@ export function buildLiquidityRequest(
     deadlineSeconds: Number(values.deadline),
     execution: {
       status: "not-configured",
-      reason: "router-address-not-configured",
+      reason:
+        values.protocol === "v3" ? "v3-position-manager-not-configured" : "router-address-not-configured",
     },
   }
 }

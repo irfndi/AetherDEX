@@ -78,6 +78,14 @@ describe("pool creation validation", () => {
     expect(result.errors.priceInput).toBe("Initial price is outside the uint160 sqrt-price range.")
   })
 
+  it("rejects fee and tick spacing values outside the V4 factory bounds", () => {
+    const result = validatePoolCreationForm({ ...validValues, fee: "1000001", tickSpacing: "32768" })
+
+    expect(result.request).toBeNull()
+    expect(result.errors.fee).toBe("Fee must be at most 1000000.")
+    expect(result.errors.tickSpacing).toBe("Tick spacing must be at most 32767.")
+  })
+
   it("rejects a positive decimal price that encodes to zero sqrtPriceX96", () => {
     const result = validatePoolCreationForm({
       ...validValues,

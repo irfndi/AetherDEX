@@ -6,6 +6,8 @@ import { Button, Card, CardBody, CardTitle, Input } from "../components/ui"
 
 const Q96 = 2n ** 96n
 const MAX_UINT160 = 2n ** 160n - 1n
+const MAX_V4_FEE = 1_000_000
+const MAX_V4_TICK_SPACING = 32_767
 type PriceInput =
   | { readonly kind: "price"; readonly value: string }
   | { readonly kind: "sqrtPriceX96"; readonly value: string }
@@ -52,7 +54,10 @@ export function validatePoolCreationForm(
     errors.pair = "Token0 must be the lower address."
   }
   if (fee === null) errors.fee = "Fee must be a positive integer."
+  else if (fee > MAX_V4_FEE) errors.fee = `Fee must be at most ${MAX_V4_FEE}.`
   if (tickSpacing === null) errors.tickSpacing = "Tick spacing must be a positive integer."
+  else if (tickSpacing > MAX_V4_TICK_SPACING)
+    errors.tickSpacing = `Tick spacing must be at most ${MAX_V4_TICK_SPACING}.`
   if (!isPositiveDecimal(price)) errors.priceInput = "Initial price must be positive."
   if (values.priceInput.kind === "sqrtPriceX96" && !isPositiveInteger(price)) {
     errors.priceInput = "sqrtPriceX96 must be a positive integer."
