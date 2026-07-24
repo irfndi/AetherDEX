@@ -37,9 +37,11 @@ positions.get("/users/:address/positions", async (c) => {
   }
 
   try {
+    const chainId = Number(c.env.CHAIN_ID)
+    if (!Number.isSafeInteger(chainId) || chainId <= 0) return c.json({ error: "Invalid chain configuration" }, 500)
     const program = Effect.gen(function* () {
       const positionService = yield* PositionService
-      return yield* positionService.listByUser(address, 100)
+      return yield* positionService.listByUser(address, 100, chainId)
     })
     const list = await runEffect(program.pipe(Effect.provide(positionLayer(c.env.DB))))
     return c.json({ positions: list, count: list.length })
@@ -57,6 +59,8 @@ positions.post("/", requireAuth, async (c) => {
   if (!session) return c.json({ error: "Unauthorized" }, 401)
 
   const body = await c.req.json<{
+    protocol?: "v3" | "v4"
+    tokenId?: string
     poolId?: string
     tickLower?: number
     tickUpper?: number
@@ -76,6 +80,9 @@ positions.post("/", requireAuth, async (c) => {
       const positionService = yield* PositionService
       return yield* positionService.recordPosition({
         userAddress: session.userAddress,
+        chainId: Number(c.env.CHAIN_ID),
+        protocol: body.protocol,
+        tokenId: body.tokenId,
         poolId,
         tickLower,
         tickUpper,
