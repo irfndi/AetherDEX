@@ -59,20 +59,43 @@ contract AetherFactory is IAetherFactory, Ownable {
     /// @param tickSpacing Minimum tick spacing for concentrated liquidity positions
     /// @param sqrtPriceX96 Initial sqrt price as Q64.96 fixed-point
     /// @return poolId Deterministic identifier: keccak256(abi.encode(PoolKey))
-    function createPool(
+    function createPool(address token0, address token1, uint24 fee, int24 tickSpacing, uint160 sqrtPriceX96)
+        external
+        returns (bytes32 poolId)
+    {
+        return _createPool(token0, token1, fee, tickSpacing, sqrtPriceX96);
+    }
+
+    /// @notice Create and initialize a new V4 pool with a transaction deadline.
+    /// @dev The deadline is enforced inside the factory immediately before state changes.
+    function createPoolWithDeadline(
         address token0,
         address token1,
         uint24 fee,
         int24 tickSpacing,
-        uint160 sqrtPriceX96
+        uint160 sqrtPriceX96,
+        uint256 deadline
     ) external returns (bytes32 poolId) {
+        if (block.timestamp > deadline) revert Errors.DeadlineExpired();
+        return _createPool(token0, token1, fee, tickSpacing, sqrtPriceX96);
+    }
+
+    function _createPool(address token0, address token1, uint24 fee, int24 tickSpacing, uint160 sqrtPriceX96)
+        internal
+        returns (bytes32 poolId)
+    {
         if (token0 == token1) revert Errors.InvalidPair();
         if (token0 >= token1) revert Errors.InvalidPair();
         if (sqrtPriceX96 == 0) revert Errors.ZeroAmount();
         if (fee == 0) revert Errors.InvalidFee();
 
-        PoolKey memory key =
-            PoolKey({currency0: Currency.wrap(token0), currency1: Currency.wrap(token1), fee: fee, tickSpacing: tickSpacing, hooks: hook});
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(token0),
+            currency1: Currency.wrap(token1),
+            fee: fee,
+            tickSpacing: tickSpacing,
+            hooks: hook
+        });
 
         poolId = PoolId.unwrap(key.toId());
 

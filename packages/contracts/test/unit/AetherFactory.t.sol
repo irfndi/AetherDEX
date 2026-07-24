@@ -72,6 +72,12 @@ contract AetherFactoryTest is Test {
         assertEq(actualId, expectedId, "PoolId should be deterministic keccak256(PoolKey)");
     }
 
+    function test_createPoolWithDeadline_revertsWhenExpired() public {
+        vm.warp(100);
+        vm.expectRevert(Errors.DeadlineExpired.selector);
+        factory.createPoolWithDeadline(TOKEN_A, TOKEN_B, 3000, 60, INITIAL_SQRT_PRICE, 99);
+    }
+
     function test_createPool_emitsEvent() public {
         PoolKey memory key = _testPoolKey();
         bytes32 poolId = keccak256(abi.encode(key));
