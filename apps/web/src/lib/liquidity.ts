@@ -58,12 +58,17 @@ export function validateLiquidityForm(values: LiquidityFormValues, tickSpacing: 
   const deadline = parseInteger(values.deadline)
 
   if (amount === null || amount <= 0) errors.amount = "Enter an amount greater than zero."
-  if (lowerTick === null) errors.lowerTick = "Enter a whole-number lower tick."
-  if (upperTick === null) errors.upperTick = "Enter a whole-number upper tick."
-  if (lowerTick !== null && lowerTick % tickSpacing !== 0) errors.lowerTick = `Use a multiple of ${tickSpacing}.`
-  if (upperTick !== null && upperTick % tickSpacing !== 0) errors.upperTick = `Use a multiple of ${tickSpacing}.`
-  if (lowerTick !== null && upperTick !== null && lowerTick >= upperTick) {
-    errors.upperTick = "Upper tick must be greater than lower tick."
+  if (!Number.isSafeInteger(tickSpacing) || tickSpacing <= 0) {
+    errors.lowerTick = "This pool has no valid tick spacing."
+    errors.upperTick = "This pool has no valid tick spacing."
+  } else {
+    if (lowerTick === null) errors.lowerTick = "Enter a whole-number lower tick."
+    if (upperTick === null) errors.upperTick = "Enter a whole-number upper tick."
+    if (lowerTick !== null && lowerTick % tickSpacing !== 0) errors.lowerTick = `Use a multiple of ${tickSpacing}.`
+    if (upperTick !== null && upperTick % tickSpacing !== 0) errors.upperTick = `Use a multiple of ${tickSpacing}.`
+    if (lowerTick !== null && upperTick !== null && lowerTick >= upperTick) {
+      errors.upperTick = "Upper tick must be greater than lower tick."
+    }
   }
   if (slippage === null || slippage < 0 || slippage > MAX_SLIPPAGE_PERCENT) {
     errors.slippage = "Use a value from 0% to 5%."
