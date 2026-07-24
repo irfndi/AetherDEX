@@ -11,6 +11,9 @@ import { type LiquidityPosition, rowToLiquidityPosition } from "../db/schema"
 // --- Types ---
 
 export interface RecordPositionInput {
+  chainId?: number
+  protocol?: "v3" | "v4"
+  tokenId?: string
   userAddress: string
   poolId: string
   tickLower: number
@@ -35,7 +38,11 @@ export class RecordPositionError {
 // --- Service interface ---
 
 export interface PositionService {
-  readonly listByUser: (userAddress: string, limit?: number) => Effect.Effect<LiquidityPosition[], PositionListError>
+  readonly listByUser: (
+    userAddress: string,
+    limit?: number,
+    chainId?: number,
+  ) => Effect.Effect<LiquidityPosition[], PositionListError>
   readonly recordPosition: (input: RecordPositionInput) => Effect.Effect<number, RecordPositionError>
 }
 
@@ -48,13 +55,17 @@ export const PositionService = Context.Service<PositionService>("@aetherdex/Posi
 const makePositionService = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
 
-  const listByUser = (userAddress: string, limit = 100): Effect.Effect<LiquidityPosition[], PositionListError, never> =>
+  const listByUser = (
+    userAddress: string,
+    limit = 100,
+    chainId = 1,
+  ): Effect.Effect<LiquidityPosition[], PositionListError, never> =>
     Effect.gen(function* () {
       const rows = (yield* sql`
         SELECT liquidity_positions.*, pools.tick_spacing
         FROM liquidity_positions
         LEFT JOIN pools ON pools.pool_id = liquidity_positions.pool_id
-        WHERE user_address = ${userAddress} AND is_active = 1
+        WHERE liquidity_positions.chain_id = ${chainId} AND user_address = ${userAddress} AND is_active = 1
         ORDER BY created_at DESC
         LIMIT ${limit}
       `) as unknown as readonly Record<string, unknown>[]
@@ -66,9 +77,9 @@ const makePositionService = Effect.gen(function* () {
       const now = Date.now()
       const rows = (yield* sql`
         INSERT INTO liquidity_positions
-          (user_address, pool_id, tick_lower, tick_upper, liquidity, amount0, amount1,
+          (chain_id, protocol, token_id, user_address, pool_id, tick_lower, tick_upper, liquidity, amount0, amount1,
            fees_earned_token0, fees_earned_token1, is_active, created_at, updated_at)
-        VALUES (${input.userAddress}, ${input.poolId}, ${input.tickLower}, ${input.tickUpper}, ${input.liquidity}, ${input.amount0}, ${input.amount1}, '0', '0', 1, ${now}, ${now})
+        VALUES (${input.chainId ?? 1}, ${input.protocol ?? "v4"}, ${input.tokenId ?? null}, ${input.userAddress}, ${input.poolId}, ${input.tickLower}, ${input.tickUpper}, ${input.liquidity}, ${input.amount0}, ${input.amount1}, '0', '0', 1, ${now}, ${now})
         RETURNING id
       `) as unknown as readonly Record<string, unknown>[]
       const id = rows[0]?.id

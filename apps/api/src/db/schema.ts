@@ -27,6 +27,7 @@ export interface Token {
 }
 
 export interface Pool {
+  chainId: number
   poolId: string
   token0Address: string
   token1Address: string
@@ -49,6 +50,7 @@ export type TransactionStatus = "pending" | "confirmed" | "failed"
 
 export interface Transaction {
   id: number
+  chainId: number
   txHash: string
   userAddress: string
   poolId: string | null
@@ -68,6 +70,9 @@ export interface Transaction {
 
 export interface LiquidityPosition {
   id: number
+  chainId: number
+  protocol: "v3" | "v4"
+  tokenId: string | null
   userAddress: string
   poolId: string
   tickSpacing: number
@@ -81,6 +86,28 @@ export interface LiquidityPosition {
   isActive: boolean
   createdAt: number
   updatedAt: number
+}
+
+export type LiquidityEventType = "mint" | "burn" | "increase" | "decrease" | "collect" | "transfer"
+
+export interface LiquidityEvent {
+  id: number
+  chainId: number
+  protocol: "v3" | "v4"
+  eventType: LiquidityEventType
+  txHash: string
+  logIndex: number
+  blockNumber: number
+  blockTimestamp: number
+  poolId: string | null
+  tokenId: string | null
+  ownerAddress: string | null
+  tickLower: number | null
+  tickUpper: number | null
+  liquidityDelta: string | null
+  amount0: string | null
+  amount1: string | null
+  createdAt: number
 }
 
 export interface PriceCache {
@@ -110,6 +137,7 @@ export function rowToToken(row: Record<string, unknown>): Token {
 
 export function rowToPool(row: Record<string, unknown>): Pool {
   return {
+    chainId: (row.chain_id as number | undefined) ?? 1,
     poolId: row.pool_id as string,
     token0Address: row.token0_address as string,
     token1Address: row.token1_address as string,
@@ -131,6 +159,7 @@ export function rowToPool(row: Record<string, unknown>): Pool {
 export function rowToTransaction(row: Record<string, unknown>): Transaction {
   return {
     id: row.id as number,
+    chainId: (row.chain_id as number | undefined) ?? 1,
     txHash: row.tx_hash as string,
     userAddress: row.user_address as string,
     poolId: (row.pool_id as string | null) ?? null,
@@ -163,6 +192,9 @@ export function rowToUser(row: Record<string, unknown>): User {
 export function rowToLiquidityPosition(row: Record<string, unknown>): LiquidityPosition {
   return {
     id: row.id as number,
+    chainId: (row.chain_id as number | undefined) ?? 1,
+    protocol: row.protocol === "v3" ? "v3" : "v4",
+    tokenId: (row.token_id as string | null) ?? null,
     userAddress: row.user_address as string,
     poolId: row.pool_id as string,
     tickSpacing: (row.tick_spacing as number | undefined) ?? 0,
@@ -176,6 +208,28 @@ export function rowToLiquidityPosition(row: Record<string, unknown>): LiquidityP
     isActive: Boolean(row.is_active),
     createdAt: row.created_at as number,
     updatedAt: row.updated_at as number,
+  }
+}
+
+export function rowToLiquidityEvent(row: Record<string, unknown>): LiquidityEvent {
+  return {
+    id: row.id as number,
+    chainId: (row.chain_id as number | undefined) ?? 1,
+    protocol: row.protocol === "v3" ? "v3" : "v4",
+    eventType: row.event_type as LiquidityEventType,
+    txHash: row.tx_hash as string,
+    logIndex: row.log_index as number,
+    blockNumber: row.block_number as number,
+    blockTimestamp: row.block_timestamp as number,
+    poolId: (row.pool_id as string | null) ?? null,
+    tokenId: (row.token_id as string | null) ?? null,
+    ownerAddress: (row.owner_address as string | null) ?? null,
+    tickLower: (row.tick_lower as number | null) ?? null,
+    tickUpper: (row.tick_upper as number | null) ?? null,
+    liquidityDelta: (row.liquidity_delta as string | null) ?? null,
+    amount0: (row.amount0 as string | null) ?? null,
+    amount1: (row.amount1 as string | null) ?? null,
+    createdAt: row.created_at as number,
   }
 }
 
