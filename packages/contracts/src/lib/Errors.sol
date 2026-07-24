@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.31;
+pragma solidity ^0.8.36;
 
 /// @title AetherDEX Errors
 /// @notice Custom errors for AetherDEX contracts

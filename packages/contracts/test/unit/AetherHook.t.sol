@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.31;
+pragma solidity ^0.8.36;
 
 import "forge-std/Test.sol";
 import {AetherHook} from "src/hook/AetherHook.sol";
@@ -648,8 +648,7 @@ contract AetherHookTest is Test {
         _advance(uint256(hold1));
 
         uint32 window = hold0 + hold1;
-        int256 numerator =
-            int256(tick0) * int256(uint256(hold0)) + int256(tick1) * int256(uint256(hold1));
+        int256 numerator = int256(tick0) * int256(uint256(hold0)) + int256(tick1) * int256(uint256(hold1));
         int256 denom = int256(uint256(window));
         // The hook floors negative averages (rounds toward negative infinity); mirror it here
         // instead of Solidity's default truncation toward zero.

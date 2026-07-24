@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.31;
+pragma solidity ^0.8.36;
 
 import "forge-std/Test.sol";
 import {AetherPositionManager} from "src/position/AetherPositionManager.sol";
@@ -145,6 +145,75 @@ contract AetherPositionManagerTest is Test {
         assertEq(coreLiquidity, LIQUIDITY - removedLiquidity);
     }
 
+    function test_rebalancePosition_closesAndRemintsAtomically() public {
+        uint256 tokenId = _mintForUser();
+        token0.mint(address(positionManager), 7);
+        token1.mint(address(positionManager), 13);
+        uint256 balance0Before = token0.balanceOf(user);
+        uint256 balance1Before = token1.balanceOf(user);
+
+        vm.prank(user);
+        (uint256 closed0, uint256 closed1, uint256 used0, uint256 used1) =
+            positionManager.rebalancePosition(_rebalanceParams(tokenId));
+
+        assertGt(closed0, 0);
+        assertGt(closed1, 0);
+        assertGt(used0, 0);
+        assertGt(used1, 0);
+        assertEq(positionManager.ownerOf(tokenId), user);
+        IAetherPositionManager.Position memory position = positionManager.getPosition(tokenId);
+        assertEq(position.tickLower, -120);
+        assertEq(position.tickUpper, 120);
+        assertEq(position.liquidity, LIQUIDITY);
+        assertEq(mockPoolManager.positionLiquidity(poolKey, address(positionManager), -60, 60, bytes32(tokenId)), 0);
+        assertEq(
+            mockPoolManager.positionLiquidity(poolKey, address(positionManager), -120, 120, bytes32(tokenId)), LIQUIDITY
+        );
+        assertEq(token0.balanceOf(user), balance0Before + closed0 - used0);
+        assertEq(token1.balanceOf(user), balance1Before + closed1 - used1);
+        assertEq(token0.balanceOf(address(positionManager)), 7);
+        assertEq(token1.balanceOf(address(positionManager)), 13);
+    }
+
+    function test_rebalancePosition_revertsForUnapprovedCaller() public {
+        uint256 tokenId = _mintForUser();
+
+        vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721InsufficientApproval.selector, attacker, tokenId));
+        vm.prank(attacker);
+        positionManager.rebalancePosition(_rebalanceParams(tokenId));
+    }
+
+    function test_rebalancePosition_revertsForInvertedRange() public {
+        uint256 tokenId = _mintForUser();
+        IAetherPositionManager.RebalancePositionParams memory params = _rebalanceParams(tokenId);
+        params.tickLower = 120;
+        params.tickUpper = -120;
+
+        vm.expectRevert(IAetherPositionManager.InvalidLiquidity.selector);
+        vm.prank(user);
+        positionManager.rebalancePosition(params);
+    }
+
+    function test_rebalancePosition_revertsWhenDeadlineExpired() public {
+        uint256 tokenId = _mintForUser();
+        IAetherPositionManager.RebalancePositionParams memory params = _rebalanceParams(tokenId);
+        params.deadline = block.timestamp - 1;
+
+        vm.expectRevert(IAetherPositionManager.DeadlineExpired.selector);
+        vm.prank(user);
+        positionManager.rebalancePosition(params);
+    }
+
+    function test_rebalancePosition_revertsWhenClosedAmountIsBelowMinimum() public {
+        uint256 tokenId = _mintForUser();
+        IAetherPositionManager.RebalancePositionParams memory params = _rebalanceParams(tokenId);
+        params.amount0Min = MAX_AMOUNT;
+
+        vm.expectRevert(IAetherPositionManager.SlippageExceeded.selector);
+        vm.prank(user);
+        positionManager.rebalancePosition(params);
+    }
+
     function test_transferredReceiptMovesRemovalAuthorityAndProceeds() public {
         uint256 tokenId = _mintForUser();
 
@@ -272,6 +341,25 @@ contract AetherPositionManagerTest is Test {
         return IAetherPositionManager.RemoveLiquidityParams({
             tokenId: tokenId,
             liquidity: liquidity,
+            amount0Min: 0,
+            amount1Min: 0,
+            deadline: block.timestamp + 1,
+            hookData: ""
+        });
+    }
+
+    function _rebalanceParams(uint256 tokenId)
+        internal
+        view
+        returns (IAetherPositionManager.RebalancePositionParams memory)
+    {
+        return IAetherPositionManager.RebalancePositionParams({
+            tokenId: tokenId,
+            tickLower: -120,
+            tickUpper: 120,
+            liquidity: LIQUIDITY,
+            amount0Max: MAX_AMOUNT,
+            amount1Max: MAX_AMOUNT,
             amount0Min: 0,
             amount1Min: 0,
             deadline: block.timestamp + 1,

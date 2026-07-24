@@ -46,6 +46,36 @@ export type RebalanceIntent = {
   }
 }
 
+export type RebalanceManagerParams = {
+  readonly tokenId: bigint
+  readonly tickLower: number
+  readonly tickUpper: number
+  readonly liquidity: bigint
+  readonly amount0Max: bigint
+  readonly amount1Max: bigint
+  readonly amount0Min: bigint
+  readonly amount1Min: bigint
+  readonly deadline: bigint
+  readonly hookData: `0x${string}`
+}
+
+export type RebalanceManagerCall = {
+  readonly address: `0x${string}`
+  readonly functionName: "rebalancePosition"
+  readonly args: readonly [RebalanceManagerParams]
+}
+
+export function buildRebalanceManagerCall(
+  managerAddress: `0x${string}`,
+  params: RebalanceManagerParams,
+): RebalanceManagerCall {
+  return {
+    address: managerAddress,
+    functionName: "rebalancePosition",
+    args: [params],
+  }
+}
+
 const MAX_SLIPPAGE_BPS = 500
 const MIN_DEADLINE_SECONDS = 60
 const MAX_DEADLINE_SECONDS = 86_400

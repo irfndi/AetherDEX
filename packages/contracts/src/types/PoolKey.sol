@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.31;
+pragma solidity ^0.8.36;
 
 // Re-export v4-core's PoolKey for AetherDEX internal use.
 // All contracts should import PoolKey from this path for consistency.

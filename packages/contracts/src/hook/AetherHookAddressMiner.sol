@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.31;
+pragma solidity ^0.8.36;
 
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
@@ -8,8 +8,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 /// @notice Utility to validate hook deployment addresses have correct permission flags
 library AetherHookAddressMiner {
     /// @notice The required hook permissions for AetherHook
-    uint160 internal constant REQUIRED_FLAGS =
-        Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG;
+    uint160 internal constant REQUIRED_FLAGS = Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG;
 
     /// @notice Check if an address has the correct hook permission flags
     /// @param hookAddress The deployed hook address to validate

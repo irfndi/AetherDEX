@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.31;
+pragma solidity ^0.8.36;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -20,7 +20,8 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
 
     enum Action {
         MINT,
-        REMOVE
+        REMOVE,
+        REBALANCE
     }
 
     IPoolManager public immutable poolManager;
@@ -92,6 +93,56 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
         _pay(position.poolKey, recipient, amount0, amount1);
     }
 
+    function rebalancePosition(RebalancePositionParams calldata params)
+        external
+        payable
+        nonReentrant
+        returns (uint256 closedAmount0, uint256 closedAmount1, uint256 usedAmount0, uint256 usedAmount1)
+    {
+        if (block.timestamp > params.deadline) revert DeadlineExpired();
+        if (params.liquidity == 0) revert InvalidLiquidity();
+        if (params.tickLower >= params.tickUpper) revert InvalidLiquidity();
+        address positionOwner = _ownerOf(params.tokenId);
+        if (!_isAuthorized(positionOwner, msg.sender, params.tokenId)) {
+            _checkAuthorized(positionOwner, msg.sender, params.tokenId);
+        }
+        Position memory position = _positions[params.tokenId];
+        if (
+            !position.poolKey.currency0.isAddressZero() && !position.poolKey.currency1.isAddressZero() && msg.value != 0
+        ) {
+            revert UnexpectedNativeValue();
+        }
+
+        uint256 balance0Before = _balanceBeforeCall(position.poolKey.currency0);
+        uint256 balance1Before = _balanceBeforeCall(position.poolKey.currency1);
+        _pullMaximums(
+            MintPositionParams({
+                poolKey: position.poolKey,
+                tickLower: params.tickLower,
+                tickUpper: params.tickUpper,
+                liquidity: params.liquidity,
+                amount0Max: params.amount0Max,
+                amount1Max: params.amount1Max,
+                recipient: positionOwner,
+                deadline: params.deadline,
+                hookData: params.hookData
+            })
+        );
+
+        _unlockActive = true;
+        bytes memory result = poolManager.unlock(
+            abi.encode(Action.REBALANCE, abi.encode(position, params, balance0Before, balance1Before))
+        );
+        _unlockActive = false;
+        (closedAmount0, closedAmount1, usedAmount0, usedAmount1) =
+            abi.decode(result, (uint256, uint256, uint256, uint256));
+        if (closedAmount0 < params.amount0Min || closedAmount1 < params.amount1Min) revert SlippageExceeded();
+
+        _positions[params.tokenId] =
+            Position(position.poolKey, params.tickLower, params.tickUpper, params.liquidity, position.salt);
+        _refund(position.poolKey, positionOwner, balance0Before, balance1Before);
+    }
+
     function getPosition(uint256 tokenId) external view returns (Position memory) {
         return _positions[tokenId];
     }
@@ -119,6 +170,39 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
             (uint256 amount0, uint256 amount1) = _settleOwed(position.poolKey, delta);
             return abi.encode(amount0, amount1);
         }
+        if (action == Action.REBALANCE) {
+            (
+                Position memory oldPosition,
+                RebalancePositionParams memory params,
+                uint256 balance0Before,
+                uint256 balance1Before
+            ) = abi.decode(actionData, (Position, RebalancePositionParams, uint256, uint256));
+            (BalanceDelta rebalanceRemoveDelta,) = poolManager.modifyLiquidity(
+                oldPosition.poolKey,
+                ModifyLiquidityParams(
+                    oldPosition.tickLower,
+                    oldPosition.tickUpper,
+                    -int256(uint256(oldPosition.liquidity)),
+                    oldPosition.salt
+                ),
+                params.hookData
+            );
+            uint256 closedAmount0 = uint256(int256(rebalanceRemoveDelta.amount0()));
+            uint256 closedAmount1 = uint256(int256(rebalanceRemoveDelta.amount1()));
+            if (closedAmount0 > 0) poolManager.take(oldPosition.poolKey.currency0, address(this), closedAmount0);
+            if (closedAmount1 > 0) poolManager.take(oldPosition.poolKey.currency1, address(this), closedAmount1);
+
+            (BalanceDelta addDelta,) = poolManager.modifyLiquidity(
+                oldPosition.poolKey,
+                ModifyLiquidityParams(
+                    params.tickLower, params.tickUpper, int256(uint256(params.liquidity)), oldPosition.salt
+                ),
+                params.hookData
+            );
+            (uint256 usedAmount0, uint256 usedAmount1) =
+                _settleOwedCallScoped(oldPosition.poolKey, addDelta, balance0Before, balance1Before);
+            return abi.encode(closedAmount0, closedAmount1, usedAmount0, usedAmount1);
+        }
         (Position memory removePosition, uint128 liquidity, bytes memory hookData) =
             abi.decode(actionData, (Position, uint128, bytes));
         (BalanceDelta removeDelta,) = poolManager.modifyLiquidity(
@@ -142,6 +226,25 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
         if (amount1 > 0) _settle(key.currency1, amount1);
     }
 
+    function _settleOwedCallScoped(
+        PoolKey memory key,
+        BalanceDelta delta,
+        uint256 balance0Before,
+        uint256 balance1Before
+    ) internal returns (uint256 amount0, uint256 amount1) {
+        amount0 = uint256(-int256(delta.amount0()));
+        amount1 = uint256(-int256(delta.amount1()));
+        _settleCallScoped(key.currency0, amount0, balance0Before);
+        _settleCallScoped(key.currency1, amount1, balance1Before);
+    }
+
+    function _settleCallScoped(Currency currency, uint256 amount, uint256 balanceBefore) internal {
+        if (amount == 0) return;
+        uint256 balance = _balanceOf(currency);
+        if (balance < balanceBefore || balance - balanceBefore < amount) revert InsufficientCallBalance();
+        _settle(currency, amount);
+    }
+
     function _settle(Currency currency, uint256 amount) internal {
         poolManager.sync(currency);
         if (currency.isAddressZero()) {
@@ -152,7 +255,7 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
         }
     }
 
-    function _pullMaximums(MintPositionParams calldata params) internal {
+    function _pullMaximums(MintPositionParams memory params) internal {
         if (params.poolKey.currency0.isAddressZero()) {
             if (msg.value < params.amount0Max) revert AmountMaximumExceeded();
         } else {
