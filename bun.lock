@@ -61,7 +61,6 @@
         "daisyui": "^5.7.0",
         "effect": "4.0.0-beta.100",
         "framer-motion": "^12.42.2",
-        "jsbi": "^3.2.5",
         "lucide-react": "^1.25.0",
         "react": "^19.2.8",
         "react-dom": "^19.2.8",

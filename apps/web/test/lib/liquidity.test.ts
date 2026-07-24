@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import { buildLiquidityRequest, validateLiquidityForm, type LiquidityFormValues } from "../../src/lib/liquidity"
 
 const validValues: LiquidityFormValues = {
+  protocol: "v4",
   tokenSide: "token0",
   amount: "12.5",
   lowerTick: "-120",
@@ -42,6 +43,7 @@ describe("liquidity form helpers", () => {
   it("builds an honest typed request without inventing a router address", () => {
     expect(buildLiquidityRequest("0xpool", validValues, 60)).toEqual({
       kind: "aetherdex.addLiquidity",
+      protocol: "v4",
       poolId: "0xpool",
       tokenSide: "token0",
       amount: "12.5",
