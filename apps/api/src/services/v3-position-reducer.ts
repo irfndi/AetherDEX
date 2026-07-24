@@ -1,0 +1,77 @@
+import type { V3LiquidityEvent } from "./v3-liquidity-events"
+
+export type V3PositionState = {
+  readonly tokenId: string
+  readonly ownerAddress: `0x${string}` | null
+  readonly isActive: boolean
+  readonly liquidity: bigint
+  readonly amount0: bigint
+  readonly amount1: bigint
+  readonly fees0: bigint
+  readonly fees1: bigint
+}
+
+export function reduceV3PositionEvents(events: readonly V3LiquidityEvent[]): ReadonlyMap<string, V3PositionState> {
+  const states = new Map<string, V3PositionState>()
+  const ordered = [...events].sort(
+    (left, right) => left.blockNumber - right.blockNumber || left.logIndex - right.logIndex,
+  )
+  for (const event of ordered) {
+    if (event.tokenId === null) continue
+    const previous =
+      states.get(event.tokenId) ??
+      ({
+        tokenId: event.tokenId,
+        ownerAddress: null,
+        isActive: true,
+        liquidity: 0n,
+        amount0: 0n,
+        amount1: 0n,
+        fees0: 0n,
+        fees1: 0n,
+      } satisfies V3PositionState)
+    const next = applyEvent(previous, event)
+    if (next !== null) states.set(event.tokenId, next)
+  }
+  return states
+}
+
+function applyEvent(state: V3PositionState, event: V3LiquidityEvent): V3PositionState | null {
+  if (event.eventType === "transfer") {
+    return { ...state, ownerAddress: event.ownerAddress, isActive: event.ownerAddress !== null }
+  }
+  if (event.eventType === "collect") {
+    return {
+      ...state,
+      fees0: state.fees0 + toBigInt(event.amount0),
+      fees1: state.fees1 + toBigInt(event.amount1),
+    }
+  }
+  const deltaLiquidity = toBigInt(event.liquidityDelta)
+  const delta0 = toBigInt(event.amount0)
+  const delta1 = toBigInt(event.amount1)
+  if (event.eventType === "increase") {
+    return {
+      ...state,
+      liquidity: state.liquidity + deltaLiquidity,
+      amount0: state.amount0 + delta0,
+      amount1: state.amount1 + delta1,
+    }
+  }
+  if (event.eventType === "decrease") {
+    if (deltaLiquidity > state.liquidity || delta0 > state.amount0 || delta1 > state.amount1) return null
+    const liquidity = state.liquidity - deltaLiquidity
+    return {
+      ...state,
+      isActive: liquidity > 0n,
+      liquidity,
+      amount0: state.amount0 - delta0,
+      amount1: state.amount1 - delta1,
+    }
+  }
+  return state
+}
+
+function toBigInt(value: string | null): bigint {
+  return value === null ? 0n : BigInt(value)
+}
