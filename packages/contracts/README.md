@@ -11,7 +11,7 @@ A lean spot DEX built on Uniswap V4.
 
 ## Stack
 
-- Solidity 0.8.31 (no Vyper — dropped for simpler audit surface)
+- Solidity 0.8.36 (no Vyper — dropped for simpler audit surface)
 - Foundry (forge, cast, anvil)
 - Uniswap V4-core (vendored at lib/v4-core)
 - OpenZeppelin v5

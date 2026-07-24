@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.31;
+pragma solidity ^0.8.36;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
@@ -13,13 +13,9 @@ interface IAetherFactory {
     /// @param tickSpacing Tick spacing for concentrated liquidity
     /// @param sqrtPriceX96 Initial sqrt price as Q64.96
     /// @return poolId The keccak256-encoded PoolKey identifier
-    function createPool(
-        address token0,
-        address token1,
-        uint24 fee,
-        int24 tickSpacing,
-        uint160 sqrtPriceX96
-    ) external returns (bytes32 poolId);
+    function createPool(address token0, address token1, uint24 fee, int24 tickSpacing, uint160 sqrtPriceX96)
+        external
+        returns (bytes32 poolId);
 
     /// @notice Get pool key by ID
     /// @param poolId The keccak256-encoded PoolKey identifier

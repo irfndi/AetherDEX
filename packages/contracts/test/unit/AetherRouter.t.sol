@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.31;
+pragma solidity ^0.8.36;
 
 import "forge-std/Test.sol";
 import {AetherRouter} from "src/router/AetherRouter.sol";
@@ -338,13 +338,7 @@ contract AetherRouterTest is Test {
 
         vm.warp(1);
         vm.prank(user);
-        router.addLiquidity(
-            _testPoolKey(),
-            _modifyLiqParams(),
-            0.6 ether,
-            0.6 ether,
-            block.timestamp + 100
-        );
+        router.addLiquidity(_testPoolKey(), _modifyLiqParams(), 0.6 ether, 0.6 ether, block.timestamp + 100);
 
         assertEq(token0.balanceOf(user), 1_000_000 ether - 0.5 ether, "User should spend 0.5 token0");
         assertEq(token1.balanceOf(user), 1_000_000 ether - 0.5 ether, "User should spend 0.5 token1");
@@ -376,13 +370,7 @@ contract AetherRouterTest is Test {
 
         vm.warp(1);
         vm.prank(user);
-        router.removeLiquidity(
-            _testPoolKey(),
-            _removeLiqParams(),
-            0,
-            0,
-            block.timestamp + 100
-        );
+        router.removeLiquidity(_testPoolKey(), _removeLiqParams(), 0, 0, block.timestamp + 100);
 
         assertEq(token0.balanceOf(user), userBal0Before + 0.5 ether, "User should receive 0.5 token0");
         assertEq(token1.balanceOf(user), userBal1Before + 0.5 ether, "User should receive 0.5 token1");
@@ -397,13 +385,7 @@ contract AetherRouterTest is Test {
         vm.warp(1);
         vm.prank(user);
         vm.expectRevert();
-        router.removeLiquidity(
-            _testPoolKey(),
-            _removeLiqParams(),
-            uint256(0.5 ether),
-            0,
-            block.timestamp + 100
-        );
+        router.removeLiquidity(_testPoolKey(), _removeLiqParams(), uint256(0.5 ether), 0, block.timestamp + 100);
     }
 
     function test_removeLiquidity_emitsEvent() public {
@@ -450,7 +432,8 @@ contract AetherRouterTest is Test {
         assertEq(token0.balanceOf(user), token0Before - 0.9 ether);
         assertEq(token1.balanceOf(user), token1Before + 0.1 ether);
         PoolKey memory key = _testPoolKey();
-        bytes32 positionId = keccak256(abi.encode(keccak256(abi.encode(key)), int24(-887220), int24(887220), bytes32(0)));
+        bytes32 positionId =
+            keccak256(abi.encode(keccak256(abi.encode(key)), int24(-887220), int24(887220), bytes32(0)));
         assertEq(router.positionOwner(positionId), user);
     }
 
@@ -489,17 +472,14 @@ contract AetherRouterTest is Test {
         vm.prank(user);
         router.addLiquidity(_testPoolKey(), _modifyLiqParams(), 0.6 ether, 0.6 ether, block.timestamp + 100);
 
-        ModifyLiquidityParams memory partialParams = ModifyLiquidityParams({
-            tickLower: -887220,
-            tickUpper: 887220,
-            liquidityDelta: -0.4 ether,
-            salt: 0
-        });
+        ModifyLiquidityParams memory partialParams =
+            ModifyLiquidityParams({tickLower: -887220, tickUpper: 887220, liquidityDelta: -0.4 ether, salt: 0});
         mockPM.setModifyLiquidityDelta(toBalanceDelta(int128(0.1 ether), int128(0.1 ether)));
         vm.prank(user);
         router.removeLiquidity(_testPoolKey(), partialParams, 0, 0, block.timestamp + 100);
 
-        bytes32 positionId = keccak256(abi.encode(keccak256(abi.encode(_testPoolKey())), int24(-887220), int24(887220), bytes32(0)));
+        bytes32 positionId =
+            keccak256(abi.encode(keccak256(abi.encode(_testPoolKey())), int24(-887220), int24(887220), bytes32(0)));
         assertEq(router.positionOwner(positionId), user);
         assertEq(router.positionLiquidity(positionId), 0.6 ether);
     }
@@ -658,8 +638,10 @@ contract MockPoolManager {
 
     function swap(PoolKey memory, SwapParams memory params, bytes calldata) external returns (BalanceDelta) {
         if (strictZap) {
-            expectedSettle = params.zeroForOne ? uint256(-int256(swapDelta.amount0())) : uint256(-int256(swapDelta.amount1()));
-            expectedTake = params.zeroForOne ? uint256(int256(swapDelta.amount1())) : uint256(int256(swapDelta.amount0()));
+            expectedSettle =
+                params.zeroForOne ? uint256(-int256(swapDelta.amount0())) : uint256(-int256(swapDelta.amount1()));
+            expectedTake =
+                params.zeroForOne ? uint256(int256(swapDelta.amount1())) : uint256(int256(swapDelta.amount0()));
             modifying = false;
         }
         return swapDelta;

@@ -91,7 +91,7 @@
 
 ### Smart Contracts (`packages/contracts/`)
 - Foundry (forge, cast, anvil)
-- Solidity 0.8.31 (no Vyper)
+- Solidity 0.8.36 (no Vyper)
 - Uniswap V4-core (vendored at lib/v4-core)
 - OpenZeppelin Contracts v5
 - forge coverage target: >90%

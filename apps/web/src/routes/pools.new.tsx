@@ -5,6 +5,7 @@ import { useAccount } from "wagmi"
 import { Button, Card, CardBody, CardTitle, Input } from "../components/ui"
 
 const Q96 = 2n ** 96n
+const MAX_UINT160 = 2n ** 160n - 1n
 type PriceInput =
   | { readonly kind: "price"; readonly value: string }
   | { readonly kind: "sqrtPriceX96"; readonly value: string }
@@ -55,6 +56,12 @@ export function validatePoolCreationForm(
   if (!isPositiveDecimal(price)) errors.priceInput = "Initial price must be positive."
   if (values.priceInput.kind === "sqrtPriceX96" && !isPositiveInteger(price)) {
     errors.priceInput = "sqrtPriceX96 must be a positive integer."
+  }
+  if (values.priceInput.kind === "sqrtPriceX96" && isPositiveInteger(price) && BigInt(price) > MAX_UINT160) {
+    errors.priceInput = "sqrtPriceX96 must fit in uint160."
+  }
+  if (values.priceInput.kind === "price" && isPositiveDecimal(price) && !isDecimalSqrtPriceWithinUint160(price)) {
+    errors.priceInput = "Initial price is outside the uint160 sqrt-price range."
   }
   if (deadline === null || deadline <= now) errors.deadline = "Deadline must be a future date and time."
 
@@ -123,6 +130,12 @@ function isPositiveInteger(value: string): boolean {
 function isPositiveDecimal(value: string): boolean {
   if (!/^\d+(\.\d+)?$/.test(value)) return false
   return Number(value) > 0
+}
+
+function isDecimalSqrtPriceWithinUint160(value: string): boolean {
+  const [whole = ""] = value.split(".")
+  if (whole.length > 40) return false
+  return decimalToSqrtPriceX96(value) <= MAX_UINT160
 }
 
 function parseDeadline(value: string): number | null {

@@ -221,8 +221,8 @@ jobs:
         run: |
           set -euo pipefail
           pip3 install --no-cache-dir slither-analyzer solc-select
-          solc-select install 0.8.31
-          solc-select use 0.8.31
+          solc-select install 0.8.36
+          solc-select use 0.8.36
 
       - name: Slither static analysis (gate on high/medium)
         working-directory: packages/contracts
@@ -482,8 +482,8 @@ jobs:
           sudo mv /tmp/echidna /usr/local/bin/echidna
           echo "Echidna version: $(echidna --version)"
           pip3 install --no-cache-dir solc-select
-          solc-select install 0.8.31
-          solc-select use 0.8.31
+          solc-select install 0.8.36
+          solc-select use 0.8.36
 
       - name: Run Echidna (property harness)
         if: steps.harness.outputs.present == 'true'

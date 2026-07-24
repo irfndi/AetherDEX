@@ -87,7 +87,7 @@ The hackathon repo is the valuable reference: it is inspectable source for the k
 | Persistence | None server-side (browser) | SQLite (WAL) | **D1 + R2 + KV + Durable Objects** | AetherDEX is *more* capable |
 | Auth | SIWE | SIWE → JWT | **SIWE (built)** | **Identical** |
 | Realtime | WSS (inferred) | WSS (Hono) | **Durable Objects WebSocket (built, unrouted)** | Compatible |
-| Contracts | Solidity (verified, immutable) | Foundry/Solidity (ERC4626 + adapters) | **Foundry + Solidity 0.8.31 + V4-core + OZ v5** | **Same toolchain** |
+| Contracts | Solidity (verified, immutable) | Foundry/Solidity (ERC4626 + adapters) | **Foundry + Solidity 0.8.36 + V4-core + OZ v5** | **Same toolchain** |
 | Chain lib | viem v2 | viem v2 + Uniswap v3/v4 SDK | **viem v2** (no Uniswap SDK yet) | Add `@uniswap/v3-sdk` + `@uniswap/v4-sdk` |
 
 **Conclusion:** The only *new* dependencies AetherDEX needs are `@uniswap/v3-sdk` and `@uniswap/v4-sdk` (for correct tick math — see §6.2, gap #3). Most of the stack maps across, but this is **compatible foundations + a non-trivial migration** — closing the Effect-bypass, WebSocket-routing, quote-correctness, position-ownership, and modernization gaps (§6.2, §10) is genuine work, not a zero-cost drop-in.

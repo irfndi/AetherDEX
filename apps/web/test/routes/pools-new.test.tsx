@@ -57,6 +57,26 @@ describe("pool creation validation", () => {
     expect(result.request).toBeNull()
     expect(result.errors.priceInput).toBe("sqrtPriceX96 must be a positive integer.")
   })
+
+  it("rejects a sqrtPriceX96 value outside the factory uint160 boundary", () => {
+    const result = validatePoolCreationForm({
+      ...validValues,
+      priceInput: { kind: "sqrtPriceX96", value: (2n ** 160n).toString() },
+    })
+
+    expect(result.request).toBeNull()
+    expect(result.errors.priceInput).toBe("sqrtPriceX96 must fit in uint160.")
+  })
+
+  it("rejects a decimal price whose converted sqrt price exceeds uint160", () => {
+    const result = validatePoolCreationForm({
+      ...validValues,
+      priceInput: { kind: "price", value: "999999999999999999999999999999999999999" },
+    })
+
+    expect(result.request).toBeNull()
+    expect(result.errors.priceInput).toBe("Initial price is outside the uint160 sqrt-price range.")
+  })
 })
 
 describe("pool creation transaction intent", () => {

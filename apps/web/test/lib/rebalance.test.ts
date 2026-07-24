@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  buildRebalanceManagerCall,
   buildRebalanceIntent,
   validateRebalanceForm,
   type RebalanceFormValues,
@@ -26,6 +27,28 @@ const validValues: RebalanceFormValues = {
 }
 
 describe("rebalance intent helpers", () => {
+  it("builds a typed manager call without inventing a position key", () => {
+    const managerAddress = "0x3333333333333333333333333333333333333333" as const
+    const params = {
+      tokenId: 1842n,
+      tickLower: -1200,
+      tickUpper: 1200,
+      liquidity: 12_480n,
+      amount0Max: 1_000n,
+      amount1Max: 2_000n,
+      amount0Min: 10n,
+      amount1Min: 20n,
+      deadline: 1_800n,
+      hookData: "0x" as const,
+    }
+
+    expect(buildRebalanceManagerCall(managerAddress, params)).toEqual({
+      address: managerAddress,
+      functionName: "rebalancePosition",
+      args: [params],
+    })
+  })
+
   it("accepts an aligned range and bounded execution settings", () => {
     expect(validateRebalanceForm(validValues, position.tickSpacing)).toEqual({ valid: true, errors: {} })
   })
