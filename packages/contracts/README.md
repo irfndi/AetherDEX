@@ -5,7 +5,8 @@ A lean spot DEX built on Uniswap V4.
 ## Architecture
 
 - **AetherHook**: Custom V4 hook for fee override and TWAP
-- **AetherRouter**: User-facing router (swap, add/remove liquidity)
+- **AetherRouter**: User-facing router (swap, zap, and compatibility add/remove liquidity)
+- **AetherPositionManager**: ERC721 receipt manager for transferable, owner-authorized V4 positions
 - **AetherFactory**: Deterministic pool deploys via CREATE2
 
 ## Stack
@@ -32,6 +33,7 @@ src/
 ├── hook/          # V4 hooks
 ├── router/        # User-facing router
 ├── factory/       # Pool factory
+├── position/      # ERC721 receipt-position manager
 ├── lib/           # Shared libraries (Errors)
 ├── types/         # Type definitions
 └── interfaces/    # Contract interfaces
