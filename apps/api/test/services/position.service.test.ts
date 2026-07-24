@@ -56,6 +56,7 @@ describe("PositionService.listByUser", () => {
     id: 7,
     user_address: "0x1111111111111111111111111111111111111111",
     pool_id: "0x2222222222222222222222222222222222222222222222222222222222222222",
+    tick_spacing: 10,
     tick_lower: -60,
     tick_upper: 60,
     liquidity: "1000",
@@ -71,7 +72,14 @@ describe("PositionService.listByUser", () => {
   it("maps D1 rows to LiquidityPosition objects", async () => {
     const list = await Effect.runPromise(withService((svc) => svc.listByUser(row.user_address), [row]))
     expect(list).toHaveLength(1)
-    expect(list[0]).toMatchObject({ id: 7, poolId: row.pool_id, tickLower: -60, tickUpper: 60, isActive: true })
+    expect(list[0]).toMatchObject({
+      id: 7,
+      poolId: row.pool_id,
+      tickSpacing: row.tick_spacing,
+      tickLower: -60,
+      tickUpper: 60,
+      isActive: true,
+    })
   })
 
   it("returns an empty list when the user has no positions", async () => {

@@ -51,7 +51,9 @@ const makePositionService = Effect.gen(function* () {
   const listByUser = (userAddress: string, limit = 100): Effect.Effect<LiquidityPosition[], PositionListError, never> =>
     Effect.gen(function* () {
       const rows = (yield* sql`
-        SELECT * FROM liquidity_positions
+        SELECT liquidity_positions.*, pools.tick_spacing
+        FROM liquidity_positions
+        LEFT JOIN pools ON pools.pool_id = liquidity_positions.pool_id
         WHERE user_address = ${userAddress} AND is_active = 1
         ORDER BY created_at DESC
         LIMIT ${limit}
