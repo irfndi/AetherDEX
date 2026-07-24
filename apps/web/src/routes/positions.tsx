@@ -1,5 +1,7 @@
+import { useAppKit } from "@reown/appkit/react"
 import { createFileRoute } from "@tanstack/react-router"
-import { type FormEvent, useMemo, useState } from "react"
+import { type FormEvent, useEffect, useMemo, useState } from "react"
+import { useAccount } from "wagmi"
 import { Card, CardBody, CardTitle } from "../components/ui/Card"
 import { Input } from "../components/ui/Input"
 import {
@@ -13,18 +15,6 @@ export const Route = createFileRoute("/positions")({
   component: PositionsPage,
 })
 
-const selectedPosition: RebalancePosition = {
-  positionId: "#1842",
-  poolId: "0xpool-eth-usdc",
-  pair: "ETH / USDC",
-  token0: "ETH",
-  token1: "USDC",
-  currentLowerTick: -600,
-  currentUpperTick: 600,
-  tickSpacing: 60,
-  liquidity: "12.48",
-}
-
 const initialValues: RebalanceFormValues = {
   lowerTick: "-1200",
   upperTick: "1200",
@@ -32,14 +22,96 @@ const initialValues: RebalanceFormValues = {
   deadline: "1800",
 }
 
+interface IndexedPosition {
+  readonly id: number
+  readonly poolId: string
+  readonly tickLower: number
+  readonly tickUpper: number
+  readonly liquidity: string
+}
+
+const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080/api/v1"
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
+function isIndexedPosition(value: unknown): value is IndexedPosition {
+  if (!isRecord(value)) return false
+  const position = value
+  return (
+    typeof position.id === "number" &&
+    typeof position.poolId === "string" &&
+    typeof position.tickLower === "number" &&
+    typeof position.tickUpper === "number" &&
+    typeof position.liquidity === "string"
+  )
+}
+
+function isIndexedPositionResponse(value: unknown): value is { readonly positions: readonly IndexedPosition[] } {
+  if (!isRecord(value)) return false
+  const positions = value.positions
+  return Array.isArray(positions) && positions.every(isIndexedPosition)
+}
+
+function toRebalancePosition(position: IndexedPosition): RebalancePosition {
+  return {
+    positionId: `#${position.id}`,
+    poolId: position.poolId,
+    pair: "Token 0 / Token 1",
+    token0: "Token 0",
+    token1: "Token 1",
+    currentLowerTick: position.tickLower,
+    currentUpperTick: position.tickUpper,
+    tickSpacing: 60,
+    liquidity: position.liquidity,
+  }
+}
+
 function PositionsPage() {
+  const { open } = useAppKit()
+  const { address, isConnected } = useAccount()
+  const [positions, setPositions] = useState<IndexedPosition[]>([])
+  const [isPending, setIsPending] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [values, setValues] = useState<RebalanceFormValues>(initialValues)
   const [submitted, setSubmitted] = useState(false)
-  const validation = useMemo(() => validateRebalanceForm(values, selectedPosition.tickSpacing), [values])
-  const intent = useMemo(
-    () => (validation.valid ? buildRebalanceIntent(selectedPosition, values) : null),
-    [validation.valid, values],
+  const selectedPosition = positions[0] ? toRebalancePosition(positions[0]) : null
+  const validation = useMemo(
+    () => validateRebalanceForm(values, selectedPosition?.tickSpacing ?? 60),
+    [values, selectedPosition],
   )
+  const intent = useMemo(
+    () => (validation.valid && selectedPosition ? buildRebalanceIntent(selectedPosition, values) : null),
+    [validation.valid, selectedPosition, values],
+  )
+
+  useEffect(() => {
+    if (!isConnected || !address) {
+      setPositions([])
+      setErrorMessage(null)
+      return
+    }
+    const controller = new AbortController()
+    setIsPending(true)
+    setErrorMessage(null)
+    fetch(`${API_URL}/users/${encodeURIComponent(address)}/positions`, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        return response.json()
+      })
+      .then((response: unknown) => {
+        if (!isIndexedPositionResponse(response)) throw new Error("Unexpected positions response")
+        setPositions([...response.positions])
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return
+        setPositions([])
+        setErrorMessage(error instanceof Error ? error.message : "Unknown request error")
+      })
+      .finally(() => setIsPending(false))
+    return () => controller.abort()
+  }, [address, isConnected])
 
   const updateValue = (field: keyof RebalanceFormValues, value: string) => {
     setSubmitted(false)
@@ -51,12 +123,61 @@ function PositionsPage() {
     setSubmitted(true)
   }
 
+  if (!isConnected) {
+    return (
+      <div className="mx-auto max-w-5xl space-y-6 py-6">
+        <PageHeading />
+        <Card>
+          <CardBody className="items-center py-12 text-center">
+            <span className="badge badge-primary badge-outline">Wallet required</span>
+            <CardTitle className="mt-3">Connect your wallet</CardTitle>
+            <p className="max-w-md text-base-content/60">Your indexed positions will appear here after connection.</p>
+            <button type="button" className="btn btn-primary mt-2" onClick={() => open()}>
+              Connect wallet
+            </button>
+          </CardBody>
+        </Card>
+      </div>
+    )
+  }
+
+  if (isPending) {
+    return (
+      <div className="mx-auto max-w-5xl space-y-6 py-6">
+        <PageHeading />
+        <Card>
+          <CardBody className="items-center py-12">
+            <span className="loading loading-spinner loading-lg text-primary" />
+          </CardBody>
+        </Card>
+      </div>
+    )
+  }
+
+  if (errorMessage || !selectedPosition) {
+    return (
+      <div className="mx-auto max-w-5xl space-y-6 py-6">
+        <PageHeading />
+        <Card>
+          <CardBody className="items-center py-12 text-center">
+            <CardTitle>{errorMessage ? "Couldn’t load positions" : "No indexed positions yet"}</CardTitle>
+            <p className="max-w-md text-sm text-base-content/60">
+              {errorMessage
+                ? `The positions index returned ${errorMessage}.`
+                : "Provide liquidity first, then return here to rebalance it."}
+            </p>
+          </CardBody>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="mx-auto max-w-5xl space-y-6 py-6">
       <div>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-3xl font-bold">Positions</h1>
-          <span className="badge badge-warning">Rebalance preview</span>
+          <span className="badge badge-warning">Indexed position</span>
         </div>
         <p className="mt-2 text-base-content/60">
           Prepare a protected close, collect, and re-mint sequence for a position you control.
@@ -73,7 +194,7 @@ function PositionsPage() {
                 {selectedPosition.positionId} · {selectedPosition.poolId}
               </p>
             </div>
-            <span className="badge badge-warning badge-outline">Example position</span>
+            <span className="badge badge-success badge-outline">From position index</span>
           </div>
           <div className="mt-5 grid gap-4 sm:grid-cols-3">
             <PositionValue
@@ -194,6 +315,20 @@ function PositionsPage() {
           </CardBody>
         </Card>
       </div>
+    </div>
+  )
+}
+
+function PageHeading() {
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="text-3xl font-bold">Positions</h1>
+        <span className="badge badge-warning">Rebalance</span>
+      </div>
+      <p className="mt-2 text-base-content/60">
+        Prepare a protected close, collect, and re-mint sequence for a position you control.
+      </p>
     </div>
   )
 }
