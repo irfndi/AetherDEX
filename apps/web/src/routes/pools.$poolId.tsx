@@ -1,8 +1,17 @@
+import { useAppKit } from "@reown/appkit/react"
 import { createFileRoute, Link } from "@tanstack/react-router"
-import { useEffect, useState } from "react"
+import { type FormEvent, useEffect, useState } from "react"
+import { useAccount } from "wagmi"
 import { DexScreenerChart } from "../components/DexScreenerChart"
 import { TokenChip } from "../components/TokenChip"
-import { Button, Card, CardBody, Stat } from "../components/ui"
+import { Button, Card, CardBody, Input, Stat } from "../components/ui"
+import {
+  buildLiquidityRequest,
+  type LiquidityFormValues,
+  type LiquiditySide,
+  type LiquidityTransactionRequest,
+  validateLiquidityForm,
+} from "../lib/liquidity"
 
 interface Pool {
   poolId: string
@@ -135,36 +144,216 @@ function PoolDetailPage() {
         </div>
 
         <div>
-          <Card>
-            <CardBody>
-              <h2 className="card-title mb-4">Add Liquidity</h2>
-              <p className="mb-4 text-sm text-base-content/60">
-                Coming in T29 — connects to AetherRouter.addLiquidity().
-              </p>
-              <Button variant="primary" fullWidth disabled>
-                Add Liquidity
-              </Button>
-
-              <div className="divider">Pool Info</div>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-base-content/60">Tick spacing</span>
-                  <span>{pool.tickSpacing}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-base-content/60">Liquidity</span>
-                  <span className="font-mono text-xs">{pool.liquidity.slice(0, 10)}…</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-base-content/60">Sqrt price</span>
-                  <span className="font-mono text-xs">{pool.sqrtPriceX96.slice(0, 10)}…</span>
-                </div>
-              </div>
-            </CardBody>
-          </Card>
+          <LiquidityForm pool={pool} token0={token0} token1={token1} />
         </div>
       </div>
     </div>
+  )
+}
+
+interface LiquidityFormProps {
+  readonly pool: Pool
+  readonly token0: Token | null
+  readonly token1: Token | null
+}
+
+function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
+  const { open } = useAppKit()
+  const { address, isConnected } = useAccount()
+  const [values, setValues] = useState<LiquidityFormValues>({
+    tokenSide: "token0",
+    amount: "",
+    lowerTick: "-600",
+    upperTick: "600",
+    slippage: "0.5",
+    deadline: "1800",
+  })
+  const [submitted, setSubmitted] = useState(false)
+  const [request, setRequest] = useState<LiquidityTransactionRequest | null>(null)
+
+  const validation = validateLiquidityForm(values, pool.tickSpacing)
+  const errors = submitted ? validation.errors : {}
+  const selectedToken = values.tokenSide === "token0" ? token0 : token1
+  const otherToken = values.tokenSide === "token0" ? token1 : token0
+  const walletName = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "Wallet not connected"
+
+  const updateValue = (field: keyof LiquidityFormValues, value: string) => {
+    setValues((current) => ({ ...current, [field]: value }))
+    setRequest(null)
+  }
+
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSubmitted(true)
+    if (!isConnected) {
+      open()
+      return
+    }
+
+    const nextRequest = buildLiquidityRequest(pool.poolId, values, pool.tickSpacing)
+    if (nextRequest) setRequest(nextRequest)
+  }
+
+  return (
+    <Card>
+      <CardBody>
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h2 className="card-title">Add liquidity</h2>
+            <p className="mt-1 text-sm text-base-content/60">Choose a range and deposit from one side.</p>
+          </div>
+          <span className={`badge ${isConnected ? "badge-success" : "badge-warning"}`}>
+            {isConnected ? "Connected" : "Connect wallet"}
+          </span>
+        </div>
+
+        <div className="mb-5 rounded-box border border-base-300 bg-base-100 p-3 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-base-content/60">Wallet</span>
+            {isConnected ? (
+              <span className="font-mono text-xs">{walletName}</span>
+            ) : (
+              <Button type="button" variant="outline" size="xs" onClick={() => open()}>
+                Connect
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <form onSubmit={submit} noValidate className="space-y-4">
+          <fieldset>
+            <legend className="label-text mb-2 block text-sm font-medium">Deposit from</legend>
+            <div className="join w-full">
+              {(["token0", "token1"] as const).map((side: LiquiditySide) => {
+                const token = side === "token0" ? token0 : token1
+                return (
+                  <button
+                    className={`join-item btn btn-sm flex-1 ${values.tokenSide === side ? "btn-primary" : "btn-ghost"}`}
+                    key={side}
+                    type="button"
+                    aria-pressed={values.tokenSide === side}
+                    onClick={() => updateValue("tokenSide", side)}
+                  >
+                    {token?.symbol ?? (side === "token0" ? "Token 0" : "Token 1")}
+                  </button>
+                )
+              })}
+            </div>
+          </fieldset>
+
+          <Input
+            id="liquidity-amount"
+            label={`Amount (${selectedToken?.symbol ?? "selected token"})`}
+            inputMode="decimal"
+            min="0"
+            step="any"
+            placeholder="0.00"
+            value={values.amount}
+            {...(errors.amount ? { error: errors.amount } : {})}
+            onChange={(event) => updateValue("amount", event.target.value)}
+          />
+
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <span className="label-text text-sm font-medium">Price range</span>
+              <span className="text-xs text-base-content/60">Tick spacing: {pool.tickSpacing}</span>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Input
+                id="liquidity-lower-tick"
+                label="Lower tick"
+                type="number"
+                step={pool.tickSpacing}
+                value={values.lowerTick}
+                {...(errors.lowerTick ? { error: errors.lowerTick } : {})}
+                onChange={(event) => updateValue("lowerTick", event.target.value)}
+              />
+              <Input
+                id="liquidity-upper-tick"
+                label="Upper tick"
+                type="number"
+                step={pool.tickSpacing}
+                value={values.upperTick}
+                {...(errors.upperTick ? { error: errors.upperTick } : {})}
+                onChange={(event) => updateValue("upperTick", event.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Input
+              id="liquidity-slippage"
+              label="Max slippage (%)"
+              type="number"
+              min="0"
+              max="5"
+              step="0.1"
+              value={values.slippage}
+              {...(errors.slippage ? { error: errors.slippage } : {})}
+              onChange={(event) => updateValue("slippage", event.target.value)}
+            />
+            <Input
+              id="liquidity-deadline"
+              label="Deadline (seconds)"
+              type="number"
+              min="60"
+              max="86400"
+              step="60"
+              value={values.deadline}
+              {...(errors.deadline ? { error: errors.deadline } : {})}
+              onChange={(event) => updateValue("deadline", event.target.value)}
+            />
+          </div>
+
+          <div className="rounded-box border border-base-300 bg-base-100 p-3 text-xs text-base-content/60">
+            <div className="flex justify-between gap-3">
+              <span>Range</span>
+              <span className="font-mono">
+                {values.lowerTick || "—"} to {values.upperTick || "—"}
+              </span>
+            </div>
+            <div className="mt-2 flex justify-between gap-3">
+              <span>Other side</span>
+              <span>{otherToken?.symbol ?? "Token unavailable"} calculated at execution</span>
+            </div>
+          </div>
+
+          {request ? (
+            <div role="status" className="alert alert-warning text-sm">
+              <span>
+                Request prepared locally. The router address is not configured yet, so nothing was submitted and no
+                transaction succeeded.
+              </span>
+            </div>
+          ) : null}
+
+          <Button
+            type="submit"
+            variant="primary"
+            fullWidth
+            disabled={isConnected && (!validation.valid || request !== null)}
+          >
+            {request
+              ? "Transaction unavailable"
+              : isConnected
+                ? "Prepare liquidity request"
+                : "Connect wallet to continue"}
+          </Button>
+        </form>
+
+        <div className="divider">Pool info</div>
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-base-content/60">Current tick</span>
+            <span className="font-mono text-xs">{pool.currentTick}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-base-content/60">Liquidity</span>
+            <span className="font-mono text-xs">{pool.liquidity.slice(0, 10)}…</span>
+          </div>
+        </div>
+      </CardBody>
+    </Card>
   )
 }
 

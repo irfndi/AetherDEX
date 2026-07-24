@@ -26,6 +26,9 @@ function RootComponent() {
             >
               Pools
             </Link>
+            <Link to="/positions" className="text-sm font-medium hover:text-primary [&.active]:text-primary">
+              Positions
+            </Link>
             <Link to="/portfolio" className="text-sm font-medium hover:text-primary [&.active]:text-primary">
               Portfolio
             </Link>
