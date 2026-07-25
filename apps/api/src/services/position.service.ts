@@ -6,10 +6,11 @@
 
 import { Context, Effect, Layer } from "effect"
 import { SqlClient } from "effect/unstable/sql"
-import { listLiquidityEvents, updateLiquidityPosition } from "../db/queries"
+import { listLiquidityEvents, updateLiquidityPosition, updateV4LiquidityPosition } from "../db/queries"
 import { type LiquidityPosition, rowToLiquidityPosition } from "../db/schema"
 import type { V3LiquidityEvent } from "./v3-liquidity-events"
 import { reduceV3PositionEvents } from "./v3-position-reducer"
+import type { V4PositionState } from "./v4-position-reader.service"
 
 // --- Types ---
 
@@ -52,6 +53,12 @@ export interface PositionService {
     tokenId: string,
     chainId: number,
   ) => Effect.Effect<LiquidityPosition | null, RecordPositionError>
+  readonly reconcileV4Position: (
+    userAddress: string,
+    tokenId: string,
+    chainId: number,
+    state: V4PositionState,
+  ) => Effect.Effect<number | null, RecordPositionError>
 }
 
 // --- Tag ---
@@ -170,10 +177,31 @@ const makePositionService = Effect.gen(function* () {
       ),
     )
 
+  const reconcileV4Position = (
+    userAddress: string,
+    tokenId: string,
+    chainId: number,
+    state: V4PositionState,
+  ): Effect.Effect<number | null, RecordPositionError, never> =>
+    updateV4LiquidityPosition({
+      chainId,
+      tokenId,
+      ownerAddress: userAddress,
+      tickLower: state.tickLower,
+      tickUpper: state.tickUpper,
+      liquidity: state.liquidity.toString(),
+    }).pipe(
+      Effect.provideService(SqlClient.SqlClient, sql),
+      Effect.catch((error) =>
+        Effect.fail(error instanceof RecordPositionError ? error : new RecordPositionError(String(error))),
+      ),
+    )
+
   return {
     listByUser,
     recordPosition,
     reconcileV3Position,
+    reconcileV4Position,
   }
 })
 

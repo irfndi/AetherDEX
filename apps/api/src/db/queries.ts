@@ -210,3 +210,24 @@ export const updateLiquidityPosition = (input: {
     const id = rows[0]?.id
     return typeof id === "number" ? id : null
   })
+
+export const updateV4LiquidityPosition = (input: {
+  chainId: number
+  tokenId: string
+  ownerAddress: string
+  tickLower: number
+  tickUpper: number
+  liquidity: string
+}) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    const rows = yield* sql`
+      UPDATE liquidity_positions
+      SET user_address = ${input.ownerAddress}, tick_lower = ${input.tickLower}, tick_upper = ${input.tickUpper},
+          liquidity = ${input.liquidity}, is_active = 1, updated_at = ${Date.now()}
+      WHERE chain_id = ${input.chainId} AND protocol = 'v4' AND token_id = ${input.tokenId}
+      RETURNING id
+    `
+    const id = rows[0]?.id
+    return typeof id === "number" ? id : null
+  })
