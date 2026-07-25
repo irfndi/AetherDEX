@@ -80,6 +80,12 @@
         "max_batch_size": 10,
         "max_retries": 3,
         "dead_letter_queue": "price-refresh-dlq"
+      },
+      {
+        "queue": "trade-settlement",
+        "max_batch_size": 10,
+        "max_retries": 3,
+        "dead_letter_queue": "trade-settlement-dlq"
       }
     ]
   },
@@ -162,6 +168,12 @@
             "max_batch_size": 10,
             "max_retries": 3,
             "dead_letter_queue": "price-refresh-staging-dlq"
+          },
+          {
+            "queue": "trade-settlement-staging",
+            "max_batch_size": 10,
+            "max_retries": 3,
+            "dead_letter_queue": "trade-settlement-staging-dlq"
           }
         ]
       },
@@ -222,6 +234,12 @@
             "max_batch_size": 10,
             "max_retries": 3,
             "dead_letter_queue": "price-refresh-production-dlq"
+          },
+          {
+            "queue": "trade-settlement-production",
+            "max_batch_size": 10,
+            "max_retries": 3,
+            "dead_letter_queue": "trade-settlement-production-dlq"
           }
         ]
       },

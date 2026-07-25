@@ -30,9 +30,17 @@ bun run kv:create       # Create KV namespace
 bun run r2:create       # Create R2 bucket
 # Update wrangler.jsonc with returned IDs
 
+# Environment-isolated resources
+bun run d1:create:staging && bun run kv:create:staging && bun run r2:create:staging
+bun run queues:create:staging
+bun run d1:create:production && bun run kv:create:production && bun run r2:create:production
+bun run queues:create:production
+
 # Run migrations
 bun run d1:migrate:local
 bun run d1:migrate:remote  # Before deploy
+bun run d1:migrate:staging
+bun run d1:migrate:production
 
 # Deploy
 bun run deploy:staging
