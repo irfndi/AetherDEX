@@ -8,6 +8,7 @@
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { logger } from "hono/logger"
+import { type AuthVariables, authMiddleware } from "./auth/middleware"
 import { auth } from "./auth/routes"
 import { OrderBookDO, WebSocketHubDO } from "./durable-objects"
 import { pools } from "./routes/pools"
@@ -31,7 +32,7 @@ type Bindings = {
   ENVIRONMENT: string
 }
 
-const app = new Hono<{ Bindings: Bindings }>()
+const app = new Hono<{ Bindings: Bindings; Variables: AuthVariables }>()
 
 // Middleware
 app.use("*", logger())
@@ -44,6 +45,7 @@ app.use(
     credentials: true,
   }),
 )
+app.use("/api/v1/*", authMiddleware)
 
 // Structured error logging for observability
 app.use("*", async (c, next) => {

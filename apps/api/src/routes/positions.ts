@@ -9,6 +9,7 @@
 
 import { Effect, Layer } from "effect"
 import { Hono } from "hono"
+import { getAddress } from "viem"
 import { type AuthVariables, requireAuth } from "../auth/middleware"
 import { makeDbLayer } from "../db/client"
 import { runEffect } from "../lib/effect-bridge"
@@ -142,7 +143,8 @@ positions.post("/positions/v4/:tokenId/reconcile", requireAuth, async (c) => {
       Layer.provide(
         Layer.succeed(V4PositionReaderDeps, {
           rpcUrl,
-          managerAddress: managerAddress as `0x${string}`,
+          managerAddress: getAddress(managerAddress),
+          chainId,
         }),
       ),
     )

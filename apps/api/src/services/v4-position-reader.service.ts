@@ -68,6 +68,7 @@ export const V4PositionReader = Context.Service<V4PositionReader>("@aetherdex/V4
 export interface V4PositionReaderDeps {
   readonly rpcUrl: string
   readonly managerAddress: `0x${string}`
+  readonly chainId: number
 }
 
 export const V4PositionReaderDeps = Context.Service<V4PositionReaderDeps>("@aetherdex/V4PositionReaderDeps")
@@ -79,6 +80,18 @@ const makeV4PositionReader = (deps: V4PositionReaderDeps): V4PositionReader => {
       Effect.gen(function* () {
         if (!/^\d+$/.test(tokenId)) return yield* Effect.fail(new V4PositionReadError("Invalid token id"))
         const id = BigInt(tokenId)
+        const chainId = yield* Effect.tryPromise({
+          try: () => client.getChainId(),
+          catch: (error) => new V4PositionReadError(`Unable to read v4 chain id: ${String(error)}`),
+        })
+        if (chainId !== deps.chainId)
+          return yield* Effect.fail(
+            new V4PositionReadError(`V4 RPC chain mismatch: expected ${deps.chainId}, received ${chainId}`),
+          )
+        const blockNumber = yield* Effect.tryPromise({
+          try: () => client.getBlockNumber(),
+          catch: (error) => new V4PositionReadError(`Unable to read v4 block number: ${String(error)}`),
+        })
         const owner = yield* Effect.tryPromise({
           try: () =>
             client.readContract({
@@ -86,6 +99,7 @@ const makeV4PositionReader = (deps: V4PositionReaderDeps): V4PositionReader => {
               abi: POSITION_MANAGER_ABI,
               functionName: "ownerOf",
               args: [id],
+              blockNumber,
             }),
           catch: (error) => new V4PositionReadError(`Unable to read v4 position owner: ${String(error)}`),
         })
@@ -96,6 +110,7 @@ const makeV4PositionReader = (deps: V4PositionReaderDeps): V4PositionReader => {
               abi: POSITION_MANAGER_ABI,
               functionName: "getPosition",
               args: [id],
+              blockNumber,
             }),
           catch: (error) => new V4PositionReadError(`Unable to read v4 position: ${String(error)}`),
         })
