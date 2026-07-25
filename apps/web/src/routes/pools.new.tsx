@@ -1,8 +1,27 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { useState } from "react"
-import { getAddress, isAddress } from "viem"
-import { useAccount } from "wagmi"
+import { encodeFunctionData, getAddress, isAddress } from "viem"
+import { useAccount, usePublicClient, useWalletClient } from "wagmi"
 import { Button, Card, CardBody, CardTitle, Input } from "../components/ui"
+import { submitProtectedRawTransaction } from "../lib/protected-submission"
+
+const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080/api/v1"
+const FACTORY_ABI = [
+  {
+    name: "createPoolWithDeadline",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "token0", type: "address" },
+      { name: "token1", type: "address" },
+      { name: "fee", type: "uint24" },
+      { name: "tickSpacing", type: "int24" },
+      { name: "sqrtPriceX96", type: "uint160" },
+      { name: "deadline", type: "uint256" },
+    ],
+    outputs: [{ name: "poolId", type: "bytes32" }],
+  },
+] as const
 
 const Q96 = 2n ** 96n
 const MAX_UINT160 = 2n ** 160n - 1n
@@ -162,12 +181,17 @@ function deploymentConfig(): { readonly address: `0x${string}`; readonly chainId
 export const Route = createFileRoute("/pools/new")({ component: NewPoolPage })
 
 function NewPoolPage() {
-  const { isConnected } = useAccount()
+  const { address, isConnected } = useAccount()
+  const publicClient = usePublicClient()
+  const { data: walletClient } = useWalletClient()
   const config = deploymentConfig()
   const [values, setValues] = useStateWithFormDefaults()
   const [submitted, setSubmitted] = useState(false)
   const [recheckAcknowledged, setRecheckAcknowledged] = useState(false)
   const [intentPrepared, setIntentPrepared] = useState(false)
+  const [guardChecking, setGuardChecking] = useState(false)
+  const [txHash, setTxHash] = useState<`0x${string}` | null>(null)
+  const [executionError, setExecutionError] = useState<string | null>(null)
   const validation = validatePoolCreationForm(values)
   const canPrepare = Boolean(isConnected && validation.request && recheckAcknowledged)
 
@@ -175,11 +199,66 @@ function NewPoolPage() {
     setValues((current) => ({ ...current, [field]: value }))
     setSubmitted(false)
     setIntentPrepared(false)
+    setTxHash(null)
+    setExecutionError(null)
   }
 
-  const submit = () => {
+  const submit = async () => {
     setSubmitted(true)
-    if (canPrepare && validation.request) setIntentPrepared(true)
+    setIntentPrepared(false)
+    setTxHash(null)
+    setExecutionError(null)
+    if (!canPrepare || !validation.request) return
+
+    setGuardChecking(true)
+    try {
+      const guardUrl = new URL(`${API_URL}/price-guard`)
+      guardUrl.searchParams.set("token0", validation.request.token0)
+      guardUrl.searchParams.set("token1", validation.request.token1)
+      guardUrl.searchParams.set(
+        "price",
+        validation.request.initialPrice.kind === "price"
+          ? validation.request.initialPrice.value
+          : sqrtPriceToPrice(validation.request.initialPrice.value),
+      )
+      const guardResponse = await fetch(guardUrl)
+      const guardPayload = (await guardResponse.json()) as { readonly error?: string; readonly valid?: boolean }
+      if (!guardResponse.ok || guardPayload.valid !== true) {
+        throw new Error(guardPayload.error ?? "Live price guard rejected this opening price")
+      }
+
+      if (!config) {
+        setIntentPrepared(true)
+        return
+      }
+      if (!address || !walletClient || !publicClient) throw new Error("Wallet client is not ready")
+      if (!import.meta.env.VITE_PRIVATE_RPC_URL) throw new Error("Protected submission is not configured")
+      if (config.chainId !== null && publicClient.chain?.id !== config.chainId) {
+        throw new Error(`Switch to chain ${config.chainId} before creating the pool`)
+      }
+      const intent = buildPoolCreationTransactionIntent(validation.request)
+      const prepared = await walletClient.prepareTransactionRequest({
+        account: address,
+        to: config.address,
+        data: encodeFunctionData({
+          abi: FACTORY_ABI,
+          functionName: "createPoolWithDeadline",
+          args: intent.args,
+        }),
+        value: 0n,
+      })
+      const signed = await walletClient.signTransaction(prepared)
+      const hash = await submitProtectedRawTransaction({
+        rpcUrl: import.meta.env.VITE_PRIVATE_RPC_URL,
+        signedTransaction: signed,
+      })
+      setTxHash(hash)
+      setIntentPrepared(true)
+    } catch (error: unknown) {
+      setExecutionError(error instanceof Error ? error.message : "Unable to create pool")
+    } finally {
+      setGuardChecking(false)
+    }
   }
 
   const displayError = (field: keyof PoolCreationFormValues | "pair") =>
@@ -300,8 +379,7 @@ function NewPoolPage() {
             <div>
               <p className="font-semibold">Execution-time price re-check required</p>
               <p>
-                This acknowledgement is required, but the current UI does not read a live oracle. A deployed factory or
-                API price guard must be added before production submission is enabled.
+                The opening price is checked against fresh API oracle prices immediately before any wallet signature.
               </p>
             </div>
           </div>
@@ -322,20 +400,26 @@ function NewPoolPage() {
           ) : null}
           {config ? (
             <p className="text-sm text-warning">
-              Factory address detected, but the live price guard is not configured. No transaction will be submitted.
+              Factory address detected. A fresh price guard and protected submission are required before signing.
             </p>
           ) : null}
           {!isConnected ? (
             <p className="text-sm text-base-content/60">Connect a wallet to prepare a protected transaction.</p>
           ) : null}
-          {intentPrepared ? (
-            <p className="alert alert-warning text-sm" role="status">
-              Pool creation intent prepared locally. No transaction was submitted because the live price guard is not
-              configured.
+          {executionError ? (
+            <p className="alert alert-error text-sm" role="alert">
+              {executionError}
             </p>
           ) : null}
-          <Button type="button" fullWidth disabled={!canPrepare} onClick={submit}>
-            Prepare pool creation intent
+          {intentPrepared ? (
+            <p className="alert alert-warning text-sm" role="status">
+              {txHash
+                ? `Pool creation submitted privately: ${txHash}`
+                : "Pool creation intent prepared after a fresh price guard."}
+            </p>
+          ) : null}
+          <Button type="button" fullWidth disabled={!canPrepare || guardChecking} onClick={() => void submit()}>
+            {guardChecking ? "Checking live price…" : config ? "Create pool privately" : "Prepare pool creation intent"}
           </Button>
         </CardBody>
       </Card>
@@ -375,4 +459,14 @@ function integerSqrt(value: bigint): bigint {
     next = (result + value / result) / 2n
   }
   return result
+}
+
+function sqrtPriceToPrice(value: string): string {
+  const sqrtPriceX96 = BigInt(value)
+  const numerator = sqrtPriceX96 * sqrtPriceX96 * 10n ** 18n
+  const denominator = 2n ** 192n
+  const scaled = numerator / denominator
+  const whole = scaled / 10n ** 18n
+  const fraction = (scaled % 10n ** 18n).toString().padStart(18, "0").replace(/0+$/, "")
+  return fraction ? `${whole}.${fraction}` : whole.toString()
 }

@@ -278,6 +278,8 @@ This reframes the existing AGENTS.md "Wave 3+" backlog around the Alpine LP thes
 
 **Phase 1 continuation status (2026-07-25):** the v3 single-sided path now has an atomic `AetherV3ZapExecutor` that pulls one token, swaps through the canonical v3 router, mints through the canonical v3 position manager, enforces deadline/fee/range/slippage bounds, rejects executor dust, refunds leftovers, and emits an execution event. Its env-driven deployment script and typed web calldata builder are covered by contract and adapter tests. The v3 UI remains execution-gated until the v3 quote source and deployed executor address are configured; it must not reuse the current v4-only quote path.
 
+**Phase 1 pool-creation status (2026-07-25):** pool creation now performs a fresh two-token price check through the API immediately before signing. The guard rejects malformed/sorted-pair violations, unavailable prices, and opening prices more than 5% from the fresh USD-implied ratio by default. When the factory deployment, wallet, chain, and private RPC are configured, the page encodes `createPoolWithDeadline`, signs locally, and submits only through the protected RPC; otherwise it remains an explicit local intent. The guard is an execution-time safety gate, not a substitute for a chain-native oracle, and arbitrary-token production rollout still requires a trusted oracle policy.
+
 ### Phase 2 — V4-native automation (the differentiator)
 
 > **Depends on** the Phase-0 TWAP fix (G2.5) being real and validated, and on the router position-ownership migration (Phase 1).

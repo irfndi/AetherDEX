@@ -12,6 +12,7 @@ import { auth } from "./auth/routes"
 import { OrderBookDO, WebSocketHubDO } from "./durable-objects"
 import { pools } from "./routes/pools"
 import { positions } from "./routes/positions"
+import { priceGuard } from "./routes/price-guard"
 import { swap } from "./routes/swap"
 import { tokens } from "./routes/tokens"
 import { handleScheduled } from "./workers/cron-handler"
@@ -151,6 +152,7 @@ app.route("/api/v1", swap)
 app.route("/api/v1/pools", pools)
 app.route("/api/v1/tokens", tokens)
 app.route("/api/v1", positions)
+app.route("/api/v1", priceGuard)
 app.get("/api/v1/ping", (c) => c.json({ pong: true }))
 
 // 404
