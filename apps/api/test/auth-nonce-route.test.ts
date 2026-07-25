@@ -14,5 +14,12 @@ describe("POST /api/v1/auth/nonce", () => {
     expect(body.nonce).toMatch(/^[a-f0-9]{32}$/)
     expect(body.issuedAt).toEqual(expect.any(String))
     expect(body.expiresAt).toEqual(expect.any(String))
+
+    const nonce = body.nonce
+    if (nonce) {
+      await env.SIWE_NONCE.get(env.SIWE_NONCE.idFromName(nonce)).fetch("https://siwe-nonce/consume", {
+        method: "POST",
+      })
+    }
   })
 })

@@ -25,7 +25,12 @@ import type { InitializedTick, PoolChainState, PoolKeyParams } from "./quote-eng
 export class OnChainReadError {
   readonly _tag = "OnChainReadError"
   constructor(
-    readonly reason: "not_configured" | "rpc_error" | "pool_not_initialized" | "invalid_pool_key",
+    readonly reason:
+      | "not_configured"
+      | "rpc_error"
+      | "rpc_chain_mismatch"
+      | "pool_not_initialized"
+      | "invalid_pool_key",
     readonly message: string,
   ) {}
 }
@@ -156,7 +161,21 @@ export const makeStateViewReaderLayer = (config: StateViewReaderConfig): Layer.L
               ),
           })) as `0x${string}`
 
-          // 1. Spot state: slot0 + current liquidity
+          // 1. Pin every StateView read to one verified chain and block.
+          const [rpcChainId, blockNumber] = yield* Effect.tryPromise({
+            try: () => Promise.all([client.getChainId(), client.getBlockNumber()]),
+            catch: (e) =>
+              new OnChainReadError("rpc_error", `RPC snapshot failed: ${e instanceof Error ? e.message : String(e)}`),
+          })
+          if (rpcChainId !== config.chainId) {
+            return yield* Effect.fail(
+              new OnChainReadError(
+                "rpc_chain_mismatch",
+                `RPC chain ${rpcChainId} does not match configured chain ${config.chainId}`,
+              ),
+            )
+          }
+
           const [slot0, liquidity] = yield* Effect.tryPromise({
             try: () =>
               Promise.all([
@@ -165,12 +184,14 @@ export const makeStateViewReaderLayer = (config: StateViewReaderConfig): Layer.L
                   abi: STATE_VIEW_ABI,
                   functionName: "getSlot0",
                   args: [poolId],
+                  blockNumber,
                 }),
                 client.readContract({
                   address: stateView,
                   abi: STATE_VIEW_ABI,
                   functionName: "getLiquidity",
                   args: [poolId],
+                  blockNumber,
                 }),
               ]),
             catch: (e) =>
@@ -207,6 +228,7 @@ export const makeStateViewReaderLayer = (config: StateViewReaderConfig): Layer.L
                     abi: STATE_VIEW_ABI,
                     functionName: "getTickLiquidity",
                     args: [poolId, t],
+                    blockNumber,
                   }),
                 ),
               ),

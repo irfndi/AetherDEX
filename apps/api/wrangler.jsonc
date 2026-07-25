@@ -130,6 +130,13 @@
         "QUOTE_ENGINE_MODE": "auto",
         "TOKEN_LIST_URL": "https://tokens.uniswap.org",
         "ENVIRONMENT": "staging"
+      },
+      "durable_objects": {
+        "bindings": [
+          { "name": "ORDER_BOOK", "class_name": "OrderBookDO" },
+          { "name": "WEBSOCKET_HUB", "class_name": "WebSocketHubDO" },
+          { "name": "SIWE_NONCE", "class_name": "SiweNonceDO" }
+        ]
       }
     },
     "production": {
@@ -149,6 +156,13 @@
         "QUOTE_ENGINE_MODE": "auto",
         "TOKEN_LIST_URL": "https://tokens.uniswap.org",
         "ENVIRONMENT": "production"
+      },
+      "durable_objects": {
+        "bindings": [
+          { "name": "ORDER_BOOK", "class_name": "OrderBookDO" },
+          { "name": "WEBSOCKET_HUB", "class_name": "WebSocketHubDO" },
+          { "name": "SIWE_NONCE", "class_name": "SiweNonceDO" }
+        ]
       }
     }
   }
