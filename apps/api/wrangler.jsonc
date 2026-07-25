@@ -85,6 +85,8 @@
   // Contract addresses are deployment config (Phase-0 G5, owner RPC) — never hardcoded in source.
   "vars": {
     "CHAIN_ID": "11155111",
+    "SIWE_DOMAIN": "aetherdex.io",
+    "SIWE_URI": "https://aetherdex.io",
     "ROUTER_ADDRESS": "",
     "FACTORY_ADDRESS": "", // Sepolia for now
     // Uniswap V4 on-chain read config for the quote engine (Phase-0 G2). Empty until G5 wires them.
@@ -107,6 +109,8 @@
       "name": "aetherdex-api-staging",
       "vars": {
         "CHAIN_ID": "11155111",
+        "SIWE_DOMAIN": "localhost",
+        "SIWE_URI": "http://localhost:3000",
         "ROUTER_ADDRESS": "",
         "FACTORY_ADDRESS": "",
         "STATE_VIEW_ADDRESS": "",
@@ -124,6 +128,8 @@
       "name": "aetherdex-api-prod",
       "vars": {
         "CHAIN_ID": "1",
+        "SIWE_DOMAIN": "aetherdex.io",
+        "SIWE_URI": "https://aetherdex.io",
         "ROUTER_ADDRESS": "",
         "FACTORY_ADDRESS": "",
         "STATE_VIEW_ADDRESS": "",

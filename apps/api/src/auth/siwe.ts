@@ -22,6 +22,12 @@ export interface VerifyRequest {
   signature: string
 }
 
+export interface SiweVerificationConfig {
+  domain: string
+  uri: string
+  chainId: number
+}
+
 export interface AuthSessionToken {
   token: string
   userAddress: string
@@ -50,6 +56,7 @@ export function issueNonce(kv: KVNamespace): Effect.Effect<NonceResponse, Error,
 export function verifyAndCreateSession(
   kv: KVNamespace,
   request: VerifyRequest,
+  config: SiweVerificationConfig,
 ): Effect.Effect<AuthSessionToken, Error, KVCacheService> {
   return Effect.gen(function* () {
     let siweParsed: SiweMessageObj
@@ -57,6 +64,26 @@ export function verifyAndCreateSession(
       siweParsed = new SiweMessage(request.message)
     } catch {
       return yield* Effect.fail(new Error("Invalid SIWE message format"))
+    }
+
+    if (siweParsed.domain !== config.domain || siweParsed.uri !== config.uri) {
+      return yield* Effect.fail(new Error("SIWE domain or URI mismatch"))
+    }
+    if (siweParsed.chainId !== config.chainId) {
+      return yield* Effect.fail(new Error("SIWE chain mismatch"))
+    }
+    const now = Date.now()
+    const parsedIssuedAt = Date.parse(siweParsed.issuedAt ?? "")
+    const expirationTime = siweParsed.expirationTime ? Date.parse(siweParsed.expirationTime) : Number.NaN
+    const notBefore = siweParsed.notBefore ? Date.parse(siweParsed.notBefore) : Number.NaN
+    if (!Number.isFinite(parsedIssuedAt) || parsedIssuedAt > now + 5 * 60 * 1000) {
+      return yield* Effect.fail(new Error("SIWE issued-at time is invalid"))
+    }
+    if (Number.isFinite(expirationTime) && expirationTime <= now) {
+      return yield* Effect.fail(new Error("SIWE message expired"))
+    }
+    if (Number.isFinite(notBefore) && notBefore > now) {
+      return yield* Effect.fail(new Error("SIWE message is not yet valid"))
     }
 
     const svc = yield* KVCacheService
