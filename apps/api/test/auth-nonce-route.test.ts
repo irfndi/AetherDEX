@@ -1,4 +1,4 @@
-import { SELF } from "cloudflare:test"
+import { env, SELF } from "cloudflare:test"
 import { describe, expect, it } from "vitest"
 
 describe("POST /api/v1/auth/nonce", () => {
