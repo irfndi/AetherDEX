@@ -125,7 +125,7 @@ positions.post("/:tokenId/reconcile", requireAuth, async (c) => {
   }
 })
 
-positions.post("/v4/:tokenId/reconcile", requireAuth, async (c) => {
+positions.post("/positions/v4/:tokenId/reconcile", requireAuth, async (c) => {
   const session = c.get("session")
   const tokenId = c.req.param("tokenId")
   const chainId = Number(c.env.CHAIN_ID)
