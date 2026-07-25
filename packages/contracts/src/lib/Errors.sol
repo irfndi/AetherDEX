@@ -22,6 +22,9 @@ library Errors {
     error UnauthorizedPosition();
     error InsufficientCallBalance();
     error UnsupportedNativeCurrency();
+    error InvalidTickRange();
+    error InvalidSwapAmount();
+    error PreExistingBalance();
     error PoolIndexOutOfBounds();
     /// @notice Oracle has not recorded enough observations to answer the query
     error InsufficientObservations();

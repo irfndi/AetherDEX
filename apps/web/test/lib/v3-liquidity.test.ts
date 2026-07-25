@@ -5,6 +5,7 @@ import {
   buildV3PoolCreateCall,
   buildV3PoolContext,
   buildV3RebalancePlan,
+  buildV3SingleSidedZapCall,
   buildV3SingleSidedPlan,
   snapV3Tick,
 } from "../../src/lib/v3-liquidity"
@@ -103,5 +104,26 @@ describe("v3 liquidity adapter", () => {
     expect(plan.swap.calldata).toBe("0x1234")
     expect(plan.mint.kind).toBe("v3-mint")
     expect(plan.execution).toBe("requires-private-batched-submission")
+  })
+
+  it("builds atomic v3 executor calldata with pool orientation and guards", () => {
+    const call = buildV3SingleSidedZapCall({
+      executor: "0x0000000000000000000000000000000000000001",
+      pool,
+      tokenIn: pool.token0.address as `0x${string}`,
+      amountIn: 100n,
+      swapAmountIn: 40n,
+      minSwapAmountOut: 30n,
+      amount0Min: 1n,
+      amount1Min: 1n,
+      tickLower: -600,
+      tickUpper: 600,
+      slippageBps: 50,
+      deadline: 123n,
+    })
+
+    expect(call.execution).toBe("v3-zap-executor")
+    expect(call.method.calldata).toMatch(/^0x[0-9a-f]+$/)
+    expect(call.amountIn).toBe(100n)
   })
 })
