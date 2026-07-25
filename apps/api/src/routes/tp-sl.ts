@@ -27,6 +27,9 @@ type Bindings = {
 const tpSl = new Hono<{ Bindings: Bindings; Variables: AuthVariables }>()
 
 const tpSlLayer = (db: D1Database) => TpSlServiceLive.pipe(Layer.provide(makeDbLayer(db)))
+const chainIdFor = (c: { env: Bindings }) => Number.parseInt(c.env.CHAIN_ID, 10) || 11155111
+const poolIdPattern = /^0x[a-fA-F0-9]{64}$/
+const uintPattern = /^[0-9]+$/
 
 // ─── POST /api/v1/tp-sl/orders ─────────────────────────────────────────────
 
@@ -66,6 +69,24 @@ tpSl.post("/orders", requireAuth, async (c) => {
     )
   }
 
+  if (
+    !poolIdPattern.test(body.poolId) ||
+    typeof body.zeroForOne !== "boolean" ||
+    !uintPattern.test(body.amountIn) ||
+    !uintPattern.test(body.minAmountOut) ||
+    !uintPattern.test(body.triggerPriceX18) ||
+    !Number.isFinite(body.twapWindow) ||
+    !Number.isInteger(body.twapWindow) ||
+    !Number.isFinite(body.slippageBps) ||
+    !Number.isInteger(body.slippageBps) ||
+    body.slippageBps < 0 ||
+    !Number.isFinite(body.deadline) ||
+    !Number.isInteger(body.deadline) ||
+    body.deadline <= Date.now()
+  ) {
+    return c.json({ error: "Invalid TP/SL order values" }, 400)
+  }
+
   if (body.orderType !== "take_profit" && body.orderType !== "stop_loss") {
     return c.json({ error: "orderType must be 'take_profit' or 'stop_loss'" }, 400)
   }
@@ -87,7 +108,7 @@ tpSl.post("/orders", requireAuth, async (c) => {
       const tpSlService = yield* TpSlService
       return yield* tpSlService.createOrder({
         userAddress: session.userAddress,
-        poolId,
+        poolId: poolId.toLowerCase(),
         orderType: orderType as "take_profit" | "stop_loss",
         zeroForOne,
         amountIn,
@@ -96,7 +117,7 @@ tpSl.post("/orders", requireAuth, async (c) => {
         twapWindow,
         slippageBps,
         deadline,
-        chainId: Number.parseInt(c.env.CHAIN_ID, 10) || 11155111,
+        chainId: chainIdFor(c),
       })
     })
     const orderId = await runEffect(program.pipe(Effect.provide(tpSlLayer(c.env.DB))))
@@ -110,14 +131,14 @@ tpSl.post("/orders", requireAuth, async (c) => {
 
 tpSl.get("/orders/:id", async (c) => {
   const id = Number.parseInt(c.req.param("id"), 10)
-  if (Number.isNaN(id) || id <= 0) {
+  if (Number.isNaN(id) || id < 0) {
     return c.json({ error: "Invalid order id" }, 400)
   }
 
   try {
     const program = Effect.gen(function* () {
       const tpSlService = yield* TpSlService
-      return yield* tpSlService.getOrder(id)
+      return yield* tpSlService.getOrder(id, chainIdFor(c))
     })
     const order = await runEffect(program.pipe(Effect.provide(tpSlLayer(c.env.DB))))
     if (!order) {
@@ -136,14 +157,14 @@ tpSl.delete("/orders/:id", requireAuth, async (c) => {
   if (!session) return c.json({ error: "Unauthorized" }, 401)
 
   const id = Number.parseInt(c.req.param("id"), 10)
-  if (Number.isNaN(id) || id <= 0) {
+  if (Number.isNaN(id) || id < 0) {
     return c.json({ error: "Invalid order id" }, 400)
   }
 
   try {
     const program = Effect.gen(function* () {
       const tpSlService = yield* TpSlService
-      return yield* tpSlService.cancelOrder(id, session.userAddress)
+      return yield* tpSlService.cancelOrder(id, session.userAddress, chainIdFor(c))
     })
     await runEffect(program.pipe(Effect.provide(tpSlLayer(c.env.DB))))
     return c.json({ ok: true })
@@ -169,7 +190,11 @@ tpSl.get("/pools/:poolId", async (c) => {
   try {
     const program = Effect.gen(function* () {
       const tpSlService = yield* TpSlService
-      return yield* tpSlService.listByPool(poolId.toLowerCase(), status as Parameters<typeof tpSlService.listByPool>[1])
+      return yield* tpSlService.listByPool(
+        poolId.toLowerCase(),
+        chainIdFor(c),
+        status as Parameters<typeof tpSlService.listByPool>[2],
+      )
     })
     const orders = await runEffect(program.pipe(Effect.provide(tpSlLayer(c.env.DB))))
     return c.json({ orders, count: orders.length })
@@ -189,7 +214,7 @@ tpSl.get("/users/:address", async (c) => {
   try {
     const program = Effect.gen(function* () {
       const tpSlService = yield* TpSlService
-      return yield* tpSlService.listByUser(address, 100)
+      return yield* tpSlService.listByUser(address, chainIdFor(c), 100)
     })
     const orders = await runEffect(program.pipe(Effect.provide(tpSlLayer(c.env.DB))))
     return c.json({ orders, count: orders.length })
@@ -209,7 +234,7 @@ tpSl.get("/triggerable/:poolId", async (c) => {
   try {
     const program = Effect.gen(function* () {
       const tpSlService = yield* TpSlService
-      return yield* tpSlService.getTriggerableOrders(poolId.toLowerCase())
+      return yield* tpSlService.getTriggerableOrders(poolId.toLowerCase(), chainIdFor(c))
     })
     const orders = await runEffect(program.pipe(Effect.provide(tpSlLayer(c.env.DB))))
     return c.json({ orders, count: orders.length })

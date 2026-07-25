@@ -6,6 +6,7 @@ import {AetherTPSL} from "src/tpsl/AetherTPSL.sol";
 import {IAetherHook} from "src/hook/IAetherHook.sol";
 import {Errors} from "src/lib/Errors.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
@@ -114,17 +115,17 @@ contract AetherTPSLTest is Test {
         assertEq(orderId, 0, "First order ID should be 0");
         assertEq(tpsl.nextOrderId(), 1, "Next order ID should be 1");
 
-        (, address owner, AetherTPSL.OrderType orderType,, bool zeroForOne,,, uint256 triggerPrice,, AetherTPSL.OrderStatus status,,) = tpsl.orders(orderId);
+        AetherTPSL.TpSlOrder memory order = tpsl.getOrder(orderId);
 
-        assertEq(owner, USER);
-        assertEq(orderType, AetherTPSL.OrderType.TAKE_PROFIT);
-        assertTrue(zeroForOne);
-        assertEq(triggerPrice, 1e18);
-        assertEq(status, AetherTPSL.OrderStatus.PENDING);
+        assertEq(order.owner, USER);
+        assertEq(uint8(order.orderType), uint8(AetherTPSL.OrderType.TAKE_PROFIT));
+        assertTrue(order.zeroForOne);
+        assertEq(order.triggerPriceX18, 1e18);
+        assertEq(uint8(order.status), uint8(AetherTPSL.OrderStatus.PENDING));
     }
 
     function test_createOrder_revertsZeroAmount() public {
-        CreateOrderParams memory params = _defaultParams();
+        AetherTPSL.CreateOrderParams memory params = _defaultParams();
         params.amountIn = 0;
 
         vm.prank(USER);
@@ -133,7 +134,7 @@ contract AetherTPSLTest is Test {
     }
 
     function test_createOrder_revertsSlippageTooHigh() public {
-        CreateOrderParams memory params = _defaultParams();
+        AetherTPSL.CreateOrderParams memory params = _defaultParams();
         params.slippageBps = 600; // 6% > 5% max
 
         vm.prank(USER);
@@ -142,7 +143,7 @@ contract AetherTPSLTest is Test {
     }
 
     function test_createOrder_revertsInvalidTwapWindow() public {
-        CreateOrderParams memory params = _defaultParams();
+        AetherTPSL.CreateOrderParams memory params = _defaultParams();
         params.twapWindow = 0;
 
         vm.prank(USER);
@@ -151,7 +152,7 @@ contract AetherTPSLTest is Test {
     }
 
     function test_createOrder_revertsInvalidTriggerPrice() public {
-        CreateOrderParams memory params = _defaultParams();
+        AetherTPSL.CreateOrderParams memory params = _defaultParams();
         params.triggerPriceX18 = 0;
 
         vm.prank(USER);
@@ -160,7 +161,7 @@ contract AetherTPSLTest is Test {
     }
 
     function test_createOrder_revertsDeadlineExpired() public {
-        CreateOrderParams memory params = _defaultParams();
+        AetherTPSL.CreateOrderParams memory params = _defaultParams();
         params.deadline = block.timestamp - 1;
 
         vm.prank(USER);
@@ -206,8 +207,8 @@ contract AetherTPSLTest is Test {
         vm.prank(USER);
         tpsl.cancelOrder(orderId);
 
-        (,,,,,,, AetherTPSL.OrderStatus status,,) = tpsl.orders(orderId);
-        assertEq(status, AetherTPSL.OrderStatus.CANCELLED);
+        AetherTPSL.TpSlOrder memory order = tpsl.getOrder(orderId);
+        assertEq(uint8(order.status), uint8(AetherTPSL.OrderStatus.CANCELLED));
     }
 
     function test_cancelOrder_revertsNotOwner() public {
@@ -287,7 +288,7 @@ contract AetherTPSLTest is Test {
     }
 
     function test_isTriggered_returnsFalseWhenExpired() public {
-        CreateOrderParams memory params = _defaultParams();
+        AetherTPSL.CreateOrderParams memory params = _defaultParams();
         params.deadline = block.timestamp + 10;
 
         vm.prank(USER);
@@ -321,12 +322,12 @@ contract AetherTPSLTest is Test {
             currency1: Currency.wrap(TOKEN1),
             fee: 3000,
             tickSpacing: 60,
-            hooks: address(0)
+            hooks: IHooks(address(0))
         });
     }
 
-    function _defaultParams() internal view returns (CreateOrderParams memory) {
-        return CreateOrderParams({
+    function _defaultParams() internal view returns (AetherTPSL.CreateOrderParams memory) {
+        return AetherTPSL.CreateOrderParams({
             poolKey: _defaultPoolKey(),
             orderType: AetherTPSL.OrderType.TAKE_PROFIT,
             zeroForOne: true,
@@ -339,8 +340,8 @@ contract AetherTPSLTest is Test {
         });
     }
 
-    function _slParams() internal view returns (CreateOrderParams memory) {
-        return CreateOrderParams({
+    function _slParams() internal view returns (AetherTPSL.CreateOrderParams memory) {
+        return AetherTPSL.CreateOrderParams({
             poolKey: _defaultPoolKey(),
             orderType: AetherTPSL.OrderType.STOP_LOSS,
             zeroForOne: true,

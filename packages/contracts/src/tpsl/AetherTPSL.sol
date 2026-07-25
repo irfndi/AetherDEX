@@ -89,9 +89,6 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
     mapping(uint256 => TpSlOrder) public orders;
     mapping(address => uint256[]) public ownerOrders;
     mapping(bytes32 => uint256[]) public poolOrders;
-    /// @notice Per-user-per-token deposited balances
-    mapping(address => mapping(address => uint256)) public depositedBalances;
-
     /// @notice Maximum slippage allowed (5% = 500 bps)
     uint256 public constant MAX_SLIPPAGE_BPS = 500;
 
@@ -118,9 +115,6 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
     );
 
     event OrderCancelled(uint256 indexed orderId, address indexed owner);
-
-    event Deposit(address indexed user, address indexed token, uint256 amount);
-    event Withdraw(address indexed user, address indexed token, uint256 amount);
 
     // ── Errors ─────────────────────────────────────────────────────────────
 
@@ -156,6 +150,9 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
         if (params.slippageBps > MAX_SLIPPAGE_BPS) revert SlippageTooHigh();
         if (params.twapWindow == 0 || params.twapWindow > MAX_TWAP_WINDOW) revert InvalidTwapWindow();
         if (params.triggerPriceX18 == 0) revert InvalidTriggerPrice();
+        if (params.poolKey.currency0.isAddressZero() || params.poolKey.currency1.isAddressZero()) {
+            revert InvalidAmount();
+        }
 
         orderId = nextOrderId++;
 
@@ -183,13 +180,13 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
         });
 
         ownerOrders[msg.sender].push(orderId);
-        poolOrders[params.poolKey.toId()].push(orderId);
+        poolOrders[PoolId.unwrap(params.poolKey.toId())].push(orderId);
 
         emit OrderCreated(
             orderId,
             msg.sender,
             params.orderType,
-            params.poolKey.toId(),
+            PoolId.unwrap(params.poolKey.toId()),
             params.zeroForOne,
             params.amountIn,
             params.triggerPriceX18
@@ -198,36 +195,13 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
 
     /// @notice Cancel a pending order (owner only)
     /// @param orderId The order to cancel
-    function cancelOrder(uint256 orderId) external {
+    function cancelOrder(uint256 orderId) external nonReentrant {
         TpSlOrder storage order = orders[orderId];
         if (order.owner != msg.sender) revert UnauthorizedOrderAccess();
         if (order.status != OrderStatus.PENDING) revert OrderNotPending();
 
         order.status = OrderStatus.CANCELLED;
         emit OrderCancelled(orderId, msg.sender);
-    }
-
-    /// @notice Deposit tokens to fund TP/SL orders
-    /// @param currency The token to deposit
-    /// @param amount The amount to deposit
-    function deposit(Currency currency, uint256 amount) external nonReentrant {
-        if (amount == 0) revert InvalidAmount();
-        address token = Currency.unwrap(currency);
-        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
-        depositedBalances[msg.sender][token] += amount;
-        emit Deposit(msg.sender, token, amount);
-    }
-
-    /// @notice Withdraw deposited tokens
-    /// @param currency The token to withdraw
-    /// @param amount The amount to withdraw
-    function withdraw(Currency currency, uint256 amount) external nonReentrant {
-        if (amount == 0) revert InvalidAmount();
-        address token = Currency.unwrap(currency);
-        if (depositedBalances[msg.sender][token] < amount) revert InvalidAmount();
-        depositedBalances[msg.sender][token] -= amount;
-        IERC20(token).safeTransfer(msg.sender, amount);
-        emit Withdraw(msg.sender, token, amount);
     }
 
     /// @notice Execute a triggered order (called by keeper after trigger validation)
@@ -241,10 +215,8 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
             revert OrderExpired();
         }
 
-        // Verify order owner has sufficient deposited balance
         address tokenIn = Currency.unwrap(order.zeroForOne ? order.poolKey.currency0 : order.poolKey.currency1);
-        if (depositedBalances[order.owner][tokenIn] < order.amountIn) revert InvalidAmount();
-        depositedBalances[order.owner][tokenIn] -= order.amountIn;
+        IERC20(tokenIn).safeTransferFrom(order.owner, address(this), order.amountIn);
 
         // Validate trigger: both spot AND TWAP must breach
         _validateTrigger(order);
@@ -252,7 +224,7 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
         // Execute the swap via PoolManager
         SwapParams memory swapParams = SwapParams({
             zeroForOne: order.zeroForOne,
-            amountSpecified: int256(int128(order.amountIn)),
+            amountSpecified: -int256(uint256(order.amountIn)),
             sqrtPriceLimitX96: _sqrtPriceLimit(order.zeroForOne)
         });
 
@@ -268,12 +240,11 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
         // Slippage check
         if (amountOut < order.minAmountOut) revert ExecutionFailed();
 
-        // Send proceeds to order owner (owner-only proceeds) — state update AFTER transfer (CEI)
-        address tokenOut = Currency.unwrap(order.zeroForOne ? order.poolKey.currency1 : order.poolKey.currency0);
-        IERC20(tokenOut).safeTransfer(order.owner, amountOut);
-
         order.status = OrderStatus.EXECUTED;
         order.executedAt = block.timestamp;
+
+        address tokenOut = Currency.unwrap(order.zeroForOne ? order.poolKey.currency1 : order.poolKey.currency0);
+        IERC20(tokenOut).safeTransfer(order.owner, amountOut);
 
         emit OrderExecuted(orderId, order.owner, amountOut, block.timestamp);
     }
@@ -289,6 +260,10 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
         return ownerOrders[owner];
     }
 
+    function getOrder(uint256 orderId) external view returns (TpSlOrder memory) {
+        return orders[orderId];
+    }
+
     /// @notice Get all orders for a pool
     /// @param poolId The pool ID
     /// @return orderIds Array of order IDs
@@ -299,9 +274,10 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
     /// @notice Check if an order's trigger is currently breached
     /// @param orderId The order to check
     /// @return triggered Whether the trigger condition is met
-    function isTriggered(uint256 orderId) external view returns (bool triggered) {
+    function isTriggered(uint256 orderId) public view returns (bool triggered) {
         TpSlOrder memory order = orders[orderId];
         if (order.status != OrderStatus.PENDING) return false;
+        if (block.timestamp > order.deadline) return false;
 
         // Read current spot price from PoolManager
         (, int24 tick,,) = poolManager.getSlot0(order.poolKey.toId());
@@ -309,7 +285,7 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
 
         // Read TWAP from AetherHook (with fallback)
         uint256 twapPriceX18;
-        try aetherHook.getCurrentTwap(order.poolKey.toId(), order.twapWindow) returns (uint256 price) {
+        try aetherHook.getCurrentTwap(PoolId.unwrap(order.poolKey.toId()), order.twapWindow) returns (uint256 price) {
             twapPriceX18 = price;
         } catch {
             return false; // TWAP not available
@@ -335,7 +311,7 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
         uint256 spotPriceX18 = _tickToPriceX18(tick);
 
         // Read TWAP from AetherHook
-        uint256 twapPriceX18 = aetherHook.getCurrentTwap(order.poolKey.toId(), order.twapWindow);
+        uint256 twapPriceX18 = aetherHook.getCurrentTwap(PoolId.unwrap(order.poolKey.toId()), order.twapWindow);
 
         // Dual trigger: BOTH spot AND TWAP must breach
         if (!_evaluateTrigger(order, spotPriceX18, twapPriceX18)) {
@@ -371,7 +347,9 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
         (Action action, bytes memory actionData) = abi.decode(data, (Action, bytes));
 
         if (action == Action.SWAP_EXACT_IN) {
-            return _handleSwapExactIn(abi.decode(actionData, (PoolKey, SwapParams, bytes)));
+            (PoolKey memory poolKey, SwapParams memory swapParams, bytes memory hookData) =
+                abi.decode(actionData, (PoolKey, SwapParams, bytes));
+            return _handleSwapExactIn(poolKey, swapParams, hookData);
         }
 
         revert Errors.InvalidAction();
@@ -380,9 +358,10 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
     function _handleSwapExactIn(
         PoolKey memory poolKey,
         SwapParams memory swapParams,
-        bytes calldata hookData
+        bytes memory hookData
     ) internal returns (bytes memory) {
-        uint256 amountIn = uint256(int256(swapParams.amountSpecified));
+        if (swapParams.amountSpecified >= 0) revert InvalidAmount();
+        uint256 amountIn = uint256(-swapParams.amountSpecified);
 
         BalanceDelta delta = poolManager.swap(poolKey, swapParams, hookData);
 
@@ -416,7 +395,4 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
         return FullMath.mulDiv(priceX96, 1e18, FixedPoint96.Q96);
     }
 
-    receive() external payable {}
 }
-
-

@@ -66,6 +66,17 @@ interface QueueEnv {
   CHAIN_ID: string
 }
 
+const readIntegerCacheValue = (payload: string, field: string): string | null => {
+  try {
+    const value = (JSON.parse(payload) as Record<string, unknown>)[field]
+    if (typeof value !== "string" || !/^[0-9]+$/.test(value)) return null
+    BigInt(value)
+    return value
+  } catch {
+    return null
+  }
+}
+
 /**
  * Process a batch of queue messages
  */
@@ -111,9 +122,9 @@ async function handleTpSlEvaluate(msg: TpSlEvaluateMessage, env: QueueEnv): Prom
 
   // 1. Verify order is still pending
   const order = await env.DB.prepare(
-    "SELECT id, status, deadline FROM tp_sl_orders WHERE id = ? AND status = 'pending'",
+    "SELECT id, status, deadline FROM tp_sl_orders WHERE id = ? AND chain_id = ? AND status = 'pending'",
   )
-    .bind(msg.orderId)
+    .bind(msg.orderId, msg.chainId)
     .first<{ id: number; status: string; deadline: number }>()
 
   if (!order) {
@@ -123,7 +134,9 @@ async function handleTpSlEvaluate(msg: TpSlEvaluateMessage, env: QueueEnv): Prom
 
   // 2. Check if order has expired
   if (Date.now() > msg.deadline) {
-    await env.DB.prepare("UPDATE tp_sl_orders SET status = 'expired' WHERE id = ?").bind(msg.orderId).run()
+    await env.DB.prepare("UPDATE tp_sl_orders SET status = 'expired' WHERE id = ? AND chain_id = ?")
+      .bind(msg.orderId, msg.chainId)
+      .run()
     console.log(`[Keeper] Order ${msg.orderId} expired`)
     return
   }
@@ -138,22 +151,26 @@ async function handleTpSlEvaluate(msg: TpSlEvaluateMessage, env: QueueEnv): Prom
     return
   }
 
-  const { price: spotPriceX18 } = JSON.parse(spotPriceData) as { price: string }
+  const spotPriceX18 = readIntegerCacheValue(spotPriceData, "price")
+  if (spotPriceX18 === null) {
+    console.warn(`[Keeper] Invalid spot price payload for pool ${msg.poolId}, skipping`)
+    return
+  }
 
   // 4. Read TWAP from hook (via KV cache)
   const twapKey = `twap:${msg.poolId}:${msg.twapWindow}`
   const twapData = await env.CACHE.get(twapKey)
 
-  let twapPriceX18: string | null = null
-  if (twapData) {
-    const parsed = JSON.parse(twapData) as { price: string }
-    twapPriceX18 = parsed.price
+  const twapPriceX18 = twapData === null ? null : readIntegerCacheValue(twapData, "price")
+  if (twapPriceX18 === null) {
+    console.log(`[Keeper] No valid TWAP available for pool ${msg.poolId}, skipping`)
+    return
   }
 
   // 5. Evaluate dual trigger condition
   const triggerPrice = BigInt(msg.triggerPriceX18)
   const spotPrice = BigInt(spotPriceX18)
-  const twapPrice = twapPriceX18 ? BigInt(twapPriceX18) : null
+  const twapPrice = BigInt(twapPriceX18)
 
   let isTriggered = false
 
@@ -161,30 +178,22 @@ async function handleTpSlEvaluate(msg: TpSlEvaluateMessage, env: QueueEnv): Prom
     if (msg.zeroForOne) {
       // TP: price must go DOWN
       isTriggered = spotPrice <= triggerPrice
-      if (twapPrice !== null) {
-        isTriggered = isTriggered && twapPrice <= triggerPrice
-      }
+      isTriggered = isTriggered && twapPrice <= triggerPrice
     } else {
       // TP: price must go UP
       isTriggered = spotPrice >= triggerPrice
-      if (twapPrice !== null) {
-        isTriggered = isTriggered && twapPrice >= triggerPrice
-      }
+      isTriggered = isTriggered && twapPrice >= triggerPrice
     }
   } else {
     // STOP_LOSS
     if (msg.zeroForOne) {
       // SL: price must go UP
       isTriggered = spotPrice >= triggerPrice
-      if (twapPrice !== null) {
-        isTriggered = isTriggered && twapPrice >= triggerPrice
-      }
+      isTriggered = isTriggered && twapPrice >= triggerPrice
     } else {
       // SL: price must go DOWN
       isTriggered = spotPrice <= triggerPrice
-      if (twapPrice !== null) {
-        isTriggered = isTriggered && twapPrice <= triggerPrice
-      }
+      isTriggered = isTriggered && twapPrice <= triggerPrice
     }
   }
 
@@ -202,9 +211,9 @@ async function handleTpSlEvaluate(msg: TpSlEvaluateMessage, env: QueueEnv): Prom
   await env.DB.prepare(`
     UPDATE tp_sl_orders
     SET status = 'triggered', updated_at = ?
-    WHERE id = ? AND status = 'pending'
+    WHERE id = ? AND chain_id = ? AND status = 'pending'
   `)
-    .bind(Date.now(), msg.orderId)
+    .bind(Date.now(), msg.orderId, msg.chainId)
     .run()
 
   // In production, this would also submit the transaction via the keeper's funded signer
@@ -231,9 +240,9 @@ async function handleAutoRecenterCheck(msg: AutoRecenterCheckMessage, env: Queue
 
   // 1. Verify policy is still active
   const policy = await env.DB.prepare(
-    "SELECT id, is_active, last_rebalance_at, cooldown_seconds FROM position_policies WHERE id = ? AND is_active = 1",
+    "SELECT id, is_active, last_rebalance_at, cooldown_seconds FROM position_policies WHERE id = ? AND chain_id = ? AND is_active = 1",
   )
-    .bind(msg.policyId)
+    .bind(msg.policyId, msg.chainId)
     .first<{ id: number; is_active: number; last_rebalance_at: number | null; cooldown_seconds: number }>()
 
   if (!policy) {
@@ -242,12 +251,12 @@ async function handleAutoRecenterCheck(msg: AutoRecenterCheckMessage, env: Queue
   }
 
   // 2. Check cooldown (anti-whipsaw)
-  const now = Date.now() / 1000
+  const now = Date.now()
   const lastRebalance = policy.last_rebalance_at ?? 0
   const elapsed = now - lastRebalance
 
-  if (elapsed < policy.cooldown_seconds) {
-    const remaining = policy.cooldown_seconds - elapsed
+  if (elapsed < policy.cooldown_seconds * 1000) {
+    const remaining = policy.cooldown_seconds - Math.floor(elapsed / 1000)
     console.log(`[Keeper] Position ${msg.positionId}: cooldown active, ${Math.ceil(remaining)}s remaining`)
     return
   }
@@ -261,8 +270,15 @@ async function handleAutoRecenterCheck(msg: AutoRecenterCheckMessage, env: Queue
   }
 
   // Pool spot data stores price (1e18-scaled ratio). Derive tick from price.
-  const spotParsed = JSON.parse(spotPriceData) as { price?: string; tick?: number }
-  const currentTick = spotParsed.tick ?? (spotParsed.price ? _tickFromPriceX18(BigInt(spotParsed.price)) : undefined)
+  let spotParsed: { tick?: unknown }
+  try {
+    spotParsed = JSON.parse(spotPriceData) as { tick?: unknown }
+  } catch {
+    console.warn(`[Keeper] Invalid pool state payload for pool ${msg.poolId}, skipping`)
+    return
+  }
+  const currentTick =
+    typeof spotParsed.tick === "number" && Number.isInteger(spotParsed.tick) ? spotParsed.tick : undefined
 
   if (currentTick === undefined) {
     console.log(`[Keeper] No tick/price data for pool ${msg.poolId}, skipping`)
@@ -307,9 +323,9 @@ async function handleAutoRecenterCheck(msg: AutoRecenterCheckMessage, env: Queue
   await env.DB.prepare(`
     UPDATE position_policies
     SET last_rebalance_at = ?, rebalance_count = rebalance_count + 1
-    WHERE id = ?
+    WHERE id = ? AND chain_id = ?
   `)
-    .bind(now, msg.policyId)
+    .bind(now, msg.policyId, msg.chainId)
     .run()
 }
 
@@ -426,15 +442,6 @@ async function handleTradeArchive(msg: TradeArchiveMessage, env: { DB: D1Databas
   })
 
   console.log(`Archived ${result.results.length} trades to ${key}`)
-}
-
-function _tickFromPriceX18(priceX18: bigint): number {
-  // tick = log_{1.0001}(price / 1e18) = ln(price / 1e18) / ln(1.0001)
-  // Use approximation: tick ≈ ln(priceX18) / ln(1.0001 * 1e18)
-  if (priceX18 <= 0n) return 0
-  const priceFloat = Number(priceX18) / 1e18
-  if (priceFloat <= 0) return 0
-  return Math.round(Math.log(priceFloat) / Math.log(1.0001))
 }
 
 async function fetchTokenPrice(tokenAddress: string, _chainId: string): Promise<number> {

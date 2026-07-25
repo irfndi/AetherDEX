@@ -11,7 +11,7 @@ import { SqlClient } from "effect/unstable/sql"
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export type OrderType = "take_profit" | "stop_loss"
-export type OrderStatus = "pending" | "executed" | "cancelled" | "expired"
+export type OrderStatus = "pending" | "triggered" | "executed" | "cancelled" | "expired"
 
 export interface TpSlOrder {
   readonly id: number
@@ -77,25 +77,46 @@ export class TriggerCheckError {
   constructor(readonly message: string) {}
 }
 
+export class OrderQueryError {
+  readonly _tag = "OrderQueryError"
+  constructor(readonly message: string) {}
+}
+
 // ─── Service interface ──────────────────────────────────────────────────────
 
 export interface TpSlService {
   readonly createOrder: (input: CreateOrderInput) => Effect.Effect<number, OrderCreateError>
-  readonly getOrder: (orderId: number) => Effect.Effect<TpSlOrder | null, OrderNotFoundError>
-  readonly listByUser: (userAddress: string, limit?: number) => Effect.Effect<readonly TpSlOrder[], never>
-  readonly listByPool: (poolId: string, status?: OrderStatus) => Effect.Effect<readonly TpSlOrder[], never>
-  readonly listPendingByPool: (poolId: string) => Effect.Effect<readonly TpSlOrder[], never>
+  readonly getOrder: (
+    orderId: number,
+    chainId: number,
+  ) => Effect.Effect<TpSlOrder | null, OrderNotFoundError | OrderQueryError>
+  readonly listByUser: (
+    userAddress: string,
+    chainId: number,
+    limit?: number,
+  ) => Effect.Effect<readonly TpSlOrder[], OrderQueryError>
+  readonly listByPool: (
+    poolId: string,
+    chainId: number,
+    status?: OrderStatus,
+  ) => Effect.Effect<readonly TpSlOrder[], OrderQueryError>
+  readonly listPendingByPool: (poolId: string, chainId: number) => Effect.Effect<readonly TpSlOrder[], OrderQueryError>
   readonly cancelOrder: (
     orderId: number,
     userAddress: string,
+    chainId: number,
   ) => Effect.Effect<void, OrderNotFoundError | OrderUpdateError>
   readonly executeOrder: (
     orderId: number,
+    chainId: number,
     txHash: string,
     amountOut: string,
   ) => Effect.Effect<void, OrderNotFoundError | OrderUpdateError>
-  readonly expireOrder: (orderId: number) => Effect.Effect<void, OrderNotFoundError | OrderUpdateError>
-  readonly getTriggerableOrders: (poolId: string) => Effect.Effect<readonly TpSlOrder[], never>
+  readonly expireOrder: (orderId: number, chainId: number) => Effect.Effect<void, OrderNotFoundError | OrderUpdateError>
+  readonly getTriggerableOrders: (
+    poolId: string,
+    chainId: number,
+  ) => Effect.Effect<readonly TpSlOrder[], OrderQueryError>
   readonly recordKeeperExecution: (input: {
     readonly orderId: number
     readonly keeperAddress: string
@@ -103,6 +124,7 @@ export interface TpSlService {
     readonly amountOut: string
     readonly gasUsed?: number
     readonly policyTriggered?: string
+    readonly chainId: number
   }) => Effect.Effect<number, OrderCreateError>
 }
 
@@ -165,65 +187,81 @@ const makeTpSlService = Effect.gen(function* () {
       ),
     )
 
-  const getOrder = (orderId: number): Effect.Effect<TpSlOrder | null, OrderNotFoundError, never> =>
+  const getOrder = (
+    orderId: number,
+    chainId: number,
+  ): Effect.Effect<TpSlOrder | null, OrderNotFoundError | OrderQueryError, never> =>
     Effect.gen(function* () {
-      const row = (yield* sql`SELECT * FROM tp_sl_orders WHERE id = ${orderId} LIMIT 1`) as unknown as readonly Record<
-        string,
-        unknown
-      >[]
+      const row =
+        (yield* sql`SELECT * FROM tp_sl_orders WHERE id = ${orderId} AND chain_id = ${chainId} LIMIT 1`) as unknown as readonly Record<
+          string,
+          unknown
+        >[]
       if (row.length === 0) return null
       return rowToOrder(row[0])
-    }).pipe(Effect.catch(() => Effect.fail(new OrderNotFoundError(orderId))))
+    }).pipe(Effect.catch((error) => Effect.fail(new OrderQueryError(String(error)))))
 
-  const listByUser = (userAddress: string, limit = 100): Effect.Effect<readonly TpSlOrder[], never, never> =>
+  const listByUser = (
+    userAddress: string,
+    chainId: number,
+    limit = 100,
+  ): Effect.Effect<readonly TpSlOrder[], OrderQueryError, never> =>
     Effect.gen(function* () {
       const rows = (yield* sql`
         SELECT * FROM tp_sl_orders
-        WHERE user_address = ${userAddress}
+        WHERE chain_id = ${chainId} AND user_address = ${userAddress}
         ORDER BY created_at DESC
         LIMIT ${limit}
       `) as unknown as readonly Record<string, unknown>[]
       return rows.map(rowToOrder)
-    }).pipe(Effect.catch(() => Effect.succeed([])))
+    }).pipe(Effect.catch((error) => Effect.fail(new OrderQueryError(String(error)))))
 
-  const listByPool = (poolId: string, status?: OrderStatus): Effect.Effect<readonly TpSlOrder[], never, never> =>
+  const listByPool = (
+    poolId: string,
+    chainId: number,
+    status?: OrderStatus,
+  ): Effect.Effect<readonly TpSlOrder[], OrderQueryError, never> =>
     Effect.gen(function* () {
       if (status) {
         const rows = (yield* sql`
           SELECT * FROM tp_sl_orders
-          WHERE pool_id = ${poolId} AND status = ${status}
+          WHERE chain_id = ${chainId} AND pool_id = ${poolId} AND status = ${status}
           ORDER BY created_at DESC
         `) as unknown as readonly Record<string, unknown>[]
         return rows.map(rowToOrder)
       }
       const rows = (yield* sql`
         SELECT * FROM tp_sl_orders
-        WHERE pool_id = ${poolId}
+        WHERE chain_id = ${chainId} AND pool_id = ${poolId}
         ORDER BY created_at DESC
       `) as unknown as readonly Record<string, unknown>[]
       return rows.map(rowToOrder)
-    }).pipe(Effect.catch(() => Effect.succeed([])))
+    }).pipe(Effect.catch((error) => Effect.fail(new OrderQueryError(String(error)))))
 
-  const listPendingByPool = (poolId: string): Effect.Effect<readonly TpSlOrder[], never, never> =>
+  const listPendingByPool = (
+    poolId: string,
+    chainId: number,
+  ): Effect.Effect<readonly TpSlOrder[], OrderQueryError, never> =>
     Effect.gen(function* () {
       const now = Date.now()
       const rows = (yield* sql`
         SELECT * FROM tp_sl_orders
-        WHERE pool_id = ${poolId} AND status = 'pending' AND deadline > ${now}
+        WHERE chain_id = ${chainId} AND pool_id = ${poolId} AND status = 'pending' AND deadline > ${now}
         ORDER BY created_at DESC
       `) as unknown as readonly Record<string, unknown>[]
       return rows.map(rowToOrder)
-    }).pipe(Effect.catch(() => Effect.succeed([])))
+    }).pipe(Effect.catch((error) => Effect.fail(new OrderQueryError(String(error)))))
 
   const cancelOrder = (
     orderId: number,
     userAddress: string,
+    chainId: number,
   ): Effect.Effect<void, OrderNotFoundError | OrderUpdateError, never> =>
     Effect.gen(function* () {
       const result = yield* sql`
         UPDATE tp_sl_orders
         SET status = 'cancelled'
-        WHERE id = ${orderId} AND user_address = ${userAddress} AND status = 'pending'
+        WHERE id = ${orderId} AND chain_id = ${chainId} AND user_address = ${userAddress} AND status = 'pending'
       ` as unknown as { changes: number }
       if ((result as { changes: number }).changes === 0) {
         return yield* Effect.fail(new OrderNotFoundError(orderId))
@@ -238,13 +276,14 @@ const makeTpSlService = Effect.gen(function* () {
     orderId: number,
     txHash: string,
     amountOut: string,
+    chainId: number,
   ): Effect.Effect<void, OrderNotFoundError | OrderUpdateError, never> =>
     Effect.gen(function* () {
       const now = Date.now()
       const result = yield* sql`
         UPDATE tp_sl_orders
         SET status = 'executed', executed_at = ${now}, execution_tx_hash = ${txHash}, execution_amount_out = ${amountOut}
-        WHERE id = ${orderId} AND status = 'pending'
+        WHERE id = ${orderId} AND chain_id = ${chainId} AND status = 'pending'
       ` as unknown as { changes: number }
       if ((result as { changes: number }).changes === 0) {
         return yield* Effect.fail(new OrderNotFoundError(orderId))
@@ -255,12 +294,15 @@ const makeTpSlService = Effect.gen(function* () {
       ),
     )
 
-  const expireOrder = (orderId: number): Effect.Effect<void, OrderNotFoundError | OrderUpdateError, never> =>
+  const expireOrder = (
+    orderId: number,
+    chainId: number,
+  ): Effect.Effect<void, OrderNotFoundError | OrderUpdateError, never> =>
     Effect.gen(function* () {
       const result = yield* sql`
         UPDATE tp_sl_orders
         SET status = 'expired'
-        WHERE id = ${orderId} AND status = 'pending'
+        WHERE id = ${orderId} AND chain_id = ${chainId} AND status = 'pending'
       ` as unknown as { changes: number }
       if ((result as { changes: number }).changes === 0) {
         return yield* Effect.fail(new OrderNotFoundError(orderId))
@@ -271,16 +313,19 @@ const makeTpSlService = Effect.gen(function* () {
       ),
     )
 
-  const getTriggerableOrders = (poolId: string): Effect.Effect<readonly TpSlOrder[], never, never> =>
+  const getTriggerableOrders = (
+    poolId: string,
+    chainId: number,
+  ): Effect.Effect<readonly TpSlOrder[], OrderQueryError, never> =>
     Effect.gen(function* () {
       const now = Date.now()
       const rows = (yield* sql`
         SELECT * FROM tp_sl_orders
-        WHERE pool_id = ${poolId} AND status = 'pending' AND deadline > ${now}
+        WHERE chain_id = ${chainId} AND pool_id = ${poolId} AND status = 'pending' AND deadline > ${now}
         ORDER BY created_at ASC
       `) as unknown as readonly Record<string, unknown>[]
       return rows.map(rowToOrder)
-    }).pipe(Effect.catch(() => Effect.succeed([])))
+    }).pipe(Effect.catch((error) => Effect.fail(new OrderQueryError(String(error)))))
 
   const recordKeeperExecution = (input: {
     readonly orderId: number
@@ -293,9 +338,9 @@ const makeTpSlService = Effect.gen(function* () {
     Effect.gen(function* () {
       const now = Date.now()
       const rows = (yield* sql`
-        INSERT INTO keeper_executions
-          (order_id, keeper_address, tx_hash, amount_out, gas_used, executed_at, policy_triggered)
-        VALUES (${input.orderId}, ${input.keeperAddress}, ${input.txHash}, ${input.amountOut},
+      INSERT INTO keeper_executions
+          (order_id, chain_id, keeper_address, tx_hash, amount_out, gas_used, executed_at, policy_triggered)
+        VALUES (${input.orderId}, ${input.chainId}, ${input.keeperAddress}, ${input.txHash}, ${input.amountOut},
                 ${input.gasUsed ?? null}, ${now}, ${input.policyTriggered ?? null})
         RETURNING id
       `) as unknown as readonly Record<string, unknown>[]

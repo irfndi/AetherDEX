@@ -11,10 +11,12 @@
 
 import { Context, Effect, Layer } from "effect"
 import { SqlClient } from "effect/unstable/sql"
+import { MAX_TICK, MIN_TICK } from "./tick-bounds"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface RebalanceRequest {
+  readonly chainId: number
   readonly positionId: string
   readonly userAddress: string
   readonly poolId: string
@@ -51,7 +53,7 @@ export interface AutoRecenterService {
     readonly rangeWidthTicks?: number
   }) => Effect.Effect<{ readonly tickLower: number; readonly tickUpper: number }, AutoRecenterError>
   readonly queueRebalance: (request: RebalanceRequest) => Effect.Effect<string, AutoRecenterError>
-  readonly getPendingRebalances: () => Effect.Effect<readonly RebalanceRequest[], never>
+  readonly getPendingRebalances: (chainId: number) => Effect.Effect<readonly RebalanceRequest[], AutoRecenterError>
 }
 
 // ─── Tag ────────────────────────────────────────────────────────────────────
@@ -71,39 +73,15 @@ const makeAutoRecenterService = Effect.gen(function* () {
       const positions = (yield* sql`
         SELECT pp.*, lp.tick_lower, lp.tick_upper, lp.liquidity
         FROM position_policies pp
-        JOIN liquidity_positions lp ON pp.position_id = lp.id::text
+        JOIN liquidity_positions lp ON pp.position_id = CAST(lp.id AS TEXT) AND lp.chain_id = pp.chain_id
         WHERE pp.chain_id = ${chainId}
           AND pp.is_active = 1
           AND pp.policy_type = 'auto_recenter'
           AND lp.is_active = 1
       `) as unknown as readonly Record<string, unknown>[]
 
-      const requests: RebalanceRequest[] = []
-
-      for (const row of positions) {
-        const positionId = row.position_id as string
-        const tickLower = row.tick_lower as number
-        const tickUpper = row.tick_upper as number
-        const liquidity = row.liquidity as string
-
-        // TODO: Read current tick from PoolManager
-        // For now, assume the position is out of range if we can't read the current tick
-        // In production, this would read from ChainStateReader
-
-        requests.push({
-          positionId,
-          userAddress: row.user_address as string,
-          poolId: row.pool_id as string,
-          currentTickLower: tickLower,
-          currentTickUpper: tickUpper,
-          currentLiquidity: liquidity,
-          targetTickLower: tickLower, // Will be computed by computeOptimalRange
-          targetTickUpper: tickUpper,
-          reason: "auto_recenter: position detected as potentially out of range",
-        })
-      }
-
-      return requests
+      void positions
+      return []
     }).pipe(Effect.catch((error) => Effect.fail(new AutoRecenterError(`Failed to detect positions: ${String(error)}`))))
 
   const computeOptimalRange = (input: {
@@ -122,14 +100,14 @@ const makeAutoRecenterService = Effect.gen(function* () {
 
       // Align to tick spacing
       const alignedTick = Math.floor(currentTick / tickSpacing) * tickSpacing
-      const halfRange = Math.floor(rangeWidthTicks / 2)
+      const halfRange = Math.max(1, Math.round(rangeWidthTicks / 2 / tickSpacing)) * tickSpacing
 
       // Compute new range centered on current tick
       const tickLower = alignedTick - halfRange
       const tickUpper = alignedTick + halfRange
 
       // Validate range is within V4 bounds
-      if (tickLower < -887220 || tickUpper > 887220) {
+      if (tickLower < MIN_TICK || tickUpper > MAX_TICK) {
         return yield* Effect.fail(
           new AutoRecenterError(`Computed range [${tickLower}, ${tickUpper}] is out of V4 bounds`),
         )
@@ -144,10 +122,12 @@ const makeAutoRecenterService = Effect.gen(function* () {
 
       // Store rebalance request for keeper execution
       yield* sql`
-        INSERT INTO keeper_executions
-          (order_id, keeper_address, tx_hash, amount_out, policy_triggered)
-        VALUES (0, 'auto-recenter', ${requestId}, '0', 'auto_recenter')
-      `.pipe(Effect.catch(() => Effect.succeed(undefined)))
+        INSERT INTO auto_recenter_rebalances
+          (request_id, chain_id, position_id, user_address, pool_id,
+           target_tick_lower, target_tick_upper, reason)
+        VALUES (${requestId}, ${request.chainId}, ${request.positionId}, ${request.userAddress}, ${request.poolId},
+                ${request.targetTickLower}, ${request.targetTickUpper}, ${request.reason})
+      `
 
       console.log(
         JSON.stringify({
@@ -162,20 +142,23 @@ const makeAutoRecenterService = Effect.gen(function* () {
       return requestId
     }).pipe(Effect.catch((error) => Effect.fail(new AutoRecenterError(`Failed to queue rebalance: ${String(error)}`))))
 
-  const getPendingRebalances = (): Effect.Effect<readonly RebalanceRequest[], never, never> =>
+  const getPendingRebalances = (
+    chainId: number,
+  ): Effect.Effect<readonly RebalanceRequest[], AutoRecenterError, never> =>
     Effect.gen(function* () {
       // Query positions with auto-recenter policies that haven't been rebalanced recently
       const positions = (yield* sql`
         SELECT pp.*, lp.tick_lower, lp.tick_upper, lp.liquidity
         FROM position_policies pp
-        JOIN liquidity_positions lp ON pp.position_id = lp.id::text
-        WHERE pp.is_active = 1
+        JOIN liquidity_positions lp ON pp.position_id = CAST(lp.id AS TEXT) AND lp.chain_id = pp.chain_id
+        WHERE pp.chain_id = ${chainId} AND pp.is_active = 1
           AND pp.policy_type = 'auto_recenter'
           AND lp.is_active = 1
-          AND (pp.last_rebalance_at IS NULL OR pp.last_rebalance_at < ${Date.now() / 1000 - 3600})
+          AND (pp.last_rebalance_at IS NULL OR pp.last_rebalance_at < ${Date.now() - 3600 * 1000})
       `) as unknown as readonly Record<string, unknown>[]
 
       return positions.map((row) => ({
+        chainId,
         positionId: row.position_id as string,
         userAddress: row.user_address as string,
         poolId: row.pool_id as string,
@@ -186,7 +169,7 @@ const makeAutoRecenterService = Effect.gen(function* () {
         targetTickUpper: row.tick_upper as number,
         reason: "auto_recenter: pending rebalance",
       }))
-    }).pipe(Effect.catch(() => Effect.succeed([])))
+    }).pipe(Effect.catch((error) => Effect.fail(new AutoRecenterError(`Failed to list rebalances: ${String(error)}`))))
 
   return {
     detectOutOfRangePositions,

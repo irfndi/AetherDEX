@@ -115,6 +115,29 @@
   "env": {
     "staging": {
       "name": "aetherdex-api-staging",
+      "queues": {
+        "producers": [
+          { "queue": "price-refresh", "binding": "PRICE_QUEUE" },
+          { "queue": "trade-settlement", "binding": "SETTLE_QUEUE" },
+          { "queue": "keeper-jobs", "binding": "KEEPER_QUEUE" }
+        ],
+        "consumers": [
+          {
+            "queue": "price-refresh",
+            "max_batch_size": 10,
+            "max_retries": 3,
+            "dead_letter_queue": "price-refresh-dlq"
+          },
+          {
+            "queue": "keeper-jobs",
+            "max_batch_size": 5,
+            "max_batch_timeout": 5,
+            "max_retries": 5,
+            "retry_delay": 10,
+            "dead_letter_queue": "keeper-jobs-dlq"
+          }
+        ]
+      },
       "vars": {
         "CHAIN_ID": "11155111",
         "ROUTER_ADDRESS": "",
@@ -129,6 +152,29 @@
     },
     "production": {
       "name": "aetherdex-api-prod",
+      "queues": {
+        "producers": [
+          { "queue": "price-refresh", "binding": "PRICE_QUEUE" },
+          { "queue": "trade-settlement", "binding": "SETTLE_QUEUE" },
+          { "queue": "keeper-jobs", "binding": "KEEPER_QUEUE" }
+        ],
+        "consumers": [
+          {
+            "queue": "price-refresh",
+            "max_batch_size": 10,
+            "max_retries": 3,
+            "dead_letter_queue": "price-refresh-dlq"
+          },
+          {
+            "queue": "keeper-jobs",
+            "max_batch_size": 5,
+            "max_batch_timeout": 5,
+            "max_retries": 5,
+            "retry_delay": 10,
+            "dead_letter_queue": "keeper-jobs-dlq"
+          }
+        ]
+      },
       "vars": {
         "CHAIN_ID": "1",
         "ROUTER_ADDRESS": "",

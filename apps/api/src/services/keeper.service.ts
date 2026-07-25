@@ -79,8 +79,8 @@ export interface KeeperService {
     poolId: string,
     maxExposureUsd: number,
   ) => Effect.Effect<PolicyEvaluation, PolicyEvaluationError>
-  readonly getActivePolicies: (chainId: number) => Effect.Effect<readonly PositionPolicy[], never>
-  readonly recordRebalance: (positionId: string) => Effect.Effect<void, KeeperError>
+  readonly getActivePolicies: (chainId: number) => Effect.Effect<readonly PositionPolicy[], KeeperError>
+  readonly recordRebalance: (positionId: string, chainId: number) => Effect.Effect<void, KeeperError>
 }
 
 // ─── Tag ────────────────────────────────────────────────────────────────────
@@ -149,12 +149,12 @@ function evaluateRangeDrift(
  * Returns shouldExecute=false if cooldown hasn't elapsed.
  */
 function evaluateAntiWhipsaw(position: PositionPolicy): Effect.Effect<PolicyEvaluation, PolicyEvaluationError> {
-  const now = Date.now() / 1000
+  const now = Date.now()
   const lastRebalance = position.lastRebalanceAt ?? 0
   const elapsed = now - lastRebalance
 
-  if (elapsed < position.cooldownSeconds) {
-    const remaining = position.cooldownSeconds - elapsed
+  if (elapsed < position.cooldownSeconds * 1000) {
+    const remaining = position.cooldownSeconds - Math.floor(elapsed / 1000)
     return Effect.succeed({
       shouldExecute: false,
       policy: "anti_whipsaw",
@@ -241,14 +241,13 @@ const makeKeeperService = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
 
   const tick = (chainId: number): Effect.Effect<KeeperTickResult, KeeperError, never> => {
-    let ordersChecked = 0
-    let ordersTriggered = 0
-    let ordersFailed = 0
-    let positionsChecked = 0
-    let rebalancesQueued = 0
-    const errors: string[] = []
-
     return Effect.gen(function* () {
+      let ordersChecked = 0
+      const ordersTriggered = 0
+      let ordersFailed = 0
+      let positionsChecked = 0
+      const rebalancesQueued = 0
+      const errors: string[] = []
       const startTime = Date.now()
 
       // 1. Check pending TP/SL orders
@@ -271,7 +270,6 @@ const makeKeeperService = Effect.gen(function* () {
         try {
           // TODO: Read spot price from PoolManager and TWAP from AetherHook
           console.log(`[Keeper] Evaluating order ${order.id} for pool ${order.poolId}`)
-          ordersTriggered++
         } catch (error) {
           errors.push(`Order ${order.id}: ${String(error)}`)
           ordersFailed++
@@ -289,17 +287,19 @@ const makeKeeperService = Effect.gen(function* () {
         positionsChecked++
         const policy = rowToPolicy(row)
 
-        try {
-          const whipsawResult = yield* evaluateAntiWhipsaw(policy)
-          if (!whipsawResult.shouldExecute) {
-            console.log(`[Keeper] Position ${policy.positionId}: ${whipsawResult.reason}`)
+        const whipsawResult = yield* Effect.result(evaluateAntiWhipsaw(policy))
+        if (whipsawResult._tag === "Failure") {
+          errors.push(`Position ${policy.positionId}: ${String(whipsawResult.failure)}`)
+          continue
+        }
+        {
+          const evaluation = whipsawResult.success
+          if (!evaluation.shouldExecute) {
+            console.log(`[Keeper] Position ${policy.positionId}: ${evaluation.reason}`)
             continue
           }
 
           console.log(`[Keeper] Evaluating position ${policy.positionId} for rebalance`)
-          rebalancesQueued++
-        } catch (error) {
-          errors.push(`Position ${policy.positionId}: ${String(error)}`)
         }
       }
 
@@ -350,7 +350,7 @@ const makeKeeperService = Effect.gen(function* () {
     maxExposureUsd: number,
   ): Effect.Effect<PolicyEvaluation, PolicyEvaluationError> => evaluateCapPressure(poolId, maxExposureUsd)
 
-  const getActivePolicies = (chainId: number): Effect.Effect<readonly PositionPolicy[], never, never> =>
+  const getActivePolicies = (chainId: number): Effect.Effect<readonly PositionPolicy[], KeeperError, never> =>
     Effect.gen(function* () {
       const rows = (yield* sql`
         SELECT * FROM position_policies
@@ -358,15 +358,15 @@ const makeKeeperService = Effect.gen(function* () {
         ORDER BY created_at DESC
       `) as unknown as readonly Record<string, unknown>[]
       return rows.map(rowToPolicy)
-    }).pipe(Effect.catch(() => Effect.succeed([])))
+    }).pipe(Effect.catch((error) => Effect.fail(new KeeperError(`Failed to load active policies: ${String(error)}`))))
 
-  const recordRebalance = (positionId: string): Effect.Effect<void, KeeperError, never> =>
+  const recordRebalance = (positionId: string, chainId: number): Effect.Effect<void, KeeperError, never> =>
     Effect.gen(function* () {
-      const now = Date.now() / 1000
+      const now = Date.now()
       yield* sql`
         UPDATE position_policies
         SET last_rebalance_at = ${now}, rebalance_count = rebalance_count + 1
-        WHERE position_id = ${positionId}
+        WHERE position_id = ${positionId} AND chain_id = ${chainId}
       `
     }).pipe(Effect.catch((error) => Effect.fail(new KeeperError(`Failed to record rebalance: ${String(error)}`))))
 

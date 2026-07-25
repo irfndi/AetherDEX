@@ -145,7 +145,7 @@ async function runKeeperTick(env: CronEnv): Promise<void> {
     SELECT pp.id, pp.position_id, pp.pool_id, pp.user_address, pp.min_drift_bps,
            lp.tick_lower, lp.tick_upper, lp.liquidity
     FROM position_policies pp
-    JOIN liquidity_positions lp ON pp.position_id = lp.id::text
+    JOIN liquidity_positions lp ON pp.position_id = CAST(lp.id AS TEXT) AND lp.chain_id = pp.chain_id
     WHERE pp.chain_id = ? AND pp.is_active = 1 AND pp.policy_type = 'auto_recenter'
       AND lp.is_active = 1
   `)
@@ -211,20 +211,30 @@ async function refreshTopPools(env: CronEnv): Promise<void> {
     })
   }
 
-  // Write poolSpot cache entries so TP/SL evaluator and auto-recenter can read them
+  const prices = new Map<string, { priceUsd?: number } | null>()
+  const addresses = Array.from(tokenAddresses)
+  for (let i = 0; i < addresses.length; i += 10) {
+    const batch = addresses.slice(i, i + 10)
+    const values = await Promise.all(
+      batch.map(async (address) => {
+        const payload = await env.CACHE.get(`price:${address}`)
+        return [address, payload ? (JSON.parse(payload) as { priceUsd?: number }) : null] as const
+      }),
+    )
+    for (const [address, price] of values) prices.set(address, price)
+  }
+
   for (const pool of pools.results) {
     try {
-      const [token0Price, token1Price] = await Promise.all([
-        env.CACHE.get(`price:${pool.token0_address}`),
-        env.CACHE.get(`price:${pool.token1_address}`),
-      ])
-
-      const t0 = token0Price ? (JSON.parse(token0Price) as { priceUsd?: number }) : null
-      const t1 = token1Price ? (JSON.parse(token1Price) as { priceUsd?: number }) : null
+      const t0 = prices.get(pool.token0_address) ?? null
+      const t1 = prices.get(pool.token1_address) ?? null
 
       if (t0?.priceUsd && t1?.priceUsd && t0.priceUsd > 0 && t1.priceUsd > 0) {
-        // Pool spot price = token0 price / token1 price (1e18-scaled)
-        const spotPriceX18 = String(Math.round((t0.priceUsd / t1.priceUsd) * 1e18))
+        const scale = 1_000_000n
+        const numerator = BigInt(Math.round(t0.priceUsd * Number(scale)))
+        const denominator = BigInt(Math.round(t1.priceUsd * Number(scale)))
+        if (denominator === 0n) continue
+        const spotPriceX18 = String((numerator * 10n ** 18n) / denominator)
         await env.CACHE.put(
           `poolSpot:${pool.pool_id}`,
           JSON.stringify({ price: spotPriceX18, updatedAt: Date.now() }),

@@ -13,6 +13,7 @@
 
 import { Context, Effect, Layer } from "effect"
 import { ChainStateReader } from "./chain-state-reader"
+import { MAX_TICK, MIN_TICK } from "./tick-bounds"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -86,6 +87,19 @@ export interface VerificationService {
 
 export const VerificationService = Context.Service<VerificationService>("@aetherdex/VerificationService")
 
+const readPoolState = (reader: ChainStateReader, poolKey: PoolKeyParams) =>
+  reader
+    .getPoolState(poolKey)
+    .pipe(
+      Effect.catch((error) =>
+        Effect.fail(
+          error._tag === "OnChainReadError"
+            ? new VerificationError("pool_read_failed", error.message)
+            : new VerificationError("unknown", String(error)),
+        ),
+      ),
+    )
+
 // ─── Implementation ─────────────────────────────────────────────────────────
 
 const makeVerificationService = Effect.gen(function* () {
@@ -100,20 +114,12 @@ const makeVerificationService = Effect.gen(function* () {
     Effect.gen(function* () {
       const errors: string[] = []
 
-      const state = yield* chainStateReader.getPoolState(input.poolKey).pipe(
-        Effect.catch((error) => {
-          if (error._tag === "OnChainReadError") {
-            return Effect.fail(new VerificationError("pool_read_failed", error.message))
-          }
-          return Effect.fail(new VerificationError("unknown", String(error)))
-        }),
-      )
+      const state = yield* readPoolState(chainStateReader, input.poolKey)
 
       const currentTick = state.tick
       const isInRange = currentTick >= input.tickLower && currentTick <= input.tickUpper
 
       // Calculate drift from range center
-      const _rangeCenter = (input.tickLower + input.tickUpper) / 2
       const rangeSize = input.tickUpper - input.tickLower
       const driftTicks =
         currentTick < input.tickLower
@@ -136,13 +142,13 @@ const makeVerificationService = Effect.gen(function* () {
       }
 
       // Validate current tick is within reasonable bounds
-      if (currentTick < -887220 || currentTick > 887220) {
+      if (currentTick < MIN_TICK || currentTick > MAX_TICK) {
         errors.push("Current tick outside V4 bounds")
       }
 
       return {
         isValid: errors.length === 0,
-        poolId: "", // Will be computed by caller
+        poolId: `${input.poolKey.token0.toLowerCase()}-${input.poolKey.token1.toLowerCase()}-${input.poolKey.fee}-${input.poolKey.tickSpacing}-${input.poolKey.hooks.toLowerCase()}`,
         currentTick,
         sqrtPriceX96: state.sqrtPriceX96,
         liquidity: state.liquidity,
@@ -172,14 +178,7 @@ const makeVerificationService = Effect.gen(function* () {
       const errors: string[] = []
 
       // Read current pool state
-      const state = yield* chainStateReader.getPoolState(input.poolKey).pipe(
-        Effect.catch((error) => {
-          if (error._tag === "OnChainReadError") {
-            return Effect.fail(new VerificationError("pool_read_failed", error.message))
-          }
-          return Effect.fail(new VerificationError("unknown", String(error)))
-        }),
-      )
+      const state = yield* readPoolState(chainStateReader, input.poolKey)
 
       // Compute spot price from sqrtPriceX96
       // priceX18 = (sqrtPriceX96^2 / 2^96) * 1e18 / 2^96
@@ -189,7 +188,8 @@ const makeVerificationService = Effect.gen(function* () {
 
       // TODO: Read TWAP from AetherHook contract
       // For now, use spot price as TWAP placeholder
-      const twapPriceX18: bigint | null = spotPriceX18
+      const twapPriceX18: bigint | null = null
+      errors.push("TWAP unavailable until Phase-0 G2.5 is deployed")
 
       // Evaluate trigger condition
       let isTriggered = false
@@ -199,22 +199,22 @@ const makeVerificationService = Effect.gen(function* () {
         if (input.zeroForOne) {
           // TP: price must go DOWN (selling token0 for token1)
           isTriggered = spotPriceX18 <= input.triggerPriceX18
-          dualTriggerMet = isTriggered && (twapPriceX18 === null || twapPriceX18 <= input.triggerPriceX18)
+          dualTriggerMet = isTriggered && twapPriceX18 !== null && twapPriceX18 <= input.triggerPriceX18
         } else {
           // TP: price must go UP (selling token1 for token0)
           isTriggered = spotPriceX18 >= input.triggerPriceX18
-          dualTriggerMet = isTriggered && (twapPriceX18 === null || twapPriceX18 >= input.triggerPriceX18)
+          dualTriggerMet = isTriggered && twapPriceX18 !== null && twapPriceX18 >= input.triggerPriceX18
         }
       } else {
         // STOP_LOSS
         if (input.zeroForOne) {
           // SL: price must go UP (selling token0 for token1)
           isTriggered = spotPriceX18 >= input.triggerPriceX18
-          dualTriggerMet = isTriggered && (twapPriceX18 === null || twapPriceX18 >= input.triggerPriceX18)
+          dualTriggerMet = isTriggered && twapPriceX18 !== null && twapPriceX18 >= input.triggerPriceX18
         } else {
           // SL: price must go DOWN (selling token1 for token0)
           isTriggered = spotPriceX18 <= input.triggerPriceX18
-          dualTriggerMet = isTriggered && (twapPriceX18 === null || twapPriceX18 <= input.triggerPriceX18)
+          dualTriggerMet = isTriggered && twapPriceX18 !== null && twapPriceX18 <= input.triggerPriceX18
         }
       }
 
@@ -247,14 +247,7 @@ const makeVerificationService = Effect.gen(function* () {
     readonly minimumLiquidity: bigint
   }): Effect.Effect<boolean, VerificationError> =>
     Effect.gen(function* () {
-      const state = yield* chainStateReader.getPoolState(input.poolKey).pipe(
-        Effect.catch((error) => {
-          if (error._tag === "OnChainReadError") {
-            return Effect.fail(new VerificationError("pool_read_failed", error.message))
-          }
-          return Effect.fail(new VerificationError("unknown", String(error)))
-        }),
-      )
+      const state = yield* readPoolState(chainStateReader, input.poolKey)
 
       return state.liquidity >= input.minimumLiquidity
     })
