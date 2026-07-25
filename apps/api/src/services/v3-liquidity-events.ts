@@ -47,7 +47,7 @@ const POOL_ABI = [
     type: "event",
     name: "Mint",
     inputs: [
-      { indexed: true, name: "sender", type: "address" },
+      { indexed: false, name: "sender", type: "address" },
       { indexed: true, name: "owner", type: "address" },
       { indexed: true, name: "tickLower", type: "int24" },
       { indexed: true, name: "tickUpper", type: "int24" },
