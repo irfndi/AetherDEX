@@ -1,5 +1,18 @@
 import { env, SELF } from "cloudflare:test"
 import { describe, expect, it } from "vitest"
+import { isValidV4TokenId } from "../src/services/v4-position-reader.service"
+
+describe("V4 position token validation", () => {
+  it("accepts uint256 values and rejects overflow", () => {
+    expect(isValidV4TokenId("0")).toBe(true)
+    expect(isValidV4TokenId("115792089237316195423570985008687907853269984665640564039457584007913129639935")).toBe(
+      true,
+    )
+    expect(isValidV4TokenId("115792089237316195423570985008687907853269984665640564039457584007913129639936")).toBe(
+      false,
+    )
+  })
+})
 
 describe("POST /api/v1/positions/v4/:tokenId/reconcile", () => {
   it("requires a session before reading chain state", async () => {

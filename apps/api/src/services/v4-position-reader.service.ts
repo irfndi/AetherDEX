@@ -40,6 +40,13 @@ const POSITION_MANAGER_ABI = [
   },
 ] as const
 
+const UINT256_MAX = 2n ** 256n - 1n
+
+export const isValidV4TokenId = (tokenId: string): boolean => {
+  if (!/^\d+$/.test(tokenId)) return false
+  return BigInt(tokenId) <= UINT256_MAX
+}
+
 export interface V4PositionState {
   readonly owner: `0x${string}`
   readonly poolKey: {
@@ -78,7 +85,7 @@ const makeV4PositionReader = (deps: V4PositionReaderDeps): V4PositionReader => {
   return {
     read: (tokenId) =>
       Effect.gen(function* () {
-        if (!/^\d+$/.test(tokenId)) return yield* Effect.fail(new V4PositionReadError("Invalid token id"))
+        if (!isValidV4TokenId(tokenId)) return yield* Effect.fail(new V4PositionReadError("Invalid token id"))
         const id = BigInt(tokenId)
         const chainId = yield* Effect.tryPromise({
           try: () => client.getChainId(),

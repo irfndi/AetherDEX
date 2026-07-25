@@ -173,7 +173,8 @@ positions.post("/positions/v4/:tokenId/reconcile", requireAuth, async (c) => {
       },
     })
   } catch (err) {
-    return c.json({ error: err instanceof Error ? err.message : String(err) }, 500)
+    if (err instanceof V4PositionReadError) return c.json({ error: "Unable to read v4 position state" }, 502)
+    return c.json({ error: "Unable to reconcile v4 position" }, 500)
   }
 })
 
