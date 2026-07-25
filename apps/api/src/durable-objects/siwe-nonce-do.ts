@@ -30,6 +30,7 @@ export class SiweNonceDO implements DurableObject {
 
   private async issue(input: NonceRequest): Promise<Response> {
     await this.ctx.storage.put<NonceRecord>("record", { expiresAt: input.expiresAt })
+    await this.ctx.storage.setAlarm(input.expiresAt)
     return Response.json({ consumed: false }, { status: 201 })
   }
 
@@ -38,11 +39,25 @@ export class SiweNonceDO implements DurableObject {
       const record = await this.ctx.storage.get<NonceRecord>("record")
       if (!record || record.expiresAt <= Date.now()) {
         if (record) await this.ctx.storage.delete("record")
+        await this.ctx.storage.deleteAlarm()
         return false
       }
       await this.ctx.storage.delete("record")
+      await this.ctx.storage.deleteAlarm()
       return true
     })
     return Response.json({ consumed })
+  }
+
+  async alarm(): Promise<void> {
+    await this.ctx.blockConcurrencyWhile(async () => {
+      const record = await this.ctx.storage.get<NonceRecord>("record")
+      if (!record || record.expiresAt <= Date.now()) {
+        await this.ctx.storage.delete("record")
+        await this.ctx.storage.deleteAlarm()
+        return
+      }
+      await this.ctx.storage.setAlarm(record.expiresAt)
+    })
   }
 }
