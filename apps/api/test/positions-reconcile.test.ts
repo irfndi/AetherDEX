@@ -40,4 +40,26 @@ describe("POST /api/v1/positions/v4/:tokenId/reconcile", () => {
     expect(response.status).toBe(503)
     await expect(response.json()).resolves.toEqual({ error: "V4 position reconciliation is not configured" })
   })
+
+  it("rejects a uint256-overflow token id at the HTTP boundary", async () => {
+    await env.CACHE.put(
+      "session:reconcile-overflow-test",
+      JSON.stringify({
+        userAddress: "0x1111111111111111111111111111111111111111",
+        issuedAt: Date.now(),
+        expiresAt: Date.now() + 60_000,
+      }),
+    )
+
+    const response = await SELF.fetch(
+      "http://fake-host/api/v1/positions/v4/115792089237316195423570985008687907853269984665640564039457584007913129639936/reconcile",
+      {
+        method: "POST",
+        headers: { Authorization: "Bearer reconcile-overflow-test" },
+      },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({ error: "Invalid token id" })
+  })
 })
