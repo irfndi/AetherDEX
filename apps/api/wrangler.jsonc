@@ -131,6 +131,40 @@
         "TOKEN_LIST_URL": "https://tokens.uniswap.org",
         "ENVIRONMENT": "staging"
       },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "aetherdex-main",
+          "database_id": "REPLACE_WITH_OUTPUT_FROM_d1:create",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "CACHE",
+          "id": "REPLACE_WITH_OUTPUT_FROM_kv:create"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "STORAGE",
+          "bucket_name": "aetherdex-storage"
+        }
+      ],
+      "queues": {
+        "producers": [
+          { "queue": "price-refresh", "binding": "PRICE_QUEUE" },
+          { "queue": "trade-settlement", "binding": "SETTLE_QUEUE" }
+        ],
+        "consumers": [
+          {
+            "queue": "price-refresh",
+            "max_batch_size": 10,
+            "max_retries": 3,
+            "dead_letter_queue": "price-refresh-dlq"
+          }
+        ]
+      },
       "durable_objects": {
         "bindings": [
           { "name": "ORDER_BOOK", "class_name": "OrderBookDO" },
@@ -156,6 +190,40 @@
         "QUOTE_ENGINE_MODE": "auto",
         "TOKEN_LIST_URL": "https://tokens.uniswap.org",
         "ENVIRONMENT": "production"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "aetherdex-main",
+          "database_id": "REPLACE_WITH_OUTPUT_FROM_d1:create",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "CACHE",
+          "id": "REPLACE_WITH_OUTPUT_FROM_kv:create"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "STORAGE",
+          "bucket_name": "aetherdex-storage"
+        }
+      ],
+      "queues": {
+        "producers": [
+          { "queue": "price-refresh", "binding": "PRICE_QUEUE" },
+          { "queue": "trade-settlement", "binding": "SETTLE_QUEUE" }
+        ],
+        "consumers": [
+          {
+            "queue": "price-refresh",
+            "max_batch_size": 10,
+            "max_retries": 3,
+            "dead_letter_queue": "price-refresh-dlq"
+          }
+        ]
       },
       "durable_objects": {
         "bindings": [

@@ -17,9 +17,14 @@ describe("POST /api/v1/auth/nonce", () => {
 
     const nonce = body.nonce
     if (nonce) {
-      await env.SIWE_NONCE.get(env.SIWE_NONCE.idFromName(nonce)).fetch("https://siwe-nonce/consume", {
-        method: "POST",
-      })
+      const consumeResponse = await env.SIWE_NONCE.get(env.SIWE_NONCE.idFromName(nonce)).fetch(
+        "https://siwe-nonce/consume",
+        {
+          method: "POST",
+        },
+      )
+      expect(consumeResponse.status).toBe(200)
+      await expect(consumeResponse.json()).resolves.toEqual({ consumed: true })
     }
   })
 })
