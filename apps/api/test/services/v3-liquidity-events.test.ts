@@ -28,12 +28,15 @@ describe("parseV3LiquidityLog", () => {
 
   it("normalizes pool mint events and ignores unrelated addresses", () => {
     const event = parseAbiItem(
-      "event Mint(address indexed sender, address indexed owner, int24 indexed tickLower, int24 indexed tickUpper, uint128 amount, uint256 amount0, uint256 amount1)",
+      "event Mint(address sender, address indexed owner, int24 indexed tickLower, int24 indexed tickUpper, uint128 amount, uint256 amount0, uint256 amount1)",
     )
     const sender = "0x0000000000000000000000000000000000000008" as const
     const owner = "0x0000000000000000000000000000000000000007" as const
-    const topics = encodeEventTopics({ abi: [event], eventName: "Mint", args: [sender, owner, -120, 120] })
-    const data = encodeAbiParameters([{ type: "uint128" }, { type: "uint256" }, { type: "uint256" }], [9n, 10n, 12n])
+    const topics = encodeEventTopics({ abi: [event], eventName: "Mint", args: [owner, -120, 120] })
+    const data = encodeAbiParameters(
+      [{ type: "address" }, { type: "uint128" }, { type: "uint256" }, { type: "uint256" }],
+      [sender, 9n, 10n, 12n],
+    )
     const parsed = parseV3LiquidityLog(
       { address: pool, topics, data, transactionHash: txHash, logIndex: 3, blockNumber: 101 },
       { positionManager: manager, poolAddress: pool, poolId: "pool-1" },
