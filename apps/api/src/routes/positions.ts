@@ -98,4 +98,23 @@ positions.post("/", requireAuth, async (c) => {
   }
 })
 
+positions.post("/:tokenId/reconcile", requireAuth, async (c) => {
+  const session = c.get("session")
+  const tokenId = c.req.param("tokenId")
+  const chainId = Number(c.env.CHAIN_ID)
+  if (!session) return c.json({ error: "Unauthorized" }, 401)
+  if (!/^\d+$/.test(tokenId)) return c.json({ error: "Invalid token id" }, 400)
+  if (!Number.isSafeInteger(chainId) || chainId <= 0) return c.json({ error: "Invalid chain configuration" }, 500)
+  try {
+    const program = Effect.gen(function* () {
+      const positionService = yield* PositionService
+      return yield* positionService.reconcileV3Position(session.userAddress, tokenId, chainId)
+    })
+    const position = await runEffect(program.pipe(Effect.provide(positionLayer(c.env.DB))))
+    return position ? c.json({ position }) : c.json({ error: "Position not indexed for this owner" }, 404)
+  } catch (err) {
+    return c.json({ error: String(err) }, 500)
+  }
+})
+
 export { positions }

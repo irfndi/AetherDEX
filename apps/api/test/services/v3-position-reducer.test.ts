@@ -36,6 +36,8 @@ describe("reduceV3PositionEvents", () => {
       amount1: 12n,
       fees0: 2n,
       fees1: 3n,
+      costBasis0: 10n,
+      costBasis1: 20n,
     })
   })
 

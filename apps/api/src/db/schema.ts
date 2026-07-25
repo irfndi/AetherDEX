@@ -83,6 +83,8 @@ export interface LiquidityPosition {
   amount1: string
   feesEarnedToken0: string
   feesEarnedToken1: string
+  costBasisToken0: string
+  costBasisToken1: string
   isActive: boolean
   createdAt: number
   updatedAt: number
@@ -205,6 +207,8 @@ export function rowToLiquidityPosition(row: Record<string, unknown>): LiquidityP
     amount1: row.amount1 as string,
     feesEarnedToken0: row.fees_earned_token0 as string,
     feesEarnedToken1: row.fees_earned_token1 as string,
+    costBasisToken0: (row.cost_basis_token0 as string | undefined) ?? "0",
+    costBasisToken1: (row.cost_basis_token1 as string | undefined) ?? "0",
     isActive: Boolean(row.is_active),
     createdAt: row.created_at as number,
     updatedAt: row.updated_at as number,

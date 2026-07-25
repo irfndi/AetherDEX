@@ -52,8 +52,8 @@ describe("PortfolioResults", () => {
 
     expect(screen.getByText("0xpool-id")).toBeDefined()
     expect(screen.getByText("-120 to 120")).toBeDefined()
-    expect(screen.getByText("Awaiting indexed cost basis")).toBeDefined()
-    expect(screen.getByText(/Profit is not calculated/)).toBeDefined()
+    expect(screen.getAllByText(/Not reported/)).toHaveLength(2)
+    expect(screen.getByText(/USD PnL is calculated after price snapshots/)).toBeDefined()
   })
 
   it("shows the disconnected state", () => {
