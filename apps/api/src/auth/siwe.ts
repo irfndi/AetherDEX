@@ -76,7 +76,11 @@ export function verifyAndCreateSession(
     const parsedIssuedAt = Date.parse(siweParsed.issuedAt ?? "")
     const expirationTime = siweParsed.expirationTime ? Date.parse(siweParsed.expirationTime) : Number.NaN
     const notBefore = siweParsed.notBefore ? Date.parse(siweParsed.notBefore) : Number.NaN
-    if (!Number.isFinite(parsedIssuedAt) || parsedIssuedAt > now + 5 * 60 * 1000) {
+    if (
+      !Number.isFinite(parsedIssuedAt) ||
+      parsedIssuedAt < now - 5 * 60 * 1000 ||
+      parsedIssuedAt > now + 5 * 60 * 1000
+    ) {
       return yield* Effect.fail(new Error("SIWE issued-at time is invalid"))
     }
     if (Number.isFinite(expirationTime) && expirationTime <= now) {

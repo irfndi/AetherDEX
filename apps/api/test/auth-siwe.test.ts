@@ -11,7 +11,7 @@ const config = {
   chainId: 11155111,
 }
 
-const makeMessage = (overrides: Partial<{ domain: string; uri: string; chainId: number }>) =>
+const makeMessage = (overrides: Partial<{ domain: string; uri: string; chainId: number; issuedAt: string }>) =>
   new SiweMessage({
     domain: overrides.domain ?? config.domain,
     address: "0x1111111111111111111111111111111111111111",
@@ -20,7 +20,7 @@ const makeMessage = (overrides: Partial<{ domain: string; uri: string; chainId: 
     version: "1",
     chainId: overrides.chainId ?? config.chainId,
     nonce: "1234567890",
-    issuedAt: new Date().toISOString(),
+    issuedAt: overrides.issuedAt ?? new Date().toISOString(),
   }).prepareMessage()
 
 describe("SIWE verification binding", () => {
@@ -55,5 +55,39 @@ describe("SIWE verification binding", () => {
     )
 
     expect(String((error as Error).message)).toBe("SIWE chain mismatch")
+  })
+
+  it("rejects a message with an old issued-at time", async () => {
+    await env.CACHE.put(
+      "siwe-nonce:1234567890",
+      JSON.stringify({ nonce: "1234567890", issuedAt: Date.now(), expiresAt: Date.now() + 60_000 }),
+    )
+
+    const error = await Effect.runPromise(
+      verifyAndCreateSession(
+        env.CACHE,
+        { message: makeMessage({ issuedAt: new Date(Date.now() - 6 * 60 * 1000).toISOString() }), signature: "0x" },
+        config,
+      ).pipe(Effect.provide(KVCacheService.layer), Effect.flip),
+    )
+
+    expect(String((error as Error).message)).toBe("SIWE issued-at time is invalid")
+  })
+
+  it("rejects a message with an unexpected URI before signature verification", async () => {
+    await env.CACHE.put(
+      "siwe-nonce:1234567890",
+      JSON.stringify({ nonce: "1234567890", issuedAt: Date.now(), expiresAt: Date.now() + 60_000 }),
+    )
+
+    const error = await Effect.runPromise(
+      verifyAndCreateSession(
+        env.CACHE,
+        { message: makeMessage({ uri: "https://attacker.example" }), signature: "0x" },
+        config,
+      ).pipe(Effect.provide(KVCacheService.layer), Effect.flip),
+    )
+
+    expect(String((error as Error).message)).toBe("SIWE domain or URI mismatch")
   })
 })
