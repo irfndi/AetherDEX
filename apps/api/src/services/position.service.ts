@@ -109,7 +109,9 @@ const makePositionService = Effect.gen(function* () {
     chainId: number,
   ): Effect.Effect<LiquidityPosition | null, RecordPositionError, never> =>
     Effect.gen(function* () {
-      const events = yield* listLiquidityEvents(chainId, "v3", tokenId)
+      const events = yield* listLiquidityEvents(chainId, "v3", tokenId).pipe(
+        Effect.provideService(SqlClient.SqlClient, sql),
+      )
       const normalized: V3LiquidityEvent[] = events.map((event) => ({
         protocol: "v3",
         eventType: event.eventType,
@@ -139,7 +141,7 @@ const makePositionService = Effect.gen(function* () {
         costBasis0: state.costBasis0.toString(),
         costBasis1: state.costBasis1.toString(),
         isActive: state.isActive,
-      })
+      }).pipe(Effect.provideService(SqlClient.SqlClient, sql))
       if (positionId === null) return null
       const rows = yield* sql`
         SELECT liquidity_positions.*, pools.tick_spacing

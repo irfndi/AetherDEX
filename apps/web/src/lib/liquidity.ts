@@ -28,7 +28,7 @@ export type LiquidityTransactionRequest = {
   readonly deadlineSeconds: number
   readonly execution: {
     readonly status: "not-configured"
-    readonly reason: "router-address-not-configured" | "v3-position-manager-not-configured"
+    readonly reason: "router-address-not-configured" | "v3-executor-not-configured"
   } | {
     readonly status: "submitted"
     readonly txHash: `0x${string}`
@@ -108,7 +108,7 @@ export function buildLiquidityRequest(
     execution: {
       status: "not-configured",
       reason:
-        values.protocol === "v3" ? "v3-position-manager-not-configured" : "router-address-not-configured",
+        values.protocol === "v3" ? "v3-executor-not-configured" : "router-address-not-configured",
     },
   }
 }

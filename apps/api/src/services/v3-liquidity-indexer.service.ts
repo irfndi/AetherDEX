@@ -1,4 +1,5 @@
 import { Context, Effect, Layer } from "effect"
+import { SqlClient } from "effect/unstable/sql"
 import { createPublicClient, http } from "viem"
 import { insertLiquidityEvent } from "../db/queries"
 import type { RawLog } from "./v3-liquidity-events"
@@ -29,6 +30,7 @@ export const V3LiquidityIndexer = Context.Service<V3LiquidityIndexer>("@aetherde
 
 const makeV3LiquidityIndexer = (config: V3LiquidityIndexerConfig) =>
   Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
     const client = createPublicClient({ transport: http(config.rpcUrl) })
 
     const indexRange = (fromBlock: bigint, toBlock: bigint) =>
@@ -91,7 +93,7 @@ const makeV3LiquidityIndexer = (config: V3LiquidityIndexerConfig) =>
             liquidityDelta: event.liquidityDelta,
             amount0: event.amount0,
             amount1: event.amount1,
-          })
+          }).pipe(Effect.provideService(SqlClient.SqlClient, sql))
         }
         return parsed.length
       }).pipe(
@@ -113,8 +115,8 @@ function toRawLog(log: {
   readonly data: `0x${string}`
   readonly topics: readonly `0x${string}`[]
   readonly transactionHash: `0x${string}` | null
-  readonly logIndex: bigint | null
-  readonly blockNumber: bigint | null
+  readonly logIndex: bigint | number | null
+  readonly blockNumber: bigint | number | null
 }): (RawLog & { readonly blockNumber: bigint }) | null {
   if (log.transactionHash === null || log.logIndex === null || log.blockNumber === null) return null
   return {
@@ -122,7 +124,7 @@ function toRawLog(log: {
     data: log.data,
     topics: log.topics,
     transactionHash: log.transactionHash,
-    logIndex: log.logIndex,
-    blockNumber: log.blockNumber,
+    logIndex: BigInt(log.logIndex),
+    blockNumber: BigInt(log.blockNumber),
   }
 }

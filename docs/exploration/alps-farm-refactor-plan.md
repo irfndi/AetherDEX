@@ -280,6 +280,8 @@ This reframes the existing AGENTS.md "Wave 3+" backlog around the Alpine LP thes
 
 **Phase 1 pool-creation status (2026-07-25):** pool creation now performs a fresh two-token price check through the API immediately before signing. The guard rejects malformed/sorted-pair violations, unavailable prices, and opening prices more than 5% from the fresh USD-implied ratio by default. When the factory deployment, wallet, chain, and private RPC are configured, the page encodes `createPoolWithDeadline`, signs locally, and submits only through the protected RPC; otherwise it remains an explicit local intent. The guard is an execution-time safety gate, not a substitute for a chain-native oracle, and arbitrary-token production rollout still requires a trusted oracle policy.
 
+**Phase 1 v3 quote status (2026-07-25):** the v3 liquidity form now uses a configured Uniswap v3 QuoterV2 simulation through `/v3/quote` to search the single-sided split, rather than reusing the V4 quote path or a constant-product approximation. The resulting bounds feed `AetherV3ZapExecutor`, and approvals plus zap submission use the protected RPC. The route stays unavailable until `RPC_URL`, `V3_FACTORY_ADDRESS`, `V3_QUOTER_ADDRESS`, and `VITE_V3_ZAP_EXECUTOR_ADDRESS` are configured for the target chain.
+
 ### Phase 2 — V4-native automation (the differentiator)
 
 > **Depends on** the Phase-0 TWAP fix (G2.5) being real and validated, and on the router position-ownership migration (Phase 1).

@@ -103,7 +103,7 @@ positions.post("/:tokenId/reconcile", requireAuth, async (c) => {
   const tokenId = c.req.param("tokenId")
   const chainId = Number(c.env.CHAIN_ID)
   if (!session) return c.json({ error: "Unauthorized" }, 401)
-  if (!/^\d+$/.test(tokenId)) return c.json({ error: "Invalid token id" }, 400)
+  if (typeof tokenId !== "string" || !/^\d+$/.test(tokenId)) return c.json({ error: "Invalid token id" }, 400)
   if (!Number.isSafeInteger(chainId) || chainId <= 0) return c.json({ error: "Invalid chain configuration" }, 500)
   try {
     const program = Effect.gen(function* () {

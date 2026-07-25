@@ -90,6 +90,8 @@
     // Uniswap V4 on-chain read config for the quote engine (Phase-0 G2). Empty until G5 wires them.
     "STATE_VIEW_ADDRESS": "",
     "POOL_MANAGER_ADDRESS": "",
+    "V3_FACTORY_ADDRESS": "",
+    "V3_QUOTER_ADDRESS": "",
     "RPC_URL": "",
     // "auto" = V4 tick-math when STATE_VIEW_ADDRESS+RPC_URL are set, else legacy D1 approximation.
     "QUOTE_ENGINE_MODE": "auto",
@@ -108,6 +110,8 @@
         "FACTORY_ADDRESS": "",
         "STATE_VIEW_ADDRESS": "",
         "POOL_MANAGER_ADDRESS": "",
+        "V3_FACTORY_ADDRESS": "",
+        "V3_QUOTER_ADDRESS": "",
         "RPC_URL": "",
         "QUOTE_ENGINE_MODE": "auto",
         "TOKEN_LIST_URL": "https://tokens.uniswap.org",
@@ -122,6 +126,8 @@
         "FACTORY_ADDRESS": "",
         "STATE_VIEW_ADDRESS": "",
         "POOL_MANAGER_ADDRESS": "",
+        "V3_FACTORY_ADDRESS": "",
+        "V3_QUOTER_ADDRESS": "",
         "RPC_URL": "",
         "QUOTE_ENGINE_MODE": "auto",
         "TOKEN_LIST_URL": "https://tokens.uniswap.org",

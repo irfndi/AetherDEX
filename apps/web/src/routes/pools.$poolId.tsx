@@ -1,7 +1,7 @@
 import { useAppKit } from "@reown/appkit/react"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { type FormEvent, useEffect, useState } from "react"
-import { encodeFunctionData, getAddress, isAddress, parseUnits } from "viem"
+import { encodeFunctionData, getAddress, type Hex, isAddress, parseUnits } from "viem"
 import { useAccount, usePublicClient, useWalletClient } from "wagmi"
 import { DexScreenerChart } from "../components/DexScreenerChart"
 import { RangeSelector } from "../components/RangeSelector"
@@ -17,6 +17,7 @@ import {
   validateLiquidityForm,
 } from "../lib/liquidity"
 import { submitProtectedRawTransaction } from "../lib/protected-submission"
+import { buildV3PoolContext, buildV3SingleSidedZapCall, findV3SwapAmount } from "../lib/v3-liquidity"
 import { buildV4SingleSidedCall, findV4SwapAmount } from "../lib/v4-liquidity"
 
 interface Pool {
@@ -232,7 +233,84 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
     setPreparing(true)
     try {
       if (values.protocol === "v3") {
-        setRequest(nextRequest)
+        if (!address || !walletClient || !publicClient) throw new Error("Wallet client is not ready")
+        const executorAddress = import.meta.env.VITE_V3_ZAP_EXECUTOR_ADDRESS
+        const privateRpcUrl = import.meta.env.VITE_PRIVATE_RPC_URL
+        if (!executorAddress || !isAddress(executorAddress)) throw new Error("V3 zap executor is not configured")
+        if (!privateRpcUrl) throw new Error("Protected submission is not configured")
+        if (!selectedToken || !otherToken || !token0 || !token1) throw new Error("Pool token metadata is incomplete")
+        const amountIn = parseUnits(values.amount.trim(), selectedToken.decimals)
+        const tokenInIsToken0 = selectedToken.address.toLowerCase() === pool.token0Address.toLowerCase()
+        if (!tokenInIsToken0 && selectedToken.address.toLowerCase() !== pool.token1Address.toLowerCase()) {
+          throw new Error("Selected token is not part of this pool")
+        }
+        const quote = async (swapAmountIn: bigint) => {
+          const response = await fetch(
+            `${API_URL}/v3/quote?tokenIn=${selectedToken.address}&tokenOut=${otherToken.address}&fee=${pool.fee}&amountIn=${swapAmountIn}&slippage=${values.slippage}`,
+          )
+          if (!response.ok) throw new Error(`V3 quote failed with HTTP ${response.status}`)
+          const data = parseV3SwapQuote(await response.json())
+          return { amountOut: BigInt(data.amountOut), minAmountOut: BigInt(data.minAmountOut) }
+        }
+        const search = await findV3SwapAmount({ amountIn, tokenInIsToken0, quote })
+        const v3Pool = buildV3PoolContext({
+          chainId: CHAIN_ID,
+          token0: getAddress(pool.token0Address),
+          token1: getAddress(pool.token1Address),
+          token0Decimals: token0.decimals,
+          token1Decimals: token1.decimals,
+          fee: pool.fee as 100 | 500 | 3_000 | 10_000,
+          sqrtPriceX96: BigInt(pool.sqrtPriceX96),
+          liquidity: BigInt(pool.liquidity),
+          currentTick: pool.currentTick,
+        })
+        const remainingInput = amountIn - search.swapAmountIn
+        const minRemainingInput = (remainingInput * BigInt(10_000 - nextRequest.slippageBps)) / 10_000n
+        const call = buildV3SingleSidedZapCall({
+          executor: getAddress(executorAddress),
+          pool: v3Pool,
+          tokenIn: getAddress(selectedToken.address),
+          amountIn,
+          swapAmountIn: search.swapAmountIn,
+          minSwapAmountOut: search.quote.minAmountOut,
+          amount0Min: tokenInIsToken0 ? minRemainingInput : search.quote.minAmountOut,
+          amount1Min: tokenInIsToken0 ? search.quote.minAmountOut : minRemainingInput,
+          tickLower: Number(values.lowerTick),
+          tickUpper: Number(values.upperTick),
+          slippageBps: nextRequest.slippageBps,
+          deadline: BigInt(Math.floor(Date.now() / 1000) + nextRequest.deadlineSeconds),
+        })
+        const tokenAddress = getAddress(selectedToken.address)
+        const executor = getAddress(executorAddress)
+        const allowance = await publicClient.readContract({
+          address: tokenAddress,
+          abi: ERC20_ABI,
+          functionName: "allowance",
+          args: [address, executor],
+        })
+        if (allowance < amountIn) {
+          const approvalPrepared = await walletClient.prepareTransactionRequest({
+            account: address,
+            to: tokenAddress,
+            data: encodeFunctionData({ abi: ERC20_ABI, functionName: "approve", args: [executor, amountIn] }),
+            value: 0n,
+          })
+          const approvalSigned = await walletClient.signTransaction(approvalPrepared)
+          const approvalHash = await submitProtectedRawTransaction({
+            rpcUrl: privateRpcUrl,
+            signedTransaction: approvalSigned,
+          })
+          await publicClient.waitForTransactionReceipt({ hash: approvalHash })
+        }
+        const prepared = await walletClient.prepareTransactionRequest({
+          account: address,
+          to: executor,
+          data: call.method.calldata as Hex,
+          value: 0n,
+        })
+        const signedTransaction = await walletClient.signTransaction(prepared)
+        const txHash = await submitProtectedRawTransaction({ rpcUrl: privateRpcUrl, signedTransaction })
+        setRequest({ ...nextRequest, execution: { status: "submitted", txHash } })
         return
       }
       if (!address || !walletClient || !publicClient) throw new Error("Wallet client is not ready")
@@ -370,8 +448,8 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
               ))}
             </div>
             <p className="mb-4 text-xs text-base-content/60">
-              V3 uses the position NFT manager; V4 uses the Aether position manager. Both remain execution-gated until
-              their deployed addresses and protected submission route are configured.
+              V3 uses QuoterV2 plus the Aether zap executor; V4 uses the Aether position manager. Both remain
+              execution-gated until their deployed addresses and protected submission route are configured.
             </p>
           </fieldset>
 
@@ -487,7 +565,7 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
               <span>
                 {request.execution.status === "submitted"
                   ? `Protected transaction submitted: ${request.execution.txHash}`
-                  : "V3 execution remains gated until its position manager and protected batch route are configured."}
+                  : "V3 execution requires QuoterV2, zap executor, and protected RPC configuration."}
               </span>
             </div>
           ) : null}
@@ -541,6 +619,10 @@ function parseSwapQuote(value: unknown): { readonly amountOut: string; readonly 
     throw new Error("Quote response is missing amount bounds")
   }
   return { amountOut: quote.amountOut, minAmountOut: quote.minAmountOut }
+}
+
+function parseV3SwapQuote(value: unknown): { readonly amountOut: string; readonly minAmountOut: string } {
+  return parseSwapQuote(value)
 }
 
 function formatUsd(value: number): string {
