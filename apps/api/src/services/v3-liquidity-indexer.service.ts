@@ -49,7 +49,7 @@ const makeV3LiquidityIndexer = (config: V3LiquidityIndexerConfig) =>
         const poolByAddress = new Map(config.pools.map((pool) => [pool.address.toLowerCase(), pool]))
         const parsed = logs.flatMap((addressLogs) =>
           addressLogs.flatMap((log) => {
-            const raw = toRawLog(log)
+            const raw = toRawLog(log as unknown as Parameters<typeof toRawLog>[0])
             if (!raw) return []
             const pool = poolByAddress.get(raw.address.toLowerCase())
             const event = parseV3LiquidityLog(raw, {
@@ -102,7 +102,7 @@ const makeV3LiquidityIndexer = (config: V3LiquidityIndexerConfig) =>
         ),
       )
 
-    return { indexRange }
+    return { indexRange } as V3LiquidityIndexer
   })
 
 export const V3LiquidityIndexerLive = (config: V3LiquidityIndexerConfig) =>

@@ -246,8 +246,8 @@ export function buildV3SingleSidedZapCall(input: V3SingleSidedZapInput): V3Singl
     throw new Error("V3 zap amounts are invalid")
   }
   if (input.minSwapAmountOut <= 0n) throw new Error("V3 zap minimum output must be positive")
-  const token0 = input.pool.token0.address
-  const token1 = input.pool.token1.address
+  const token0 = input.pool.token0.address as `0x${string}`
+  const token1 = input.pool.token1.address as `0x${string}`
   return {
     kind: "v3-single-sided-zap",
     execution: "v3-zap-executor",
@@ -293,7 +293,7 @@ export function buildV3SingleSidedZapCall(input: V3SingleSidedZapInput): V3Singl
           {
             token0,
             token1,
-            tokenIn: input.tokenIn,
+            tokenIn: input.tokenIn as `0x${string}`,
             fee: input.pool.pool.fee,
             tickLower: input.tickLower,
             tickUpper: input.tickUpper,

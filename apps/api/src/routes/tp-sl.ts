@@ -130,7 +130,7 @@ tpSl.post("/orders", requireAuth, async (c) => {
 // ─── GET /api/v1/tp-sl/orders/:id ───────────────────────────────────────────
 
 tpSl.get("/orders/:id", async (c) => {
-  const id = Number.parseInt(c.req.param("id"), 10)
+  const id = Number.parseInt(c.req.param("id") ?? "", 10)
   if (Number.isNaN(id) || id < 0) {
     return c.json({ error: "Invalid order id" }, 400)
   }
@@ -156,7 +156,7 @@ tpSl.delete("/orders/:id", requireAuth, async (c) => {
   const session = c.get("session")
   if (!session) return c.json({ error: "Unauthorized" }, 401)
 
-  const id = Number.parseInt(c.req.param("id"), 10)
+  const id = Number.parseInt(c.req.param("id") ?? "", 10)
   if (Number.isNaN(id) || id < 0) {
     return c.json({ error: "Invalid order id" }, 400)
   }
@@ -186,6 +186,9 @@ tpSl.get("/pools/:poolId", async (c) => {
   }
 
   const status = c.req.query("status") as string | undefined
+  const validStatuses = ["pending", "triggered", "executed", "cancelled", "expired"] as const
+  type ValidStatus = (typeof validStatuses)[number]
+  const validatedStatus = status !== undefined && validStatuses.includes(status as ValidStatus) ? (status as ValidStatus) : undefined
 
   try {
     const program = Effect.gen(function* () {
@@ -193,7 +196,7 @@ tpSl.get("/pools/:poolId", async (c) => {
       return yield* tpSlService.listByPool(
         poolId.toLowerCase(),
         chainIdFor(c),
-        status as Parameters<typeof tpSlService.listByPool>[2],
+        validatedStatus,
       )
     })
     const orders = await runEffect(program.pipe(Effect.provide(tpSlLayer(c.env.DB))))

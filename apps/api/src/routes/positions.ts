@@ -31,7 +31,7 @@ const positionLayer = (db: D1Database) => PositionServiceLive.pipe(Layer.provide
  * Get all active LP positions for a user (public — anyone can view)
  */
 positions.get("/users/:address/positions", async (c) => {
-  const address = c.req.param("address")
+  const address = c.req.param("address") ?? ""
   if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
     return c.json({ error: "Invalid address" }, 400)
   }
@@ -100,7 +100,7 @@ positions.post("/", requireAuth, async (c) => {
 
 positions.post("/:tokenId/reconcile", requireAuth, async (c) => {
   const session = c.get("session")
-  const tokenId = c.req.param("tokenId")
+  const tokenId = c.req.param("tokenId") ?? ""
   const chainId = Number(c.env.CHAIN_ID)
   if (!session) return c.json({ error: "Unauthorized" }, 401)
   if (!/^\d+$/.test(tokenId)) return c.json({ error: "Invalid token id" }, 400)

@@ -258,60 +258,48 @@ const makeTpSlService = Effect.gen(function* () {
     chainId: number,
   ): Effect.Effect<void, OrderNotFoundError | OrderUpdateError, never> =>
     Effect.gen(function* () {
-      const result = yield* sql`
+      const raw = (yield* sql`
         UPDATE tp_sl_orders
         SET status = 'cancelled'
         WHERE id = ${orderId} AND chain_id = ${chainId} AND user_address = ${userAddress} AND status = 'pending'
-      ` as unknown as { changes: number }
-      if ((result as { changes: number }).changes === 0) {
+      `) as unknown as { changes: number }
+      if (raw.changes === 0) {
         return yield* Effect.fail(new OrderNotFoundError(orderId))
       }
-    }).pipe(
-      Effect.catch((error) =>
-        error instanceof OrderNotFoundError ? Effect.fail(error) : Effect.fail(new OrderUpdateError(String(error))),
-      ),
-    )
+    }) as unknown as Effect.Effect<void, OrderNotFoundError | OrderUpdateError, never>
 
   const executeOrder = (
     orderId: number,
+    chainId: number,
     txHash: string,
     amountOut: string,
-    chainId: number,
   ): Effect.Effect<void, OrderNotFoundError | OrderUpdateError, never> =>
     Effect.gen(function* () {
       const now = Date.now()
-      const result = yield* sql`
+      const raw = (yield* sql`
         UPDATE tp_sl_orders
         SET status = 'executed', executed_at = ${now}, execution_tx_hash = ${txHash}, execution_amount_out = ${amountOut}
         WHERE id = ${orderId} AND chain_id = ${chainId} AND status = 'pending'
-      ` as unknown as { changes: number }
-      if ((result as { changes: number }).changes === 0) {
+      `) as unknown as { changes: number }
+      if (raw.changes === 0) {
         return yield* Effect.fail(new OrderNotFoundError(orderId))
       }
-    }).pipe(
-      Effect.catch((error) =>
-        error instanceof OrderNotFoundError ? Effect.fail(error) : Effect.fail(new OrderUpdateError(String(error))),
-      ),
-    )
+    }) as unknown as Effect.Effect<void, OrderNotFoundError | OrderUpdateError, never>
 
   const expireOrder = (
     orderId: number,
     chainId: number,
   ): Effect.Effect<void, OrderNotFoundError | OrderUpdateError, never> =>
     Effect.gen(function* () {
-      const result = yield* sql`
+      const raw = (yield* sql`
         UPDATE tp_sl_orders
         SET status = 'expired'
         WHERE id = ${orderId} AND chain_id = ${chainId} AND status = 'pending'
-      ` as unknown as { changes: number }
-      if ((result as { changes: number }).changes === 0) {
+      `) as unknown as { changes: number }
+      if (raw.changes === 0) {
         return yield* Effect.fail(new OrderNotFoundError(orderId))
       }
-    }).pipe(
-      Effect.catch((error) =>
-        error instanceof OrderNotFoundError ? Effect.fail(error) : Effect.fail(new OrderUpdateError(String(error))),
-      ),
-    )
+    }) as unknown as Effect.Effect<void, OrderNotFoundError | OrderUpdateError, never>
 
   const getTriggerableOrders = (
     poolId: string,
@@ -329,6 +317,7 @@ const makeTpSlService = Effect.gen(function* () {
 
   const recordKeeperExecution = (input: {
     readonly orderId: number
+    readonly chainId: number
     readonly keeperAddress: string
     readonly txHash: string
     readonly amountOut: string

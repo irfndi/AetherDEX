@@ -25,6 +25,7 @@ type Bindings = {
   WEBSOCKET_HUB: DurableObjectNamespace
   PRICE_QUEUE: Queue
   SETTLE_QUEUE: Queue
+  KEEPER_QUEUE: Queue
   CHAIN_ID: string
   ENVIRONMENT: string
 }

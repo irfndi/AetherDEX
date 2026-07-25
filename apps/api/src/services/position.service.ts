@@ -152,7 +152,7 @@ const makePositionService = Effect.gen(function* () {
       Effect.catch((error) =>
         error instanceof RecordPositionError ? Effect.fail(error) : Effect.fail(new RecordPositionError(String(error))),
       ),
-    )
+    ) as unknown as Effect.Effect<LiquidityPosition | null, RecordPositionError, never>
 
   return {
     listByUser,
