@@ -1,6 +1,7 @@
 import { CurrencyAmount, Percent, Token } from "@uniswap/sdk-core"
 import { FeeAmount, nearestUsableTick, NonfungiblePositionManager, Pool, Position } from "@uniswap/v3-sdk"
 import type { MethodParameters } from "@uniswap/v3-sdk"
+import { encodeFunctionData, type Hex } from "viem"
 
 const BPS = 10_000
 const FULL_POSITION = new Percent(100, 100)
@@ -76,7 +77,8 @@ export type V3RebalancePlan = {
   readonly kind: "v3-rebalance"
   readonly exit: MethodParameters
   readonly remint: V3MintCall
-  readonly execution: "requires-private-batched-submission"
+  readonly execution: "v3-position-manager-multicall"
+  readonly method: MethodParameters
 }
 
 export type V3SingleSidedPlan = {
@@ -158,20 +160,38 @@ export function buildV3RebalancePlan(input: V3RebalanceInput): V3RebalancePlan {
       recipient: input.recipient,
     },
   })
+  const remint = buildV3MintCall({
+    pool: input.pool,
+    tickLower: input.newRange.tickLower,
+    tickUpper: input.newRange.tickUpper,
+    amount0: input.amount0,
+    amount1: input.amount1,
+    slippageBps: input.slippageBps,
+    deadline: input.deadline,
+    recipient: input.recipient,
+  })
+  const method = {
+    calldata: encodeFunctionData({
+      abi: [
+        {
+          name: "multicall",
+          type: "function",
+          stateMutability: "payable",
+          inputs: [{ name: "data", type: "bytes[]" }],
+          outputs: [{ name: "results", type: "bytes[]" }],
+        },
+      ] as const,
+      functionName: "multicall",
+      args: [[exit.calldata as Hex, remint.method.calldata as Hex]],
+    }),
+    value: "0x00",
+  } satisfies MethodParameters
   return {
     kind: "v3-rebalance",
     exit,
-    remint: buildV3MintCall({
-      pool: input.pool,
-      tickLower: input.newRange.tickLower,
-      tickUpper: input.newRange.tickUpper,
-      amount0: input.amount0,
-      amount1: input.amount1,
-      slippageBps: input.slippageBps,
-      deadline: input.deadline,
-      recipient: input.recipient,
-    }),
-    execution: "requires-private-batched-submission",
+    remint,
+    execution: "v3-position-manager-multicall",
+    method,
   }
 }
 
