@@ -17,6 +17,9 @@ library Errors {
     error Unauthorized();
     error InvalidPath();
     error InvalidAction();
+    error InvalidLiquidityDelta();
+    error PositionAlreadyOwned();
+    error UnauthorizedPosition();
     error PoolIndexOutOfBounds();
     /// @notice Oracle has not recorded enough observations to answer the query
     error InsufficientObservations();
