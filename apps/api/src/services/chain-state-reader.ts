@@ -94,6 +94,20 @@ export interface StateViewReaderConfig {
   readonly tickScanEachSide: number
 }
 
+export interface StateViewClient {
+  readonly getChainId: () => Promise<number>
+  readonly getBlockNumber: () => Promise<bigint>
+  readonly getSlot0: (poolId: `0x${string}`, blockNumber: bigint) => Promise<readonly [bigint, number]>
+  readonly getLiquidity: (poolId: `0x${string}`, blockNumber: bigint) => Promise<bigint>
+  readonly getTickLiquidity: (
+    poolId: `0x${string}`,
+    tick: number,
+    blockNumber: bigint,
+  ) => Promise<readonly [bigint, bigint]>
+}
+
+export type StateViewClientFactory = (config: StateViewReaderConfig) => StateViewClient
+
 // ─── Mock (unit tests) ──────────────────────────────────────────────────────
 
 /**
@@ -142,12 +156,50 @@ export function poolIdOf(chainId: number, key: PoolKeyParams): string {
 
 const MAX_SCAN_EACH_SIDE = 512
 
-export const makeStateViewReaderLayer = (config: StateViewReaderConfig): Layer.Layer<ChainStateReader> =>
+const defaultStateViewClientFactory: StateViewClientFactory = (config) => {
+  const client = createPublicClient({ transport: http(config.rpcUrl) })
+  return {
+    getChainId: () => client.getChainId(),
+    getBlockNumber: () => client.getBlockNumber(),
+    getSlot0: async (poolId, blockNumber) => {
+      const [sqrtPriceX96, tick] = await client.readContract({
+        address: config.stateViewAddress,
+        abi: STATE_VIEW_ABI,
+        functionName: "getSlot0",
+        args: [poolId],
+        blockNumber,
+      })
+      return [sqrtPriceX96, Number(tick)]
+    },
+    getLiquidity: (poolId, blockNumber) =>
+      client.readContract({
+        address: config.stateViewAddress,
+        abi: STATE_VIEW_ABI,
+        functionName: "getLiquidity",
+        args: [poolId],
+        blockNumber,
+      }),
+    getTickLiquidity: async (poolId, tick, blockNumber) => {
+      const result = await client.readContract({
+        address: config.stateViewAddress,
+        abi: STATE_VIEW_ABI,
+        functionName: "getTickLiquidity",
+        args: [poolId, tick],
+        blockNumber,
+      })
+      return [result[0], result[1]]
+    },
+  }
+}
+
+export const makeStateViewReaderLayer = (
+  config: StateViewReaderConfig,
+  clientFactory: StateViewClientFactory = defaultStateViewClientFactory,
+): Layer.Layer<ChainStateReader> =>
   Layer.effect(
     ChainStateReader,
     Effect.sync((): ChainStateReader => {
-      const client = createPublicClient({ transport: http(config.rpcUrl) })
-      const stateView = config.stateViewAddress
+      const client = clientFactory(config)
       const scan = Math.min(Math.max(config.tickScanEachSide, 1), MAX_SCAN_EACH_SIDE)
 
       const getPoolState = (key: PoolKeyParams): Effect.Effect<PoolChainState, OnChainReadError> =>
@@ -177,23 +229,7 @@ export const makeStateViewReaderLayer = (config: StateViewReaderConfig): Layer.L
           }
 
           const [slot0, liquidity] = yield* Effect.tryPromise({
-            try: () =>
-              Promise.all([
-                client.readContract({
-                  address: stateView,
-                  abi: STATE_VIEW_ABI,
-                  functionName: "getSlot0",
-                  args: [poolId],
-                  blockNumber,
-                }),
-                client.readContract({
-                  address: stateView,
-                  abi: STATE_VIEW_ABI,
-                  functionName: "getLiquidity",
-                  args: [poolId],
-                  blockNumber,
-                }),
-              ]),
+            try: () => Promise.all([client.getSlot0(poolId, blockNumber), client.getLiquidity(poolId, blockNumber)]),
             catch: (e) =>
               new OnChainReadError("rpc_error", `StateView read failed: ${e instanceof Error ? e.message : String(e)}`),
           })
@@ -220,18 +256,7 @@ export const makeStateViewReaderLayer = (config: StateViewReaderConfig): Layer.L
           // Parallel per-tick `getTickLiquidity` probes (Phase-3 indexer replaces
           // this windowed scan; no multicall3 dependency needed for the probes).
           const tickResults = yield* Effect.tryPromise({
-            try: () =>
-              Promise.all(
-                candidates.map((t) =>
-                  client.readContract({
-                    address: stateView,
-                    abi: STATE_VIEW_ABI,
-                    functionName: "getTickLiquidity",
-                    args: [poolId, t],
-                    blockNumber,
-                  }),
-                ),
-              ),
+            try: () => Promise.all(candidates.map((t) => client.getTickLiquidity(poolId, t, blockNumber))),
             catch: (e) =>
               new OnChainReadError("rpc_error", `Tick scan failed: ${e instanceof Error ? e.message : String(e)}`),
           })
