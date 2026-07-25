@@ -70,9 +70,23 @@ const makePositionService = Effect.gen(function* () {
   ): Effect.Effect<LiquidityPosition[], PositionListError, never> =>
     Effect.gen(function* () {
       const rows = (yield* sql`
-        SELECT liquidity_positions.*, pools.tick_spacing
+        SELECT liquidity_positions.*,
+          pools.tick_spacing,
+          pools.token0_address AS pool_token0_address,
+          pools.token1_address AS pool_token1_address,
+          pools.fee AS pool_fee,
+          pools.hook_address AS pool_hook_address,
+          pools.sqrt_price_x96 AS pool_sqrt_price_x96,
+          pools.current_tick AS pool_current_tick,
+          pools.liquidity AS pool_liquidity,
+          token0.decimals AS pool_token0_decimals,
+          token1.decimals AS pool_token1_decimals
         FROM liquidity_positions
         LEFT JOIN pools ON pools.pool_id = liquidity_positions.pool_id
+        LEFT JOIN tokens token0 ON token0.chain_id = liquidity_positions.chain_id
+          AND token0.address = pools.token0_address
+        LEFT JOIN tokens token1 ON token1.chain_id = liquidity_positions.chain_id
+          AND token1.address = pools.token1_address
         WHERE liquidity_positions.chain_id = ${chainId} AND user_address = ${userAddress} AND is_active = 1
         ORDER BY created_at DESC
         LIMIT ${limit}

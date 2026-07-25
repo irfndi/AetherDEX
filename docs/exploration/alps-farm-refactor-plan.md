@@ -282,6 +282,8 @@ This reframes the existing AGENTS.md "Wave 3+" backlog around the Alpine LP thes
 
 **Phase 1 v3 quote status (2026-07-25):** the v3 liquidity form now uses a configured Uniswap v3 QuoterV2 simulation through `/v3/quote` to search the single-sided split, rather than reusing the V4 quote path or a constant-product approximation. The resulting bounds feed `AetherV3ZapExecutor`, and approvals plus zap submission use the protected RPC. The route stays unavailable until `RPC_URL`, `V3_FACTORY_ADDRESS`, `V3_QUOTER_ADDRESS`, and `VITE_V3_ZAP_EXECUTOR_ADDRESS` are configured for the target chain.
 
+**Phase 1 rebalance status (2026-07-25):** the positions endpoint now returns chain-qualified NFT and pool-state metadata needed by the UI. For v4 receipt positions, the rebalance flow verifies `ownerOf` and `getPosition` directly against the configured `AetherPositionManager`, derives the new range calldata with v4 tick math, obtains ERC20 approvals, and submits the atomic close-and-re-mint through the protected RPC. Legacy router positions, v3 positions, native-currency pools, incomplete index rows, and unconfigured deployments remain explicitly gated; the next required increment is a v3 NFT rebalance executor path plus reconciliation coverage.
+
 ### Phase 2 — V4-native automation (the differentiator)
 
 > **Depends on** the Phase-0 TWAP fix (G2.5) being real and validated, and on the router position-ownership migration (Phase 1).

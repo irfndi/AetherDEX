@@ -1,11 +1,14 @@
 import { useAppKit } from "@reown/appkit/react"
 import { createFileRoute } from "@tanstack/react-router"
 import { type FormEvent, useEffect, useMemo, useState } from "react"
-import { useAccount } from "wagmi"
+import { encodeFunctionData, getAddress, isAddress } from "viem"
+import { useAccount, usePublicClient, useWalletClient } from "wagmi"
 import { Card, CardBody, CardTitle } from "../components/ui/Card"
 import { Input } from "../components/ui/Input"
+import { submitProtectedRawTransaction } from "../lib/protected-submission"
 import {
   buildRebalanceIntent,
+  buildV4RebalanceCall,
   type RebalanceFormValues,
   type RebalancePosition,
   validateRebalanceForm,
@@ -24,11 +27,23 @@ const initialValues: RebalanceFormValues = {
 
 interface IndexedPosition {
   readonly id: number
+  readonly chainId?: number
+  readonly protocol?: "v3" | "v4"
+  readonly tokenId?: string | null
   readonly poolId: string
   readonly tickSpacing: number
   readonly tickLower: number
   readonly tickUpper: number
   readonly liquidity: string
+  readonly poolToken0Address?: string
+  readonly poolToken1Address?: string
+  readonly poolToken0Decimals?: number
+  readonly poolToken1Decimals?: number
+  readonly poolFee?: number
+  readonly poolHookAddress?: string | null
+  readonly poolSqrtPriceX96?: string
+  readonly poolCurrentTick?: number
+  readonly poolLiquidity?: string
 }
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080/api/v1"
@@ -42,6 +57,9 @@ function isIndexedPosition(value: unknown): value is IndexedPosition {
   const position = value
   return (
     typeof position.id === "number" &&
+    (position.protocol === "v3" || position.protocol === "v4") &&
+    (typeof position.tokenId === "string" || position.tokenId === null) &&
+    typeof position.chainId === "number" &&
     typeof position.poolId === "string" &&
     typeof position.tickSpacing === "number" &&
     typeof position.tickLower === "number" &&
@@ -49,6 +67,68 @@ function isIndexedPosition(value: unknown): value is IndexedPosition {
     typeof position.liquidity === "string"
   )
 }
+
+const ERC20_ABI = [
+  {
+    name: "allowance",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "spender", type: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "approve",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "spender", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+] as const
+
+const POSITION_MANAGER_ABI = [
+  {
+    name: "ownerOf",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    name: "getPosition",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [
+      {
+        name: "position",
+        type: "tuple",
+        components: [
+          {
+            name: "poolKey",
+            type: "tuple",
+            components: [
+              { name: "currency0", type: "address" },
+              { name: "currency1", type: "address" },
+              { name: "fee", type: "uint24" },
+              { name: "tickSpacing", type: "int24" },
+              { name: "hooks", type: "address" },
+            ],
+          },
+          { name: "tickLower", type: "int24" },
+          { name: "tickUpper", type: "int24" },
+          { name: "liquidity", type: "uint128" },
+          { name: "salt", type: "bytes32" },
+        ],
+      },
+    ],
+  },
+] as const
 
 function isIndexedPositionResponse(value: unknown): value is { readonly positions: readonly IndexedPosition[] } {
   if (!isRecord(value)) return false
@@ -80,12 +160,16 @@ export function selectIndexedPosition(
 function PositionsPage() {
   const { open } = useAppKit()
   const { address, isConnected } = useAccount()
+  const publicClient = usePublicClient()
+  const { data: walletClient } = useWalletClient()
   const [positions, setPositions] = useState<IndexedPosition[]>([])
   const [isPending, setIsPending] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [selectedPositionId, setSelectedPositionId] = useState<number | null>(null)
   const [values, setValues] = useState<RebalanceFormValues>(initialValues)
   const [submitted, setSubmitted] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [transactionHash, setTransactionHash] = useState<`0x${string}` | null>(null)
   const indexedSelectedPosition = selectIndexedPosition(positions, selectedPositionId)
   const selectedPosition = indexedSelectedPosition ? toRebalancePosition(indexedSelectedPosition) : null
   const validation = useMemo(
@@ -142,12 +226,144 @@ function PositionsPage() {
 
   const updateValue = (field: keyof RebalanceFormValues, value: string) => {
     setSubmitted(false)
+    setTransactionHash(null)
     setValues((current) => ({ ...current, [field]: value }))
   }
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setSubmitted(true)
+    setTransactionHash(null)
+    if (!intent || !indexedSelectedPosition) return
+    if (indexedSelectedPosition.protocol !== "v4" || indexedSelectedPosition.chainId === undefined) return
+    if (!address || !walletClient || !publicClient) return
+    const managerAddress = import.meta.env.VITE_POSITION_MANAGER_ADDRESS
+    const privateRpcUrl = import.meta.env.VITE_PRIVATE_RPC_URL
+    if (!managerAddress || !isAddress(managerAddress)) {
+      setErrorMessage("V4 position manager is not configured")
+      return
+    }
+    if (!privateRpcUrl) {
+      setErrorMessage("Protected submission is not configured")
+      return
+    }
+    if (
+      !indexedSelectedPosition.tokenId ||
+      !indexedSelectedPosition.poolToken0Address ||
+      !indexedSelectedPosition.poolToken1Address ||
+      indexedSelectedPosition.poolToken0Decimals === undefined ||
+      indexedSelectedPosition.poolToken1Decimals === undefined ||
+      indexedSelectedPosition.poolFee === undefined ||
+      !indexedSelectedPosition.poolHookAddress ||
+      !indexedSelectedPosition.poolSqrtPriceX96 ||
+      indexedSelectedPosition.poolCurrentTick === undefined ||
+      !indexedSelectedPosition.poolLiquidity
+    ) {
+      setErrorMessage("Indexed position is missing pool metadata; rebalance is unavailable")
+      return
+    }
+    if (indexedSelectedPosition.poolHookAddress === "0x0000000000000000000000000000000000000000") {
+      setErrorMessage("V4 pool hook metadata is invalid")
+      return
+    }
+    setIsSubmitting(true)
+    setErrorMessage(null)
+    try {
+      const tokenId = BigInt(indexedSelectedPosition.tokenId)
+      const owner = await publicClient.readContract({
+        address: getAddress(managerAddress),
+        abi: POSITION_MANAGER_ABI,
+        functionName: "ownerOf",
+        args: [tokenId],
+      })
+      if (owner.toLowerCase() !== address.toLowerCase()) throw new Error("Connected wallet does not own this position")
+      const onchainPosition = await publicClient.readContract({
+        address: getAddress(managerAddress),
+        abi: POSITION_MANAGER_ABI,
+        functionName: "getPosition",
+        args: [tokenId],
+      })
+      if (onchainPosition.liquidity === 0n) throw new Error("Position has no active liquidity")
+      if (
+        onchainPosition.poolKey.currency0 === "0x0000000000000000000000000000000000000000" ||
+        onchainPosition.poolKey.currency1 === "0x0000000000000000000000000000000000000000"
+      ) {
+        throw new Error("Native-currency v4 rebalance requires payable settlement support")
+      }
+      if (
+        onchainPosition.poolKey.currency0.toLowerCase() !== indexedSelectedPosition.poolToken0Address.toLowerCase() ||
+        onchainPosition.poolKey.currency1.toLowerCase() !== indexedSelectedPosition.poolToken1Address.toLowerCase() ||
+        onchainPosition.poolKey.fee !== indexedSelectedPosition.poolFee ||
+        onchainPosition.poolKey.tickSpacing !== indexedSelectedPosition.tickSpacing ||
+        onchainPosition.poolKey.hooks.toLowerCase() !== indexedSelectedPosition.poolHookAddress.toLowerCase()
+      ) {
+        throw new Error("Indexed pool metadata does not match the on-chain position")
+      }
+      const call = buildV4RebalanceCall({
+        managerAddress: getAddress(managerAddress),
+        pool: {
+          chainId: indexedSelectedPosition.chainId,
+          token0: getAddress(onchainPosition.poolKey.currency0),
+          token1: getAddress(onchainPosition.poolKey.currency1),
+          token0Decimals: indexedSelectedPosition.poolToken0Decimals,
+          token1Decimals: indexedSelectedPosition.poolToken1Decimals,
+          fee: onchainPosition.poolKey.fee,
+          tickSpacing: onchainPosition.poolKey.tickSpacing,
+          hooks: getAddress(onchainPosition.poolKey.hooks),
+          sqrtPriceX96: BigInt(indexedSelectedPosition.poolSqrtPriceX96),
+          poolLiquidity: BigInt(indexedSelectedPosition.poolLiquidity),
+          currentTick: indexedSelectedPosition.poolCurrentTick,
+        },
+        tokenId,
+        currentLiquidity: onchainPosition.liquidity,
+        currentRange: { tickLower: onchainPosition.tickLower, tickUpper: onchainPosition.tickUpper },
+        newRange: { tickLower: intent.newRange.lowerTick, tickUpper: intent.newRange.upperTick },
+        slippageBps: intent.slippageBps,
+        deadline: BigInt(Math.floor(Date.now() / 1000) + intent.deadlineSeconds),
+      })
+      const tokenApprovals = [
+        { address: getAddress(onchainPosition.poolKey.currency0), amount: call.args[0].amount0Max },
+        { address: getAddress(onchainPosition.poolKey.currency1), amount: call.args[0].amount1Max },
+      ]
+      for (const approval of tokenApprovals) {
+        const allowance = await publicClient.readContract({
+          address: approval.address,
+          abi: ERC20_ABI,
+          functionName: "allowance",
+          args: [address, getAddress(managerAddress)],
+        })
+        if (allowance >= approval.amount) continue
+        const preparedApproval = await walletClient.prepareTransactionRequest({
+          account: address,
+          to: approval.address,
+          data: encodeFunctionData({
+            abi: ERC20_ABI,
+            functionName: "approve",
+            args: [getAddress(managerAddress), approval.amount],
+          }),
+          value: 0n,
+        })
+        const signedApproval = await walletClient.signTransaction(preparedApproval)
+        const approvalHash = await submitProtectedRawTransaction({
+          rpcUrl: privateRpcUrl,
+          signedTransaction: signedApproval,
+        })
+        await publicClient.waitForTransactionReceipt({ hash: approvalHash })
+      }
+      const prepared = await walletClient.prepareTransactionRequest({
+        account: address,
+        to: getAddress(managerAddress),
+        data: call.calldata,
+        value: 0n,
+      })
+      const signed = await walletClient.signTransaction(prepared)
+      const txHash = await submitProtectedRawTransaction({ rpcUrl: privateRpcUrl, signedTransaction: signed })
+      setTransactionHash(txHash)
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to submit rebalance")
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   if (!isConnected) {
@@ -255,7 +471,8 @@ function PositionsPage() {
           <CardBody>
             <CardTitle>New range and protection</CardTitle>
             <p className="mb-2 text-sm text-base-content/60">
-              Values are collected into an intent only. No calldata is created in this phase.
+              V4 positions are verified against the receipt manager before protected submission. Legacy and incomplete
+              indexed positions remain intent-only.
             </p>
             <form className="space-y-4" onSubmit={handleSubmit}>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -302,13 +519,19 @@ function PositionsPage() {
                   onChange={(event) => updateValue("deadline", event.target.value)}
                 />
               </div>
-              <button type="submit" className="btn btn-primary w-full" disabled={!validation.valid}>
-                Prepare rebalance intent
+              <button type="submit" className="btn btn-primary w-full" disabled={!validation.valid || isSubmitting}>
+                {isSubmitting ? "Submitting rebalance…" : "Rebalance position"}
               </button>
-              {submitted && intent ? (
+              {submitted && intent && !transactionHash ? (
                 <p className="text-sm text-warning" role="status">
-                  Intent prepared locally. Execution remains unavailable until deployed manager/router configuration
-                  exists.
+                  {indexedSelectedPosition?.protocol === "v4"
+                    ? "The manager will be checked on-chain before signing."
+                    : "V3 rebalance remains intent-only until its NFT state and protected execution path are wired."}
+                </p>
+              ) : null}
+              {transactionHash ? (
+                <p className="text-sm text-success" role="status">
+                  Rebalance submitted: <span className="font-mono">{transactionHash}</span>
                 </p>
               ) : null}
             </form>
@@ -319,10 +542,11 @@ function PositionsPage() {
           <CardBody>
             <div className="flex items-center justify-between gap-3">
               <CardTitle>Execution sequence</CardTitle>
-              <span className="badge badge-warning badge-outline">Unavailable</span>
+              <span className="badge badge-success badge-outline">Protected</span>
             </div>
             <p className="mt-2 text-sm text-base-content/60">
-              The builder preserves ordering and user constraints, but does not submit a transaction.
+              V4 submission verifies NFT ownership and the manager’s current position, then signs approvals and the
+              atomic close-and-re-mint through the configured private RPC.
             </p>
             <ol className="mt-5 space-y-4">
               {[
@@ -339,10 +563,10 @@ function PositionsPage() {
                 </li>
               ))}
             </ol>
-            <div className="alert alert-warning mt-6 items-start text-sm">
+            <div className="alert alert-info mt-6 items-start text-sm">
               <span>
-                Execution unavailable until deployed manager/router config exists. A transaction hash or success state
-                will not be shown here.
+                Legacy positions, missing pool metadata, native-currency pools, and unconfigured deployments remain
+                gated. A successful v4 submission shows its transaction hash above.
               </span>
             </div>
             {intent ? (

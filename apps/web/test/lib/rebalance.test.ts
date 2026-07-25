@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   buildRebalanceManagerCall,
   buildRebalanceIntent,
+  buildV4RebalanceCall,
   validateRebalanceForm,
   type RebalanceFormValues,
   type RebalancePosition,
@@ -27,6 +28,38 @@ const validValues: RebalanceFormValues = {
 }
 
 describe("rebalance intent helpers", () => {
+  it("builds guarded native-v4 rebalance calldata from pool state", () => {
+    const call = buildV4RebalanceCall({
+      managerAddress: "0x3333333333333333333333333333333333333333",
+      pool: {
+        chainId: 11155111,
+        token0: "0x1111111111111111111111111111111111111111",
+        token1: "0x2222222222222222222222222222222222222222",
+        token0Decimals: 18,
+        token1Decimals: 18,
+        fee: 3000,
+        tickSpacing: 60,
+        hooks: "0x3333333333333333333333333333333333333333",
+        sqrtPriceX96: 79228162514264337593543950336n,
+        poolLiquidity: 1_000_000_000_000n,
+        currentTick: 0,
+      },
+      tokenId: 1842n,
+      currentLiquidity: 12_480n,
+      currentRange: { tickLower: -600, tickUpper: 600 },
+      newRange: { tickLower: -1200, tickUpper: 1200 },
+      slippageBps: 50,
+      deadline: 2_000_000_000n,
+    })
+
+    expect(call.address).toBe("0x3333333333333333333333333333333333333333")
+    expect(call.functionName).toBe("rebalancePosition")
+    expect(call.calldata).toMatch(/^0x[0-9a-f]+$/)
+    expect(call.args[0].amount0Min).toBeGreaterThan(0n)
+    expect(call.args[0].amount1Min).toBeGreaterThan(0n)
+    expect(call.args[0].liquidity).toBeGreaterThan(0n)
+  })
+
   it("builds a typed manager call without inventing a position key", () => {
     const managerAddress = "0x3333333333333333333333333333333333333333" as const
     const params = {
