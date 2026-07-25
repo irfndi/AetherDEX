@@ -6,7 +6,10 @@
 
 import { Context, Effect, Layer } from "effect"
 import { SqlClient } from "effect/unstable/sql"
+import { listLiquidityEvents, updateLiquidityPosition } from "../db/queries"
 import { type LiquidityPosition, rowToLiquidityPosition } from "../db/schema"
+import type { V3LiquidityEvent } from "./v3-liquidity-events"
+import { reduceV3PositionEvents } from "./v3-position-reducer"
 
 // --- Types ---
 
@@ -44,6 +47,11 @@ export interface PositionService {
     chainId?: number,
   ) => Effect.Effect<LiquidityPosition[], PositionListError>
   readonly recordPosition: (input: RecordPositionInput) => Effect.Effect<number, RecordPositionError>
+  readonly reconcileV3Position: (
+    userAddress: string,
+    tokenId: string,
+    chainId: number,
+  ) => Effect.Effect<LiquidityPosition | null, RecordPositionError>
 }
 
 // --- Tag ---
@@ -95,9 +103,61 @@ const makePositionService = Effect.gen(function* () {
       ),
     )
 
+  const reconcileV3Position = (
+    userAddress: string,
+    tokenId: string,
+    chainId: number,
+  ): Effect.Effect<LiquidityPosition | null, RecordPositionError, never> =>
+    Effect.gen(function* () {
+      const events = yield* listLiquidityEvents(chainId, "v3", tokenId)
+      const normalized: V3LiquidityEvent[] = events.map((event) => ({
+        protocol: "v3",
+        eventType: event.eventType,
+        txHash: event.txHash as `0x${string}`,
+        logIndex: event.logIndex,
+        blockNumber: event.blockNumber,
+        poolId: event.poolId,
+        tokenId: event.tokenId,
+        ownerAddress: event.ownerAddress as `0x${string}` | null,
+        tickLower: event.tickLower,
+        tickUpper: event.tickUpper,
+        liquidityDelta: event.liquidityDelta,
+        amount0: event.amount0,
+        amount1: event.amount1,
+      }))
+      const state = reduceV3PositionEvents(normalized).get(tokenId)
+      if (!state || state.ownerAddress?.toLowerCase() !== userAddress.toLowerCase()) return null
+      const positionId = yield* updateLiquidityPosition({
+        chainId,
+        tokenId,
+        ownerAddress: userAddress,
+        liquidity: state.liquidity.toString(),
+        amount0: state.amount0.toString(),
+        amount1: state.amount1.toString(),
+        fees0: state.fees0.toString(),
+        fees1: state.fees1.toString(),
+        costBasis0: state.costBasis0.toString(),
+        costBasis1: state.costBasis1.toString(),
+        isActive: state.isActive,
+      })
+      if (positionId === null) return null
+      const rows = yield* sql`
+        SELECT liquidity_positions.*, pools.tick_spacing
+        FROM liquidity_positions LEFT JOIN pools ON pools.pool_id = liquidity_positions.pool_id
+        WHERE liquidity_positions.id = ${positionId}
+      `
+      const row = rows[0]
+      return row ? rowToLiquidityPosition(row as Record<string, unknown>) : null
+    }).pipe(
+      Effect.catch((error) =>
+        error instanceof RecordPositionError ? Effect.fail(error) : Effect.fail(new RecordPositionError(String(error))),
+      ),
+    )
+
   return {
     listByUser,
     recordPosition,
+    reconcileV3Position,
   }
 })
 

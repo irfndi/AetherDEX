@@ -9,6 +9,8 @@ export type V3PositionState = {
   readonly amount1: bigint
   readonly fees0: bigint
   readonly fees1: bigint
+  readonly costBasis0: bigint
+  readonly costBasis1: bigint
 }
 
 export function reduceV3PositionEvents(events: readonly V3LiquidityEvent[]): ReadonlyMap<string, V3PositionState> {
@@ -29,6 +31,8 @@ export function reduceV3PositionEvents(events: readonly V3LiquidityEvent[]): Rea
         amount1: 0n,
         fees0: 0n,
         fees1: 0n,
+        costBasis0: 0n,
+        costBasis1: 0n,
       } satisfies V3PositionState)
     const next = applyEvent(previous, event)
     if (next !== null) states.set(event.tokenId, next)
@@ -56,6 +60,8 @@ function applyEvent(state: V3PositionState, event: V3LiquidityEvent): V3Position
       liquidity: state.liquidity + deltaLiquidity,
       amount0: state.amount0 + delta0,
       amount1: state.amount1 + delta1,
+      costBasis0: state.costBasis0 + delta0,
+      costBasis1: state.costBasis1 + delta1,
     }
   }
   if (event.eventType === "decrease") {

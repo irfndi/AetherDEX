@@ -20,6 +20,8 @@ export interface PortfolioPosition {
   amount1: string
   feesEarnedToken0: string
   feesEarnedToken1: string
+  costBasisToken0?: string
+  costBasisToken1?: string
 }
 
 type PortfolioState = "disconnected" | "loading" | "error" | "empty" | "ready"
@@ -258,10 +260,15 @@ function PositionCard({ position }: { position: PortfolioPosition }) {
         </div>
 
         <div className="mt-4 rounded-box bg-base-300/50 p-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-base-content/60">PnL / profit</p>
-          <p className="mt-1 text-sm font-medium">Awaiting indexed cost basis</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-base-content/60">
+            Indexed cost basis · raw units
+          </p>
+          <div className="mt-2 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+            <span>Token 0: {formatPositionValue(position.costBasisToken0 ?? "")}</span>
+            <span>Token 1: {formatPositionValue(position.costBasisToken1 ?? "")}</span>
+          </div>
           <p className="mt-1 text-xs text-base-content/60">
-            Profit is not calculated until the index has cost-basis history for this position.
+            USD PnL is calculated after price snapshots are available for this indexed position.
           </p>
         </div>
       </CardBody>

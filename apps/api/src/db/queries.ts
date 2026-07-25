@@ -7,6 +7,7 @@ import { SqlClient } from "effect/unstable/sql"
 import {
   type LiquidityEvent,
   type Pool,
+  rowToLiquidityEvent,
   rowToPool,
   rowToToken,
   rowToTransaction,
@@ -169,4 +170,43 @@ export const insertLiquidityEvent = (event: Omit<LiquidityEvent, "id" | "created
         ${event.tickLower}, ${event.tickUpper}, ${event.liquidityDelta}, ${event.amount0}, ${event.amount1}, ${Date.now()})
       ON CONFLICT(chain_id, tx_hash, log_index) DO NOTHING
     `
+  })
+
+export const listLiquidityEvents = (chainId: number, protocol: "v3" | "v4", tokenId: string) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    const rows = yield* sql`
+      SELECT * FROM liquidity_events
+      WHERE chain_id = ${chainId} AND protocol = ${protocol} AND token_id = ${tokenId}
+      ORDER BY block_number ASC, log_index ASC
+    `
+    return rows.map((row) => rowToLiquidityEvent(row as Record<string, unknown>))
+  })
+
+export const updateLiquidityPosition = (input: {
+  chainId: number
+  tokenId: string
+  ownerAddress: string
+  liquidity: string
+  amount0: string
+  amount1: string
+  fees0: string
+  fees1: string
+  costBasis0: string
+  costBasis1: string
+  isActive: boolean
+}) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    const rows = yield* sql`
+      UPDATE liquidity_positions
+      SET user_address = ${input.ownerAddress}, liquidity = ${input.liquidity}, amount0 = ${input.amount0},
+          amount1 = ${input.amount1}, fees_earned_token0 = ${input.fees0}, fees_earned_token1 = ${input.fees1},
+          cost_basis_token0 = ${input.costBasis0}, cost_basis_token1 = ${input.costBasis1},
+          is_active = ${input.isActive ? 1 : 0}, updated_at = ${Date.now()}
+      WHERE chain_id = ${input.chainId} AND protocol = 'v3' AND token_id = ${input.tokenId}
+      RETURNING id
+    `
+    const id = rows[0]?.id
+    return typeof id === "number" ? id : null
   })
