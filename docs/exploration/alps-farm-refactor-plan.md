@@ -284,6 +284,8 @@ This reframes the existing AGENTS.md "Wave 3+" backlog around the Alpine LP thes
 
 **Phase 1 rebalance status (2026-07-25):** the positions endpoint now returns chain-qualified NFT and pool-state metadata needed by the UI. For v4 receipt positions, the rebalance flow verifies `ownerOf` and `getPosition` directly against the configured `AetherPositionManager`; for v3 positions, it verifies `ownerOf` and `positions` against the canonical `NonfungiblePositionManager`. Both paths derive guarded SDK calldata, obtain ERC20 approvals for remint inputs, and submit the atomic close-and-re-mint through the protected RPC. The API now also exposes authenticated `POST /positions/v4/:tokenId/reconcile`, which reads the v4 manager state from the configured RPC and updates the chain-scoped D1 row only when the authenticated wallet owns the NFT. Legacy router positions, native-currency pools, incomplete index rows, and unconfigured deployments remain explicitly gated.
 
+**Phase 1 security blocker (2026-07-25):** authenticated sessions now reject malformed, expired, or future-dated KV records, and authentication failures are sanitized at the HTTP boundary. SIWE nonce storage remains KV-backed; because KV has no atomic compare-and-delete primitive, concurrent verification can still race between nonce read and deletion. A single-use nonce store with an atomic consume operation (D1 transaction or per-nonce Durable Object) is required before production authentication and is tracked as a pre-mainnet blocker.
+
 ### Phase 2 — V4-native automation (the differentiator)
 
 > **Depends on** the Phase-0 TWAP fix (G2.5) being real and validated, and on the router position-ownership migration (Phase 1).

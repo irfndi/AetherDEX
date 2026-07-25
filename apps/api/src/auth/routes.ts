@@ -48,7 +48,7 @@ auth.post("/verify", async (c) => {
   ).catch((err) => ({ error: String(err) }))
 
   if ("error" in result) {
-    return c.json({ error: result.error }, 401)
+    return c.json({ error: "Authentication failed" }, 401)
   }
 
   return c.json({

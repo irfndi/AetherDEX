@@ -62,4 +62,23 @@ describe("POST /api/v1/positions/v4/:tokenId/reconcile", () => {
     expect(response.status).toBe(400)
     await expect(response.json()).resolves.toEqual({ error: "Invalid token id" })
   })
+
+  it("rejects an expired session before reading chain state", async () => {
+    await env.CACHE.put(
+      "session:reconcile-expired-test",
+      JSON.stringify({
+        userAddress: "0x1111111111111111111111111111111111111111",
+        issuedAt: Date.now() - 120_000,
+        expiresAt: Date.now() - 60_000,
+      }),
+    )
+
+    const response = await SELF.fetch("http://fake-host/api/v1/positions/v4/1/reconcile", {
+      method: "POST",
+      headers: { Authorization: "Bearer reconcile-expired-test" },
+    })
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toEqual({ error: "Authentication required" })
+  })
 })

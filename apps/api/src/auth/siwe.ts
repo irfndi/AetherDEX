@@ -103,7 +103,7 @@ export function verifyAndCreateSession(
           message: request.message,
           signature: request.signature as `0x${string}`,
         }),
-      catch: (e) => new Error(`Signature verification failed: ${String(e)}`),
+      catch: () => new Error("Signature verification failed"),
     })
 
     if (!valid) {
