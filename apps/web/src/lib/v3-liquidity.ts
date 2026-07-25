@@ -88,6 +88,33 @@ export type V3SingleSidedPlan = {
   readonly execution: "requires-private-batched-submission"
 }
 
+export type V3SingleSidedZapInput = {
+  readonly executor: `0x${string}`
+  readonly pool: V3PoolContext
+  readonly tokenIn: `0x${string}`
+  readonly amountIn: bigint
+  readonly swapAmountIn: bigint
+  readonly minSwapAmountOut: bigint
+  readonly amount0Min: bigint
+  readonly amount1Min: bigint
+  readonly sqrtPriceLimitX96?: bigint
+  readonly tickLower: number
+  readonly tickUpper: number
+  readonly slippageBps: number
+  readonly deadline: bigint
+}
+
+export type V3SingleSidedZapCall = {
+  readonly kind: "v3-single-sided-zap"
+  readonly execution: "v3-zap-executor"
+  readonly method: MethodParameters
+  readonly amountIn: bigint
+  readonly swapAmountIn: bigint
+  readonly minSwapAmountOut: bigint
+  readonly tickLower: number
+  readonly tickUpper: number
+}
+
 export function buildV3PoolContext(input: V3PoolInput): V3PoolContext {
   const token0 = new Token(input.chainId, input.token0, input.token0Decimals)
   const token1 = new Token(input.chainId, input.token1, input.token1Decimals)
@@ -204,6 +231,89 @@ export function buildV3SingleSidedPlan(input: {
     swap: input.swap,
     mint: buildV3MintCall(input.mint),
     execution: "requires-private-batched-submission",
+  }
+}
+
+export function buildV3SingleSidedZapCall(input: V3SingleSidedZapInput): V3SingleSidedZapCall {
+  validateRange(input.tickLower, input.tickUpper, input.pool.pool.tickSpacing)
+  if (input.executor === "0x0000000000000000000000000000000000000000") {
+    throw new Error("V3 zap executor address is required")
+  }
+  if (input.tokenIn !== input.pool.token0.address && input.tokenIn !== input.pool.token1.address) {
+    throw new Error("V3 zap token must belong to the selected pool")
+  }
+  if (input.amountIn <= 0n || input.swapAmountIn <= 0n || input.swapAmountIn >= input.amountIn) {
+    throw new Error("V3 zap amounts are invalid")
+  }
+  if (input.minSwapAmountOut <= 0n) throw new Error("V3 zap minimum output must be positive")
+  const token0 = input.pool.token0.address
+  const token1 = input.pool.token1.address
+  return {
+    kind: "v3-single-sided-zap",
+    execution: "v3-zap-executor",
+    method: {
+      calldata: encodeFunctionData({
+        abi: [
+          {
+            name: "zap",
+            type: "function",
+            stateMutability: "nonpayable",
+            inputs: [
+              {
+                name: "params",
+                type: "tuple",
+                components: [
+                  { name: "token0", type: "address" },
+                  { name: "token1", type: "address" },
+                  { name: "tokenIn", type: "address" },
+                  { name: "fee", type: "uint24" },
+                  { name: "tickLower", type: "int24" },
+                  { name: "tickUpper", type: "int24" },
+                  { name: "amountIn", type: "uint256" },
+                  { name: "swapAmountIn", type: "uint256" },
+                  { name: "minSwapAmountOut", type: "uint256" },
+                  { name: "amount0Min", type: "uint256" },
+                  { name: "amount1Min", type: "uint256" },
+                  { name: "sqrtPriceLimitX96", type: "uint160" },
+                  { name: "deadline", type: "uint256" },
+                ],
+              },
+            ],
+            outputs: [
+              { name: "tokenId", type: "uint256" },
+              { name: "liquidity", type: "uint128" },
+              { name: "amount0", type: "uint256" },
+              { name: "amount1", type: "uint256" },
+              { name: "amountOut", type: "uint256" },
+            ],
+          },
+        ] as const,
+        functionName: "zap",
+        args: [
+          {
+            token0,
+            token1,
+            tokenIn: input.tokenIn,
+            fee: input.pool.pool.fee,
+            tickLower: input.tickLower,
+            tickUpper: input.tickUpper,
+            amountIn: input.amountIn,
+            swapAmountIn: input.swapAmountIn,
+            minSwapAmountOut: input.minSwapAmountOut,
+            amount0Min: input.amount0Min,
+            amount1Min: input.amount1Min,
+            sqrtPriceLimitX96: input.sqrtPriceLimitX96 ?? 0n,
+            deadline: input.deadline,
+          },
+        ],
+      }),
+      value: "0x00",
+    },
+    amountIn: input.amountIn,
+    swapAmountIn: input.swapAmountIn,
+    minSwapAmountOut: input.minSwapAmountOut,
+    tickLower: input.tickLower,
+    tickUpper: input.tickUpper,
   }
 }
 
