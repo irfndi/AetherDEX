@@ -29,6 +29,7 @@ describe("POST /api/v1/positions/v4/:tokenId/reconcile", () => {
         userAddress: "0x1111111111111111111111111111111111111111",
         issuedAt: Date.now(),
         expiresAt: Date.now() + 60_000,
+        chainId: 11155111,
       }),
     )
 
@@ -48,6 +49,7 @@ describe("POST /api/v1/positions/v4/:tokenId/reconcile", () => {
         userAddress: "0x1111111111111111111111111111111111111111",
         issuedAt: Date.now(),
         expiresAt: Date.now() + 60_000,
+        chainId: 11155111,
       }),
     )
 
@@ -70,12 +72,33 @@ describe("POST /api/v1/positions/v4/:tokenId/reconcile", () => {
         userAddress: "0x1111111111111111111111111111111111111111",
         issuedAt: Date.now() - 120_000,
         expiresAt: Date.now() - 60_000,
+        chainId: 11155111,
       }),
     )
 
     const response = await SELF.fetch("http://fake-host/api/v1/positions/v4/1/reconcile", {
       method: "POST",
       headers: { Authorization: "Bearer reconcile-expired-test" },
+    })
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toEqual({ error: "Authentication required" })
+  })
+
+  it("rejects a session bound to another chain", async () => {
+    await env.CACHE.put(
+      "session:reconcile-wrong-chain-test",
+      JSON.stringify({
+        userAddress: "0x1111111111111111111111111111111111111111",
+        issuedAt: Date.now(),
+        expiresAt: Date.now() + 60_000,
+        chainId: 1,
+      }),
+    )
+
+    const response = await SELF.fetch("http://fake-host/api/v1/positions/v4/1/reconcile", {
+      method: "POST",
+      headers: { Authorization: "Bearer reconcile-wrong-chain-test" },
     })
 
     expect(response.status).toBe(401)
