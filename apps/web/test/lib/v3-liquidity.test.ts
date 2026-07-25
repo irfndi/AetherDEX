@@ -81,7 +81,8 @@ describe("v3 liquidity adapter", () => {
     expect(plan.kind).toBe("v3-rebalance")
     expect(plan.exit.calldata).toMatch(/^0x[0-9a-f]+$/)
     expect(plan.remint.method.calldata).toMatch(/^0x[0-9a-f]+$/)
-    expect(plan.execution).toBe("requires-private-batched-submission")
+    expect(plan.execution).toBe("v3-position-manager-multicall")
+    expect(plan.method.calldata).toMatch(/^0xac9650d8/)
   })
 
   it("keeps single-sided swap and mint under a private batch gate", () => {
