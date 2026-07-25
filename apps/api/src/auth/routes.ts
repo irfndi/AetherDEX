@@ -5,6 +5,7 @@ import { type AuthVariables, authMiddleware, requireAuth } from "./middleware"
 import { deleteSession, issueNonce, verifyAndCreateSession } from "./siwe"
 
 type AuthBindings = Env & {
+  SIWE_NONCE: DurableObjectNamespace
   SIWE_DOMAIN: string
   SIWE_URI: string
 }
@@ -14,9 +15,7 @@ const auth = new Hono<{ Bindings: AuthBindings; Variables: AuthVariables }>()
 auth.use("*", authMiddleware)
 
 auth.post("/nonce", async (c) => {
-  const kv = (c.env as { CACHE: KVNamespace }).CACHE
-
-  const result = await Effect.runPromise(issueNonce(kv).pipe(Effect.provide(KVCacheService.layer))).catch((err) => ({
+  const result = await Effect.runPromise(issueNonce(c.env.SIWE_NONCE)).catch((err) => ({
     error: String(err),
   }))
 
@@ -37,6 +36,7 @@ auth.post("/verify", async (c) => {
 
   const result = await Effect.runPromise(
     verifyAndCreateSession(
+      c.env.SIWE_NONCE,
       kv,
       { message: body.message, signature: body.signature },
       {

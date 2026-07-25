@@ -1,8 +1,8 @@
 /**
  * AetherDEX SIWE (Sign-In with Ethereum) authentication
  *
- * Nonces stored in KV with 5-min TTL, sessions with 24-hour TTL.
- * Composes with KVCacheService for all KV operations.
+ * Nonces are consumed by one Durable Object per nonce; sessions use KV with 24-hour TTL.
+ * Composes with KVCacheService for session operations.
  */
 
 import { randomBytes } from "node:crypto"
@@ -36,14 +36,21 @@ export interface AuthSessionToken {
 
 export type AuthSession = SessionEntry
 
-export function issueNonce(kv: KVNamespace): Effect.Effect<NonceResponse, Error, KVCacheService> {
+export function issueNonce(nonceNamespace: DurableObjectNamespace): Effect.Effect<NonceResponse, Error> {
   return Effect.gen(function* () {
     const nonce = randomBytes(16).toString("hex")
     const issuedAt = Date.now()
     const expiresAt = issuedAt + 5 * 60 * 1000
 
-    const svc = yield* KVCacheService
-    yield* svc.putSiweNonce(kv, { nonce, issuedAt, expiresAt }, 300)
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        nonceNamespace.get(nonceNamespace.idFromName(nonce)).fetch("https://siwe-nonce/issue", {
+          method: "POST",
+          body: JSON.stringify({ nonce, expiresAt }),
+        }),
+      catch: () => new Error("Nonce issuance failed"),
+    })
+    if (!response.ok) return yield* Effect.fail(new Error("Nonce issuance failed"))
 
     return {
       nonce,
@@ -54,6 +61,7 @@ export function issueNonce(kv: KVNamespace): Effect.Effect<NonceResponse, Error,
 }
 
 export function verifyAndCreateSession(
+  nonceNamespace: DurableObjectNamespace,
   kv: KVNamespace,
   request: VerifyRequest,
   config: SiweVerificationConfig,
@@ -90,12 +98,6 @@ export function verifyAndCreateSession(
       return yield* Effect.fail(new Error("SIWE message is not yet valid"))
     }
 
-    const svc = yield* KVCacheService
-    const nonceEntry = yield* svc.getSiweNonce(kv, siweParsed.nonce)
-    if (nonceEntry._tag === "None") {
-      return yield* Effect.fail(new Error("Invalid or expired nonce"))
-    }
-
     const valid = yield* Effect.tryPromise({
       try: () =>
         verifyMessage({
@@ -110,7 +112,18 @@ export function verifyAndCreateSession(
       return yield* Effect.fail(new Error("Invalid signature"))
     }
 
-    yield* svc.deleteSiweNonce(kv, siweParsed.nonce)
+    const consumed = yield* Effect.tryPromise({
+      try: async () => {
+        const response = await nonceNamespace
+          .get(nonceNamespace.idFromName(siweParsed.nonce))
+          .fetch("https://siwe-nonce/consume", { method: "POST" })
+        if (!response.ok) return false
+        const result = (await response.json()) as { readonly consumed?: boolean }
+        return result.consumed === true
+      },
+      catch: () => new Error("Nonce consumption failed"),
+    })
+    if (!consumed) return yield* Effect.fail(new Error("Invalid or expired nonce"))
 
     const token = randomBytes(32).toString("hex")
     const issuedAt = Date.now()
@@ -123,6 +136,7 @@ export function verifyAndCreateSession(
       ...(siweParsed.chainId ? { chainId: siweParsed.chainId } : {}),
     }
 
+    const svc = yield* KVCacheService
     yield* svc.putSession(kv, token, session, 86_400)
 
     return { token, userAddress: siweParsed.address, expiresAt }

@@ -10,7 +10,7 @@ import { cors } from "hono/cors"
 import { logger } from "hono/logger"
 import { type AuthVariables, authMiddleware } from "./auth/middleware"
 import { auth } from "./auth/routes"
-import { OrderBookDO, WebSocketHubDO } from "./durable-objects"
+import { OrderBookDO, SiweNonceDO, WebSocketHubDO } from "./durable-objects"
 import { pools } from "./routes/pools"
 import { positions } from "./routes/positions"
 import { priceGuard } from "./routes/price-guard"
@@ -26,6 +26,7 @@ type Bindings = {
   STORAGE: R2Bucket
   ORDER_BOOK: DurableObjectNamespace
   WEBSOCKET_HUB: DurableObjectNamespace
+  SIWE_NONCE: DurableObjectNamespace
   PRICE_QUEUE: Queue
   SETTLE_QUEUE: Queue
   CHAIN_ID: string
@@ -170,7 +171,7 @@ app.onError((err, c) => {
 
 // ─── Durable Object classes — imported from dedicated modules ─────────────────
 
-export { OrderBookDO, WebSocketHubDO }
+export { OrderBookDO, SiweNonceDO, WebSocketHubDO }
 
 // ─── Worker entry — combined Hono + DOs + Queue + Cron ────────────────────────
 

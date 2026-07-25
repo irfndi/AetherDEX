@@ -32,6 +32,7 @@ describe("SIWE verification binding", () => {
 
     const error = await Effect.runPromise(
       verifyAndCreateSession(
+        env.SIWE_NONCE,
         env.CACHE,
         { message: makeMessage({ domain: "attacker.example" }), signature: "0x" },
         config,
@@ -48,10 +49,12 @@ describe("SIWE verification binding", () => {
     )
 
     const error = await Effect.runPromise(
-      verifyAndCreateSession(env.CACHE, { message: makeMessage({ chainId: 1 }), signature: "0x" }, config).pipe(
-        Effect.provide(KVCacheService.layer),
-        Effect.flip,
-      ),
+      verifyAndCreateSession(
+        env.SIWE_NONCE,
+        env.CACHE,
+        { message: makeMessage({ chainId: 1 }), signature: "0x" },
+        config,
+      ).pipe(Effect.provide(KVCacheService.layer), Effect.flip),
     )
 
     expect(String((error as Error).message)).toBe("SIWE chain mismatch")
@@ -65,6 +68,7 @@ describe("SIWE verification binding", () => {
 
     const error = await Effect.runPromise(
       verifyAndCreateSession(
+        env.SIWE_NONCE,
         env.CACHE,
         { message: makeMessage({ issuedAt: new Date(Date.now() - 6 * 60 * 1000).toISOString() }), signature: "0x" },
         config,
@@ -82,6 +86,7 @@ describe("SIWE verification binding", () => {
 
     const error = await Effect.runPromise(
       verifyAndCreateSession(
+        env.SIWE_NONCE,
         env.CACHE,
         { message: makeMessage({ uri: "https://attacker.example" }), signature: "0x" },
         config,
