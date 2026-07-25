@@ -91,6 +91,13 @@ const ERC20_ABI = [
     ],
     outputs: [{ name: "", type: "bool" }],
   },
+  {
+    name: "decimals",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8" }],
+  },
 ] as const
 
 const POSITION_MANAGER_ABI = [
@@ -159,6 +166,31 @@ const V3_POSITION_MANAGER_ABI = [
       { name: "tokensOwed0", type: "uint128" },
       { name: "tokensOwed1", type: "uint128" },
     ],
+  },
+] as const
+
+const V3_POOL_ABI = [
+  {
+    name: "slot0",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [
+      { name: "sqrtPriceX96", type: "uint160" },
+      { name: "tick", type: "int24" },
+      { name: "observationIndex", type: "uint16" },
+      { name: "observationCardinality", type: "uint16" },
+      { name: "observationCardinalityNext", type: "uint16" },
+      { name: "feeProtocol", type: "uint8" },
+      { name: "unlocked", type: "bool" },
+    ],
+  },
+  {
+    name: "liquidity",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint128" }],
   },
 ] as const
 
@@ -283,18 +315,8 @@ function PositionsPage() {
       return
     }
     if (indexedSelectedPosition.protocol === "v3") {
-      if (
-        !indexedSelectedPosition.tokenId ||
-        !indexedSelectedPosition.poolToken0Address ||
-        !indexedSelectedPosition.poolToken1Address ||
-        indexedSelectedPosition.poolToken0Decimals === undefined ||
-        indexedSelectedPosition.poolToken1Decimals === undefined ||
-        indexedSelectedPosition.poolFee === undefined ||
-        !indexedSelectedPosition.poolSqrtPriceX96 ||
-        indexedSelectedPosition.poolCurrentTick === undefined ||
-        !indexedSelectedPosition.poolLiquidity
-      ) {
-        setErrorMessage("Indexed v3 position is missing pool metadata; rebalance is unavailable")
+      if (!indexedSelectedPosition.tokenId || !isAddress(indexedSelectedPosition.poolId)) {
+        setErrorMessage("Indexed v3 position is missing its pool address; rebalance is unavailable")
         return
       }
       setIsSubmitting(true)
@@ -318,25 +340,28 @@ function PositionsPage() {
         })
         const [, , token0, token1, fee, tickLower, tickUpper, liquidity, , , tokensOwed0, tokensOwed1] = onchainPosition
         if (liquidity === 0n) throw new Error("V3 position has no active liquidity")
-        if (
-          token0.toLowerCase() !== indexedSelectedPosition.poolToken0Address.toLowerCase() ||
-          token1.toLowerCase() !== indexedSelectedPosition.poolToken1Address.toLowerCase() ||
-          fee !== indexedSelectedPosition.poolFee ||
-          tickLower !== indexedSelectedPosition.tickLower ||
-          tickUpper !== indexedSelectedPosition.tickUpper
-        ) {
+        if (tickLower !== indexedSelectedPosition.tickLower || tickUpper !== indexedSelectedPosition.tickUpper) {
           throw new Error("Indexed v3 position metadata does not match on-chain state")
         }
+        const poolAddress = getAddress(indexedSelectedPosition.poolId)
+        const [slot0, poolLiquidity, token0Decimals, token1Decimals] = await Promise.all([
+          publicClient.readContract({ address: poolAddress, abi: V3_POOL_ABI, functionName: "slot0" }),
+          publicClient.readContract({ address: poolAddress, abi: V3_POOL_ABI, functionName: "liquidity" }),
+          publicClient.readContract({ address: getAddress(token0), abi: ERC20_ABI, functionName: "decimals" }),
+          publicClient.readContract({ address: getAddress(token1), abi: ERC20_ABI, functionName: "decimals" }),
+        ])
+        const [sqrtPriceX96, currentTick] = slot0
+        if (sqrtPriceX96 === 0n || poolLiquidity === 0n) throw new Error("V3 pool has no active liquidity")
         const v3Pool = buildV3PoolContext({
           chainId: indexedSelectedPosition.chainId,
           token0: getAddress(token0),
           token1: getAddress(token1),
-          token0Decimals: indexedSelectedPosition.poolToken0Decimals,
-          token1Decimals: indexedSelectedPosition.poolToken1Decimals,
+          token0Decimals,
+          token1Decimals,
           fee: fee as V3Fee,
-          sqrtPriceX96: BigInt(indexedSelectedPosition.poolSqrtPriceX96),
-          liquidity: BigInt(indexedSelectedPosition.poolLiquidity),
-          currentTick: indexedSelectedPosition.poolCurrentTick,
+          sqrtPriceX96,
+          liquidity: poolLiquidity,
+          currentTick,
         })
         const currentPosition = new V3Position({
           pool: v3Pool.pool,
