@@ -134,34 +134,34 @@
       "d1_databases": [
         {
           "binding": "DB",
-          "database_name": "aetherdex-main",
-          "database_id": "REPLACE_WITH_OUTPUT_FROM_d1:create",
+          "database_name": "aetherdex-main-staging",
+          "database_id": "REPLACE_WITH_OUTPUT_FROM_d1:create_staging",
           "migrations_dir": "migrations"
         }
       ],
       "kv_namespaces": [
         {
           "binding": "CACHE",
-          "id": "REPLACE_WITH_OUTPUT_FROM_kv:create"
+          "id": "REPLACE_WITH_OUTPUT_FROM_kv:create_staging"
         }
       ],
       "r2_buckets": [
         {
           "binding": "STORAGE",
-          "bucket_name": "aetherdex-storage"
+          "bucket_name": "aetherdex-storage-staging"
         }
       ],
       "queues": {
         "producers": [
-          { "queue": "price-refresh", "binding": "PRICE_QUEUE" },
-          { "queue": "trade-settlement", "binding": "SETTLE_QUEUE" }
+          { "queue": "price-refresh-staging", "binding": "PRICE_QUEUE" },
+          { "queue": "trade-settlement-staging", "binding": "SETTLE_QUEUE" }
         ],
         "consumers": [
           {
-            "queue": "price-refresh",
+            "queue": "price-refresh-staging",
             "max_batch_size": 10,
             "max_retries": 3,
-            "dead_letter_queue": "price-refresh-dlq"
+            "dead_letter_queue": "price-refresh-staging-dlq"
           }
         ]
       },
@@ -194,34 +194,34 @@
       "d1_databases": [
         {
           "binding": "DB",
-          "database_name": "aetherdex-main",
-          "database_id": "REPLACE_WITH_OUTPUT_FROM_d1:create",
+          "database_name": "aetherdex-main-production",
+          "database_id": "REPLACE_WITH_OUTPUT_FROM_d1:create_production",
           "migrations_dir": "migrations"
         }
       ],
       "kv_namespaces": [
         {
           "binding": "CACHE",
-          "id": "REPLACE_WITH_OUTPUT_FROM_kv:create"
+          "id": "REPLACE_WITH_OUTPUT_FROM_kv:create_production"
         }
       ],
       "r2_buckets": [
         {
           "binding": "STORAGE",
-          "bucket_name": "aetherdex-storage"
+          "bucket_name": "aetherdex-storage-production"
         }
       ],
       "queues": {
         "producers": [
-          { "queue": "price-refresh", "binding": "PRICE_QUEUE" },
-          { "queue": "trade-settlement", "binding": "SETTLE_QUEUE" }
+          { "queue": "price-refresh-production", "binding": "PRICE_QUEUE" },
+          { "queue": "trade-settlement-production", "binding": "SETTLE_QUEUE" }
         ],
         "consumers": [
           {
-            "queue": "price-refresh",
+            "queue": "price-refresh-production",
             "max_batch_size": 10,
             "max_retries": 3,
-            "dead_letter_queue": "price-refresh-dlq"
+            "dead_letter_queue": "price-refresh-production-dlq"
           }
         ]
       },
