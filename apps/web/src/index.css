@@ -9,10 +9,10 @@
 
   html[data-theme="aetherdex"] {
     color-scheme: dark;
-    --color-primary: #7170ff;
-    --color-primary-content: #ffffff;
+    --color-primary: #a5b4fc;
+    --color-primary-content: #08090a;
     --color-secondary: #191a1b;
-    --color-accent: #7170ff;
+    --color-accent: #a5b4fc;
     --color-neutral: #191a1b;
     --color-neutral-content: #f7f8f8;
     --color-base-100: #08090a;

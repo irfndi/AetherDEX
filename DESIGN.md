@@ -25,12 +25,12 @@ The semantic theme is implemented through DaisyUI tokens so every route inherits
 | secondary text | `#d0d6e0` | supporting copy |
 | muted text | `#8a8f98` | labels and metadata |
 | subtle text | `#62666d` | hints and disabled copy |
-| primary | `#7170ff` | focused actions and selected state |
+| primary | `#a5b4fc` | focused actions and selected state |
 | success | `#22c55e` | healthy/confirmed state |
 | warning | `#f59e0b` | attention state |
 | error | `#ef4444` | rejected/failed state |
 
-Borders are low-contrast white overlays. Shadows are used sparingly; hierarchy comes from tonal elevation. Accent color is never used as a page wash.
+Borders are low-contrast white overlays. Shadows are used sparingly; hierarchy comes from tonal elevation. Accent color is never used as a page wash. Primary controls use near-black text on the lifted indigo to preserve normal-text contrast.
 
 ## 3. Typography
 

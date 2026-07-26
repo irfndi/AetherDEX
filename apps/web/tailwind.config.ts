@@ -18,10 +18,10 @@ export default {
       {
         aetherdex: {
           "color-scheme": "dark",
-          "--color-primary": "#7170FF",
-          "--color-primary-content": "#FFFFFF",
+          "--color-primary": "#A5B4FC",
+          "--color-primary-content": "#08090A",
           "--color-secondary": "#191A1B",
-          "--color-accent": "#7170FF",
+          "--color-accent": "#A5B4FC",
           "--color-neutral": "#191A1B",
           "--color-neutral-content": "#F7F8F8",
           "--color-base-100": "#08090A",
