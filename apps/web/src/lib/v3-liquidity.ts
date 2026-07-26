@@ -323,11 +323,15 @@ export function buildV3SingleSidedZapCall(input: V3SingleSidedZapInput): V3Singl
 }
 
 export async function findV3SwapAmount(input: {
+  readonly pool: V3PoolContext
+  readonly tickLower: number
+  readonly tickUpper: number
   readonly amountIn: bigint
   readonly tokenInIsToken0: boolean
   readonly quote: (amountIn: bigint) => Promise<V3SwapQuote>
 }): Promise<{ readonly swapAmountIn: bigint; readonly quote: V3SwapQuote }> {
   if (input.amountIn < 3n) throw new Error("V3 zap amount is too small to split")
+  validateRange(input.tickLower, input.tickUpper, input.pool.pool.tickSpacing)
   let low = 1n
   let high = input.amountIn - 1n
   let best: { readonly swapAmountIn: bigint; readonly quote: V3SwapQuote; readonly error: bigint } | null = null
@@ -338,10 +342,20 @@ export async function findV3SwapAmount(input: {
     const remainingInput = input.amountIn - swapAmountIn
     const amount0 = input.tokenInIsToken0 ? remainingInput : quote.amountOut
     const amount1 = input.tokenInIsToken0 ? quote.amountOut : remainingInput
-    const error = amount0 > amount1 ? amount0 - amount1 : amount1 - amount0
+    const position = Position.fromAmounts({
+      pool: input.pool.pool,
+      tickLower: input.tickLower,
+      tickUpper: input.tickUpper,
+      amount0: amount0.toString(),
+      amount1: amount1.toString(),
+      useFullPrecision: true,
+    })
+    const consumed = BigInt(
+      (input.tokenInIsToken0 ? position.mintAmounts.amount0 : position.mintAmounts.amount1).toString(),
+    )
+    const error = consumed > remainingInput ? consumed - remainingInput : remainingInput - consumed
     if (best === null || error < best.error) best = { swapAmountIn, quote, error }
-    if (amount0 === amount1) break
-    if (amount0 > amount1) low = swapAmountIn + 1n
+    if (consumed < remainingInput) low = swapAmountIn + 1n
     else high = swapAmountIn - 1n
   }
   if (best === null) throw new Error("V3 swap quote search produced no result")

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { buildV4SingleSidedCall } from "../../src/lib/v4-liquidity"
+import { buildV4SingleSidedCall, deriveV4PositionSalt } from "../../src/lib/v4-liquidity"
 
 const pool = {
   chainId: 11155111,
@@ -28,6 +28,7 @@ describe("v4 liquidity adapter", () => {
       minSwapAmountOut: 380_000_000_000n,
       slippageBps: 50,
       deadline: 2_000_000_000n,
+      salt: deriveV4PositionSalt("0x4444444444444444444444444444444444444444", 1n),
     })
 
     expect(call.kind).toBe("v4-single-sided-zap")
@@ -50,6 +51,7 @@ describe("v4 liquidity adapter", () => {
         minSwapAmountOut: 1n,
         slippageBps: 50,
         deadline: 2_000_000_000n,
+        salt: deriveV4PositionSalt("0x4444444444444444444444444444444444444444", 2n),
       }),
     ).toThrow("amounts are invalid")
   })

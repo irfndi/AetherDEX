@@ -11,6 +11,8 @@ export type V3PositionState = {
   readonly fees1: bigint
   readonly costBasis0: bigint
   readonly costBasis1: bigint
+  readonly pendingPrincipal0: bigint
+  readonly pendingPrincipal1: bigint
 }
 
 export function reduceV3PositionEvents(events: readonly V3LiquidityEvent[]): ReadonlyMap<string, V3PositionState> {
@@ -33,6 +35,8 @@ export function reduceV3PositionEvents(events: readonly V3LiquidityEvent[]): Rea
         fees1: 0n,
         costBasis0: 0n,
         costBasis1: 0n,
+        pendingPrincipal0: 0n,
+        pendingPrincipal1: 0n,
       } satisfies V3PositionState)
     const next = applyEvent(previous, event)
     if (next !== null) states.set(event.tokenId, next)
@@ -45,10 +49,16 @@ function applyEvent(state: V3PositionState, event: V3LiquidityEvent): V3Position
     return { ...state, ownerAddress: event.ownerAddress, isActive: event.ownerAddress !== null }
   }
   if (event.eventType === "collect") {
+    const amount0 = toBigInt(event.amount0)
+    const amount1 = toBigInt(event.amount1)
+    const principal0 = amount0 < state.pendingPrincipal0 ? amount0 : state.pendingPrincipal0
+    const principal1 = amount1 < state.pendingPrincipal1 ? amount1 : state.pendingPrincipal1
     return {
       ...state,
-      fees0: state.fees0 + toBigInt(event.amount0),
-      fees1: state.fees1 + toBigInt(event.amount1),
+      fees0: state.fees0 + amount0 - principal0,
+      fees1: state.fees1 + amount1 - principal1,
+      pendingPrincipal0: state.pendingPrincipal0 - principal0,
+      pendingPrincipal1: state.pendingPrincipal1 - principal1,
     }
   }
   const deltaLiquidity = toBigInt(event.liquidityDelta)
@@ -73,6 +83,8 @@ function applyEvent(state: V3PositionState, event: V3LiquidityEvent): V3Position
       liquidity,
       amount0: state.amount0 - delta0,
       amount1: state.amount1 - delta1,
+      pendingPrincipal0: state.pendingPrincipal0 + delta0,
+      pendingPrincipal1: state.pendingPrincipal1 + delta1,
     }
   }
   return state

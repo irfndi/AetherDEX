@@ -41,7 +41,7 @@ export function evaluatePriceGuard(
   ) {
     throw new Error("Price guard requires positive finite prices")
   }
-  const expectedPrice = token1PriceUsd / token0PriceUsd
+  const expectedPrice = token0PriceUsd / token1PriceUsd
   const deviationBps = Math.round((Math.abs(requestedPrice - expectedPrice) / expectedPrice) * 10_000)
   return {
     valid: deviationBps <= maxDeviationBps,

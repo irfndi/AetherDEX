@@ -33,7 +33,9 @@ type PriceInput =
 
 export interface PoolCreationFormValues {
   readonly token0: string
+  readonly token0Decimals: string
   readonly token1: string
+  readonly token1Decimals: string
   readonly fee: string
   readonly tickSpacing: string
   readonly priceInput: PriceInput
@@ -42,7 +44,9 @@ export interface PoolCreationFormValues {
 
 export interface PoolCreationRequest {
   readonly token0: `0x${string}`
+  readonly token0Decimals: number
   readonly token1: `0x${string}`
+  readonly token1Decimals: number
   readonly fee: number
   readonly tickSpacing: number
   readonly initialPrice: PriceInput
@@ -61,6 +65,8 @@ export function validatePoolCreationForm(
   const errors: Partial<Record<keyof PoolCreationFormValues | "pair", string>> = {}
   const token0 = parseAddress(values.token0)
   const token1 = parseAddress(values.token1)
+  const token0Decimals = parseTokenDecimals(values.token0Decimals)
+  const token1Decimals = parseTokenDecimals(values.token1Decimals)
   const fee = parsePositiveInteger(values.fee)
   const tickSpacing = parsePositiveInteger(values.tickSpacing)
   const price = values.priceInput.value.trim()
@@ -68,6 +74,8 @@ export function validatePoolCreationForm(
 
   if (!token0) errors.token0 = "Enter a valid 0x address."
   if (!token1) errors.token1 = "Enter a valid 0x address."
+  if (token0Decimals === null) errors.token0Decimals = "Token0 decimals must be an integer from 0 to 255."
+  if (token1Decimals === null) errors.token1Decimals = "Token1 decimals must be an integer from 0 to 255."
   if (token0 && token1 && token0.toLowerCase() === token1.toLowerCase()) errors.pair = "Tokens must be distinct."
   if (token0 && token1 && token0.toLowerCase() > token1.toLowerCase()) {
     errors.pair = "Token0 must be the lower address."
@@ -84,10 +92,22 @@ export function validatePoolCreationForm(
   if (values.priceInput.kind === "sqrtPriceX96" && isPositiveInteger(price) && BigInt(price) > MAX_UINT160) {
     errors.priceInput = "sqrtPriceX96 must fit in uint160."
   }
-  if (values.priceInput.kind === "price" && isPositiveDecimal(price) && !isDecimalSqrtPriceWithinUint160(price)) {
+  if (
+    values.priceInput.kind === "price" &&
+    isPositiveDecimal(price) &&
+    token0Decimals !== null &&
+    token1Decimals !== null &&
+    !isDecimalSqrtPriceWithinUint160(price, token0Decimals, token1Decimals)
+  ) {
     errors.priceInput = "Initial price is outside the uint160 sqrt-price range."
   }
-  if (values.priceInput.kind === "price" && isPositiveDecimal(price) && decimalToSqrtPriceX96(price) === 0n) {
+  if (
+    values.priceInput.kind === "price" &&
+    isPositiveDecimal(price) &&
+    token0Decimals !== null &&
+    token1Decimals !== null &&
+    decimalToSqrtPriceX96(price, token0Decimals, token1Decimals) === 0n
+  ) {
     errors.priceInput = "Initial price is too small to encode as sqrtPriceX96."
   }
   if (deadline === null || deadline <= now) errors.deadline = "Deadline must be a future date and time."
@@ -96,6 +116,8 @@ export function validatePoolCreationForm(
     Object.keys(errors).length > 0 ||
     !token0 ||
     !token1 ||
+    token0Decimals === null ||
+    token1Decimals === null ||
     fee === null ||
     tickSpacing === null ||
     deadline === null
@@ -107,7 +129,9 @@ export function validatePoolCreationForm(
     errors,
     request: {
       token0,
+      token0Decimals,
       token1,
+      token1Decimals,
       fee,
       tickSpacing,
       initialPrice: values.priceInput,
@@ -120,7 +144,7 @@ export function buildPoolCreationTransactionIntent(request: PoolCreationRequest)
   const sqrtPriceX96 =
     request.initialPrice.kind === "sqrtPriceX96"
       ? BigInt(request.initialPrice.value)
-      : decimalToSqrtPriceX96(request.initialPrice.value)
+      : decimalToSqrtPriceX96(request.initialPrice.value, request.token0Decimals, request.token1Decimals)
   return {
     functionName: "createPoolWithDeadline" as const,
     args: [
@@ -150,6 +174,12 @@ function parsePositiveInteger(value: string): number | null {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null
 }
 
+function parseTokenDecimals(value: string): number | null {
+  if (!/^\d+$/.test(value.trim())) return null
+  const parsed = Number(value)
+  return Number.isSafeInteger(parsed) && parsed >= 0 && parsed <= 255 ? parsed : null
+}
+
 function isPositiveInteger(value: string): boolean {
   return /^\d+$/.test(value.trim()) && BigInt(value) > 0n
 }
@@ -159,10 +189,10 @@ function isPositiveDecimal(value: string): boolean {
   return Number(value) > 0
 }
 
-function isDecimalSqrtPriceWithinUint160(value: string): boolean {
+function isDecimalSqrtPriceWithinUint160(value: string, token0Decimals: number, token1Decimals: number): boolean {
   const [whole = ""] = value.split(".")
   if (whole.length > 40) return false
-  return decimalToSqrtPriceX96(value) <= MAX_UINT160
+  return decimalToSqrtPriceX96(value, token0Decimals, token1Decimals) <= MAX_UINT160
 }
 
 function parseDeadline(value: string): number | null {
@@ -219,7 +249,11 @@ function NewPoolPage() {
         "price",
         validation.request.initialPrice.kind === "price"
           ? validation.request.initialPrice.value
-          : sqrtPriceToPrice(validation.request.initialPrice.value),
+          : sqrtPriceToPrice(
+              validation.request.initialPrice.value,
+              validation.request.token0Decimals,
+              validation.request.token1Decimals,
+            ),
       )
       const guardResponse = await fetch(guardUrl)
       const guardPayload = (await guardResponse.json()) as { readonly error?: string; readonly valid?: boolean }
@@ -295,6 +329,24 @@ function NewPoolPage() {
                 value={values.token1}
                 {...inputError(displayError("token1"))}
                 onChange={(e) => update("token1", e.target.value)}
+              />
+              <Input
+                id="token0-decimals"
+                label="Token0 decimals"
+                inputMode="numeric"
+                placeholder="18"
+                value={values.token0Decimals}
+                {...inputError(displayError("token0Decimals"))}
+                onChange={(e) => update("token0Decimals", e.target.value)}
+              />
+              <Input
+                id="token1-decimals"
+                label="Token1 decimals"
+                inputMode="numeric"
+                placeholder="6"
+                value={values.token1Decimals}
+                {...inputError(displayError("token1Decimals"))}
+                onChange={(e) => update("token1Decimals", e.target.value)}
               />
             </div>
             {displayError("pair") ? <p className="mt-2 text-sm text-error">{displayError("pair")}</p> : null}
@@ -433,7 +485,9 @@ function NewPoolPage() {
 function useStateWithFormDefaults() {
   const [values, setValues] = useState<PoolCreationFormValues>({
     token0: "",
+    token0Decimals: "18",
     token1: "",
+    token1Decimals: "18",
     fee: "3000",
     tickSpacing: "60",
     priceInput: { kind: "price", value: "1" },
@@ -446,12 +500,13 @@ function inputError(error: string | undefined): { readonly error: string } | Rec
   return error ? { error } : {}
 }
 
-function decimalToSqrtPriceX96(value: string): bigint {
+function decimalToSqrtPriceX96(value: string, token0Decimals: number, token1Decimals: number): bigint {
   const [whole = "0", fraction = ""] = value.split(".")
-  const scale = 10n ** 18n
-  const normalizedFraction = fraction.padEnd(18, "0").slice(0, 18)
-  const scaledPrice = BigInt(whole) * scale + BigInt(normalizedFraction)
-  return (integerSqrt(scaledPrice) * Q96) / 10n ** 9n
+  const valueScale = 10n ** BigInt(fraction.length)
+  const valueNumerator = BigInt(whole) * valueScale + BigInt(fraction || "0")
+  const numerator = valueNumerator * 10n ** BigInt(token1Decimals) * Q96 * Q96
+  const denominator = valueScale * 10n ** BigInt(token0Decimals)
+  return integerSqrt(numerator / denominator)
 }
 
 function integerSqrt(value: bigint): bigint {
@@ -464,10 +519,10 @@ function integerSqrt(value: bigint): bigint {
   return result
 }
 
-function sqrtPriceToPrice(value: string): string {
+function sqrtPriceToPrice(value: string, token0Decimals: number, token1Decimals: number): string {
   const sqrtPriceX96 = BigInt(value)
-  const numerator = sqrtPriceX96 * sqrtPriceX96 * 10n ** 18n
-  const denominator = 2n ** 192n
+  const numerator = sqrtPriceX96 * sqrtPriceX96 * 10n ** BigInt(token0Decimals)
+  const denominator = 2n ** 192n * 10n ** BigInt(token1Decimals)
   const scaled = numerator / denominator
   const whole = scaled / 10n ** 18n
   const fraction = (scaled % 10n ** 18n).toString().padStart(18, "0").replace(/0+$/, "")

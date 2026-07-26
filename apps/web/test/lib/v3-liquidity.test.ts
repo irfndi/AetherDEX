@@ -130,6 +130,9 @@ describe("v3 liquidity adapter", () => {
 
   it("finds a v3 swap split from exact quoter responses", async () => {
     const result = await findV3SwapAmount({
+      pool,
+      tickLower: -600,
+      tickUpper: 600,
       amountIn: 100n,
       tokenInIsToken0: true,
       quote: async (amountIn) => ({ amountOut: amountIn, minAmountOut: amountIn }),

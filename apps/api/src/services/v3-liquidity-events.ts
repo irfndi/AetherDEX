@@ -26,7 +26,7 @@ const POSITION_MANAGER_ABI = [
     name: "Collect",
     inputs: [
       { indexed: true, name: "tokenId", type: "uint256" },
-      { indexed: true, name: "recipient", type: "address" },
+      { indexed: false, name: "recipient", type: "address" },
       { indexed: false, name: "amount0", type: "uint256" },
       { indexed: false, name: "amount1", type: "uint256" },
     ],

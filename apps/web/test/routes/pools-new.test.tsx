@@ -9,7 +9,9 @@ const token0 = "0x1111111111111111111111111111111111111111"
 const token1 = "0x2222222222222222222222222222222222222222"
 const validValues: PoolCreationFormValues = {
   token0,
+  token0Decimals: "18",
   token1,
+  token1Decimals: "18",
   fee: "3000",
   tickSpacing: "60",
   priceInput: { kind: "price", value: "1.25" },
@@ -89,7 +91,7 @@ describe("pool creation validation", () => {
   it("rejects a positive decimal price that encodes to zero sqrtPriceX96", () => {
     const result = validatePoolCreationForm({
       ...validValues,
-      priceInput: { kind: "price", value: "0.000000000000000000000000000000001" },
+      priceInput: { kind: "price", value: "0.000000000000000000000000000000000000000000000000000000000001" },
     })
 
     expect(result.request).toBeNull()

@@ -89,7 +89,7 @@ const makePositionService = Effect.gen(function* () {
           token0.decimals AS pool_token0_decimals,
           token1.decimals AS pool_token1_decimals
         FROM liquidity_positions
-        LEFT JOIN pools ON pools.pool_id = liquidity_positions.pool_id
+        LEFT JOIN pools ON pools.chain_id = liquidity_positions.chain_id AND pools.pool_id = liquidity_positions.pool_id
         LEFT JOIN tokens token0 ON token0.chain_id = liquidity_positions.chain_id
           AND token0.address = pools.token0_address
         LEFT JOIN tokens token1 ON token1.chain_id = liquidity_positions.chain_id
@@ -166,7 +166,7 @@ const makePositionService = Effect.gen(function* () {
       if (positionId === null) return null
       const rows = yield* sql`
         SELECT liquidity_positions.*, pools.tick_spacing
-        FROM liquidity_positions LEFT JOIN pools ON pools.pool_id = liquidity_positions.pool_id
+        FROM liquidity_positions LEFT JOIN pools ON pools.chain_id = liquidity_positions.chain_id AND pools.pool_id = liquidity_positions.pool_id
         WHERE liquidity_positions.id = ${positionId}
       `
       const row = rows[0]
@@ -183,19 +183,21 @@ const makePositionService = Effect.gen(function* () {
     chainId: number,
     state: V4PositionState,
   ): Effect.Effect<number | null, RecordPositionError, never> =>
-    updateV4LiquidityPosition({
-      chainId,
-      tokenId,
-      ownerAddress: userAddress,
-      tickLower: state.tickLower,
-      tickUpper: state.tickUpper,
-      liquidity: state.liquidity.toString(),
-    }).pipe(
-      Effect.provideService(SqlClient.SqlClient, sql),
-      Effect.catch((error) =>
-        Effect.fail(error instanceof RecordPositionError ? error : new RecordPositionError(String(error))),
-      ),
-    )
+    state.owner.toLowerCase() !== userAddress.toLowerCase()
+      ? Effect.succeed(null)
+      : updateV4LiquidityPosition({
+          chainId,
+          tokenId,
+          ownerAddress: userAddress,
+          tickLower: state.tickLower,
+          tickUpper: state.tickUpper,
+          liquidity: state.liquidity.toString(),
+        }).pipe(
+          Effect.provideService(SqlClient.SqlClient, sql),
+          Effect.catch((error) =>
+            Effect.fail(error instanceof RecordPositionError ? error : new RecordPositionError(String(error))),
+          ),
+        )
 
   return {
     listByUser,

@@ -149,6 +149,10 @@ contract AetherPositionManagerTest is Test {
         uint256 tokenId = _mintForUser();
         token0.mint(address(positionManager), 7);
         token1.mint(address(positionManager), 13);
+        vm.startPrank(user);
+        token0.transfer(attacker, token0.balanceOf(user));
+        token1.transfer(attacker, token1.balanceOf(user));
+        vm.stopPrank();
         uint256 balance0Before = token0.balanceOf(user);
         uint256 balance1Before = token1.balanceOf(user);
 

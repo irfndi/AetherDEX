@@ -120,24 +120,10 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
 
         uint256 balance0Before = _balanceBeforeCall(position.poolKey.currency0);
         uint256 balance1Before = _balanceBeforeCall(position.poolKey.currency1);
-        _pullMaximums(
-            MintPositionParams({
-                poolKey: position.poolKey,
-                tickLower: params.tickLower,
-                tickUpper: params.tickUpper,
-                liquidity: params.liquidity,
-                amount0Max: params.amount0Max,
-                amount1Max: params.amount1Max,
-                recipient: positionOwner,
-                deadline: params.deadline,
-                hookData: params.hookData
-            })
-        );
-
         // slither-disable-next-line write-after-write
         _unlockActive = true;
         bytes memory result = poolManager.unlock(
-            abi.encode(Action.REBALANCE, abi.encode(position, params, balance0Before, balance1Before))
+            abi.encode(Action.REBALANCE, abi.encode(position, params, balance0Before, balance1Before, positionOwner))
         );
         _unlockActive = false;
         (closedAmount0, closedAmount1, usedAmount0, usedAmount1) =
@@ -182,8 +168,9 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
                 Position memory oldPosition,
                 RebalancePositionParams memory params,
                 uint256 balance0Before,
-                uint256 balance1Before
-            ) = abi.decode(actionData, (Position, RebalancePositionParams, uint256, uint256));
+                uint256 balance1Before,
+                address positionOwner
+            ) = abi.decode(actionData, (Position, RebalancePositionParams, uint256, uint256, address));
             (BalanceDelta rebalanceRemoveDelta,) = poolManager.modifyLiquidity(
                 oldPosition.poolKey,
                 ModifyLiquidityParams(
@@ -206,8 +193,15 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
                 ),
                 params.hookData
             );
-            (uint256 usedAmount0, uint256 usedAmount1) =
-                _settleOwedCallScoped(oldPosition.poolKey, addDelta, balance0Before, balance1Before);
+            (uint256 usedAmount0, uint256 usedAmount1) = _settleRebalanceCallScoped(
+                oldPosition.poolKey,
+                addDelta,
+                balance0Before,
+                balance1Before,
+                positionOwner,
+                params.amount0Max,
+                params.amount1Max
+            );
             return abi.encode(closedAmount0, closedAmount1, usedAmount0, usedAmount1);
         }
         (Position memory removePosition, uint128 liquidity, bytes memory hookData) =
@@ -243,6 +237,38 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
         amount1 = uint256(-int256(delta.amount1()));
         _settleCallScoped(key.currency0, amount0, balance0Before);
         _settleCallScoped(key.currency1, amount1, balance1Before);
+    }
+
+    function _settleRebalanceCallScoped(
+        PoolKey memory key,
+        BalanceDelta delta,
+        uint256 balance0Before,
+        uint256 balance1Before,
+        address positionOwner,
+        uint256 amount0Max,
+        uint256 amount1Max
+    ) internal returns (uint256 amount0, uint256 amount1) {
+        amount0 = uint256(-int256(delta.amount0()));
+        amount1 = uint256(-int256(delta.amount1()));
+        _pullRebalanceShortfall(key.currency0, amount0, balance0Before, positionOwner, amount0Max);
+        _pullRebalanceShortfall(key.currency1, amount1, balance1Before, positionOwner, amount1Max);
+        if (amount0 > 0) _settle(key.currency0, amount0);
+        if (amount1 > 0) _settle(key.currency1, amount1);
+    }
+
+    function _pullRebalanceShortfall(
+        Currency currency,
+        uint256 required,
+        uint256 balanceBefore,
+        address positionOwner,
+        uint256 amountMax
+    ) internal {
+        uint256 balance = _balanceOf(currency);
+        uint256 available = balance > balanceBefore ? balance - balanceBefore : 0;
+        if (available >= required) return;
+        uint256 shortfall = required - available;
+        if (shortfall > amountMax || currency.isAddressZero()) revert AmountMaximumExceeded();
+        IERC20(Currency.unwrap(currency)).safeTransferFrom(positionOwner, address(this), shortfall);
     }
 
     function _settleCallScoped(Currency currency, uint256 amount, uint256 balanceBefore) internal {

@@ -1,6 +1,6 @@
 import { Token } from "@uniswap/sdk-core"
 import { Pool, Position } from "@uniswap/v4-sdk"
-import { encodeFunctionData, type Hex } from "viem"
+import { encodeFunctionData, encodePacked, keccak256, type Hex } from "viem"
 
 const BPS = 10_000n
 const MAX_UINT128 = 2n ** 128n - 1n
@@ -80,6 +80,7 @@ export type V4SingleSidedCallInput = {
   readonly minSwapAmountOut: bigint
   readonly slippageBps: number
   readonly deadline: bigint
+  readonly salt: Hex
   readonly hookData?: Hex
 }
 
@@ -129,7 +130,7 @@ export function buildV4SingleSidedCall(input: V4SingleSidedCallInput): V4SingleS
       tickLower: input.tickLower,
       tickUpper: input.tickUpper,
       liquidityDelta,
-      salt: `0x${"00".repeat(32)}` as `0x${string}`,
+      salt: input.salt,
     },
     zeroForOne: input.zeroForOne,
     amountIn: input.amountIn,
@@ -228,4 +229,9 @@ function validateInput(input: V4SingleSidedCallInput): void {
   if (input.pool.tickSpacing <= 0) throw new Error("V4 tick spacing must be positive")
   if (input.pool.sqrtPriceX96 <= 0n || input.pool.liquidity <= 0n) throw new Error("V4 pool state is invalid")
   if (input.deadline <= 0n) throw new Error("V4 deadline must be positive")
+  if (input.salt === `0x${"00".repeat(32)}`) throw new Error("V4 position salt must be unique")
+}
+
+export function deriveV4PositionSalt(owner: `0x${string}`, nonce: bigint): Hex {
+  return keccak256(encodePacked(["address", "uint256"], [owner, nonce]))
 }

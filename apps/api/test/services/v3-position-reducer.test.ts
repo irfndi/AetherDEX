@@ -41,6 +41,15 @@ describe("reduceV3PositionEvents", () => {
     })
   })
 
+  it("does not count withdrawn principal as fees", () => {
+    const positions = reduceV3PositionEvents([
+      event({ eventType: "increase", amount0: "100", amount1: "200" }),
+      event({ eventType: "decrease", liquidityDelta: "40", amount0: "40", amount1: "80" }),
+      event({ eventType: "collect", amount0: "40", amount1: "90" }),
+    ])
+    expect(positions.get("7")).toMatchObject({ fees0: 0n, fees1: 10n })
+  })
+
   it("does not publish an invalid underflowed state", () => {
     const positions = reduceV3PositionEvents([event({ eventType: "decrease", liquidityDelta: "101" })])
     expect(positions.has("7")).toBe(false)

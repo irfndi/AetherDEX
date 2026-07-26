@@ -56,4 +56,20 @@ describe("parseV3LiquidityLog", () => {
       ),
     ).toBeNull()
   })
+
+  it("decodes a Collect event with a non-indexed recipient", () => {
+    const event = parseAbiItem(
+      "event Collect(uint256 indexed tokenId, address recipient, uint256 amount0, uint256 amount1)",
+    )
+    const topics = encodeEventTopics({ abi: [event], eventName: "Collect", args: [7n] })
+    const data = encodeAbiParameters(
+      [{ type: "address" }, { type: "uint256" }, { type: "uint256" }],
+      ["0x0000000000000000000000000000000000000007", 17n, 19n],
+    )
+    const parsed = parseV3LiquidityLog(
+      { address: manager, topics, data, transactionHash: txHash, logIndex: 4, blockNumber: 102 },
+      { positionManager: manager },
+    )
+    expect(parsed).toMatchObject({ eventType: "collect", tokenId: "7", amount0: "17", amount1: "19" })
+  })
 })

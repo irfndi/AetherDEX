@@ -18,7 +18,7 @@ import {
 } from "../lib/liquidity"
 import { submitProtectedRawTransaction } from "../lib/protected-submission"
 import { buildV3PoolContext, buildV3SingleSidedZapCall, findV3SwapAmount } from "../lib/v3-liquidity"
-import { buildV4SingleSidedCall, findV4SwapAmount } from "../lib/v4-liquidity"
+import { buildV4SingleSidedCall, deriveV4PositionSalt, findV4SwapAmount } from "../lib/v4-liquidity"
 
 interface Pool {
   poolId: string
@@ -252,7 +252,6 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
           const data = parseV3SwapQuote(await response.json())
           return { amountOut: BigInt(data.amountOut), minAmountOut: BigInt(data.minAmountOut) }
         }
-        const search = await findV3SwapAmount({ amountIn, tokenInIsToken0, quote })
         const v3Pool = buildV3PoolContext({
           chainId: CHAIN_ID,
           token0: getAddress(pool.token0Address),
@@ -263,6 +262,14 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
           sqrtPriceX96: BigInt(pool.sqrtPriceX96),
           liquidity: BigInt(pool.liquidity),
           currentTick: pool.currentTick,
+        })
+        const search = await findV3SwapAmount({
+          pool: v3Pool,
+          tickLower: Number(values.lowerTick),
+          tickUpper: Number(values.upperTick),
+          amountIn,
+          tokenInIsToken0,
+          quote,
         })
         const remainingInput = amountIn - search.swapAmountIn
         const minRemainingInput = (remainingInput * BigInt(10_000 - nextRequest.slippageBps)) / 10_000n
@@ -366,6 +373,7 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
         minSwapAmountOut: search.quote.minAmountOut,
         slippageBps: nextRequest.slippageBps,
         deadline: BigInt(Math.floor(Date.now() / 1000) + nextRequest.deadlineSeconds),
+        salt: deriveV4PositionSalt(address, BigInt(Date.now())),
       })
       const tokenAddress = getAddress(selectedToken.address)
       const router = getAddress(routerAddress)

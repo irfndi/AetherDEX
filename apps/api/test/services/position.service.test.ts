@@ -136,4 +136,14 @@ describe("PositionService.reconcileV4Position", () => {
     )
     expect(id).toBeNull()
   })
+
+  it("rejects a chain position owned by a different address without writing", async () => {
+    const id = await Effect.runPromise(
+      withService(
+        (svc) => svc.reconcileV4Position("0x9999999999999999999999999999999999999999", "7", 11155111, state),
+        [{ id: 7 }],
+      ),
+    )
+    expect(id).toBeNull()
+  })
 })
