@@ -1,5 +1,5 @@
 {
-  "name": "alchemy",
+  "name": "@aetherdex/alchemy-infra",
   "module": "index.ts",
   "type": "module",
   "private": true,
