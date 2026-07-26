@@ -1,4 +1,5 @@
 import { Context, Effect, Layer } from "effect"
+import { SqlClient } from "effect/unstable/sql"
 import { createPublicClient, http } from "viem"
 import { insertLiquidityEvent } from "../db/queries"
 import type { RawLog } from "./v3-liquidity-events"
@@ -22,13 +23,17 @@ export class V3LiquidityIndexerError {
 }
 
 export interface V3LiquidityIndexer {
-  readonly indexRange: (fromBlock: bigint, toBlock: bigint) => Effect.Effect<number, V3LiquidityIndexerError>
+  readonly indexRange: (
+    fromBlock: bigint,
+    toBlock: bigint,
+  ) => Effect.Effect<number, V3LiquidityIndexerError, SqlClient.SqlClient>
 }
 
 export const V3LiquidityIndexer = Context.Service<V3LiquidityIndexer>("@aetherdex/V3LiquidityIndexer")
 
 const makeV3LiquidityIndexer = (config: V3LiquidityIndexerConfig) =>
   Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
     const client = createPublicClient({ transport: http(config.rpcUrl) })
 
     const indexRange = (fromBlock: bigint, toBlock: bigint) =>
@@ -102,7 +107,7 @@ const makeV3LiquidityIndexer = (config: V3LiquidityIndexerConfig) =>
         ),
       )
 
-    return { indexRange } as V3LiquidityIndexer
+    return { indexRange }
   })
 
 export const V3LiquidityIndexerLive = (config: V3LiquidityIndexerConfig) =>

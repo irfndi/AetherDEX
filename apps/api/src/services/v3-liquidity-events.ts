@@ -109,7 +109,11 @@ export function parseV3LiquidityLog(
 
 function parsePositionManagerLog(log: RawLog): V3LiquidityEvent | null {
   try {
-    const decoded = decodeEventLog({ abi: POSITION_MANAGER_ABI, data: log.data, topics: log.topics as unknown as [] | [signature: `0x${string}`, ...args: `0x${string}`[]] })
+    const decoded = decodeEventLog({
+      abi: POSITION_MANAGER_ABI,
+      data: log.data,
+      topics: log.topics as unknown as [] | [signature: `0x${string}`, ...args: `0x${string}`[]],
+    })
     const args = decoded.args
     const tokenId = "tokenId" in args ? args.tokenId : null
     if (typeof tokenId !== "bigint") return null
@@ -159,7 +163,11 @@ function parsePositionManagerLog(log: RawLog): V3LiquidityEvent | null {
 
 function parsePoolLog(log: RawLog, poolId: string | null): V3LiquidityEvent | null {
   try {
-    const decoded = decodeEventLog({ abi: POOL_ABI, data: log.data, topics: log.topics as unknown as [] | [signature: `0x${string}`, ...args: `0x${string}`[]] })
+    const decoded = decodeEventLog({
+      abi: POOL_ABI,
+      data: log.data,
+      topics: log.topics as unknown as [] | [signature: `0x${string}`, ...args: `0x${string}`[]],
+    })
     const args = decoded.args
     if (!("owner" in args) || typeof args.owner !== "string") return null
     if (!("tickLower" in args) || !isIntegerValue(args.tickLower)) return null

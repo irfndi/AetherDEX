@@ -266,7 +266,15 @@ const makeTpSlService = Effect.gen(function* () {
       if (raw.changes === 0) {
         return yield* Effect.fail(new OrderNotFoundError(orderId))
       }
-    }) as unknown as Effect.Effect<void, OrderNotFoundError | OrderUpdateError, never>
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.fail(
+          (error instanceof OrderNotFoundError ? error : new OrderUpdateError(String(error))) as
+            | OrderNotFoundError
+            | OrderUpdateError,
+        ),
+      ),
+    ) as unknown as Effect.Effect<void, OrderNotFoundError | OrderUpdateError, never>
 
   const executeOrder = (
     orderId: number,
@@ -284,7 +292,15 @@ const makeTpSlService = Effect.gen(function* () {
       if (raw.changes === 0) {
         return yield* Effect.fail(new OrderNotFoundError(orderId))
       }
-    }) as unknown as Effect.Effect<void, OrderNotFoundError | OrderUpdateError, never>
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.fail(
+          (error instanceof OrderNotFoundError ? error : new OrderUpdateError(String(error))) as
+            | OrderNotFoundError
+            | OrderUpdateError,
+        ),
+      ),
+    ) as unknown as Effect.Effect<void, OrderNotFoundError | OrderUpdateError, never>
 
   const expireOrder = (
     orderId: number,
@@ -299,7 +315,15 @@ const makeTpSlService = Effect.gen(function* () {
       if (raw.changes === 0) {
         return yield* Effect.fail(new OrderNotFoundError(orderId))
       }
-    }) as unknown as Effect.Effect<void, OrderNotFoundError | OrderUpdateError, never>
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.fail(
+          (error instanceof OrderNotFoundError ? error : new OrderUpdateError(String(error))) as
+            | OrderNotFoundError
+            | OrderUpdateError,
+        ),
+      ),
+    ) as unknown as Effect.Effect<void, OrderNotFoundError | OrderUpdateError, never>
 
   const getTriggerableOrders = (
     poolId: string,

@@ -188,16 +188,13 @@ tpSl.get("/pools/:poolId", async (c) => {
   const status = c.req.query("status") as string | undefined
   const validStatuses = ["pending", "triggered", "executed", "cancelled", "expired"] as const
   type ValidStatus = (typeof validStatuses)[number]
-  const validatedStatus = status !== undefined && validStatuses.includes(status as ValidStatus) ? (status as ValidStatus) : undefined
+  const validatedStatus =
+    status !== undefined && validStatuses.includes(status as ValidStatus) ? (status as ValidStatus) : undefined
 
   try {
     const program = Effect.gen(function* () {
       const tpSlService = yield* TpSlService
-      return yield* tpSlService.listByPool(
-        poolId.toLowerCase(),
-        chainIdFor(c),
-        validatedStatus,
-      )
+      return yield* tpSlService.listByPool(poolId.toLowerCase(), chainIdFor(c), validatedStatus)
     })
     const orders = await runEffect(program.pipe(Effect.provide(tpSlLayer(c.env.DB))))
     return c.json({ orders, count: orders.length })
