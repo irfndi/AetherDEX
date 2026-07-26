@@ -228,6 +228,7 @@ contract AetherHook is IHooks, Ownable {
     }
 
     /// @inheritdoc IHooks
+    // slither-disable-next-line unused-return
     function afterSwap(address, PoolKey calldata key, SwapParams calldata params, BalanceDelta delta, bytes calldata)
         external
         onlyPoolManager
@@ -312,6 +313,7 @@ contract AetherHook is IHooks, Ownable {
     /// @dev Requires at least two observations, and the window start must lie within the
     ///      retained buffer. Reverts with {Errors.InsufficientObservations} or
     ///      {Errors.InsufficientElapsedTime} otherwise.
+    // slither-disable-next-line weak-prng
     function getTwapTick(bytes32 poolId, uint32 secondsAgo) public view returns (int24 avgTick) {
         if (secondsAgo == 0) revert Errors.InsufficientElapsedTime();
         if (observationCount[poolId] < 2) revert Errors.InsufficientObservations();
@@ -396,6 +398,7 @@ contract AetherHook is IHooks, Ownable {
     ///      are folded in place (no zero-elapsed observation is ever stored, so no read path
     ///      can divide by a zero delta). When the 1024-slot ring is full, the oldest slot is
     ///      overwritten.
+    // slither-disable-next-line incorrect-equality
     function _recordObservation(bytes32 poolId, int24 tick) internal {
         uint32 time = uint32(block.timestamp);
         uint16 count = observationCount[poolId];
@@ -441,6 +444,7 @@ contract AetherHook is IHooks, Ownable {
     /// @param poolId The pool to query
     /// @param target The unix timestamp to resolve the cumulative tick for
     /// @return cumulative The (interpolated) tickCumulative at `target`
+    // slither-disable-next-line incorrect-equality
     function _observeCumulative(bytes32 poolId, uint32 target) internal view returns (int56 cumulative) {
         uint16 count = observationCount[poolId];
         if (count == 0) revert Errors.InsufficientObservations();

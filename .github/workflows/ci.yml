@@ -232,7 +232,6 @@ jobs:
         run: |
           set -euo pipefail
           slither . --fail-medium \
-            --exclude arbitrary-send-eth,weak-prng,reentrancy-balance,reentrancy-no-eth,incorrect-equality,unused-return,write-after-write \
             --exclude-dependencies \
             --filter-paths "lib|test|script|out|cache"
 

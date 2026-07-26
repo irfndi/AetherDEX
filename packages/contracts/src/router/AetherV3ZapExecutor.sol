@@ -88,10 +88,6 @@ contract AetherV3ZapExecutor is ReentrancyGuard {
         IERC20 token0 = IERC20(params.token0);
         IERC20 token1 = IERC20(params.token1);
         IERC20 tokenIn = IERC20(params.tokenIn);
-        if (token0.balanceOf(address(this)) != 0 || token1.balanceOf(address(this)) != 0) {
-            revert Errors.PreExistingBalance();
-        }
-
         uint256 balanceBefore = tokenIn.balanceOf(address(this));
         tokenIn.safeTransferFrom(msg.sender, address(this), params.amountIn);
         if (tokenIn.balanceOf(address(this)) - balanceBefore != params.amountIn) revert Errors.InvalidAmount();

@@ -11,11 +11,11 @@ function RootComponent() {
   return (
     <div className="min-h-screen bg-base-100">
       <header className="navbar border-b border-base-300 bg-base-200">
-        <div className="container mx-auto flex items-center justify-between px-4">
+        <div className="container mx-auto flex flex-wrap items-center justify-between gap-4 px-4">
           <Link to="/" className="text-xl font-bold text-primary">
             AetherDEX
           </Link>
-          <nav className="flex gap-6">
+          <nav className="order-3 flex w-full flex-wrap justify-center gap-4 sm:order-none sm:w-auto sm:gap-6">
             <Link to="/swap" className="text-sm font-medium hover:text-primary [&.active]:text-primary">
               Swap
             </Link>

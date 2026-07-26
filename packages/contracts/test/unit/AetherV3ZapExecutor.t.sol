@@ -131,12 +131,16 @@ contract AetherV3ZapExecutorTest is Test {
         executor.zap(params);
     }
 
-    function test_zapRevertsForPreExistingDust() public {
+    function test_zapRefundsPreExistingDustWithoutGriefing() public {
         token0.mint(address(executor), 1);
 
-        vm.expectRevert(Errors.PreExistingBalance.selector);
+        swapRouter.setAmountOut(35 ether);
         vm.prank(user);
         executor.zap(_params(address(token0)));
+
+        assertEq(token0.balanceOf(user), 1);
+        assertEq(token0.balanceOf(address(executor)), 0);
+        assertEq(token1.balanceOf(address(executor)), 0);
     }
 
     function test_zapRevertsForExpiredDeadline() public {

@@ -33,6 +33,7 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
         poolManager = _poolManager;
     }
 
+    // slither-disable-next-line write-after-write
     function mintPosition(MintPositionParams calldata params)
         external
         payable
@@ -52,6 +53,7 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
         uint256 balance0Before = _balanceBeforeCall(params.poolKey.currency0);
         uint256 balance1Before = _balanceBeforeCall(params.poolKey.currency1);
         _pullMaximums(params);
+        // slither-disable-next-line write-after-write
         _unlockActive = true;
         bytes memory result = poolManager.unlock(abi.encode(Action.MINT, abi.encode(position, params)));
         _unlockActive = false;
@@ -63,6 +65,7 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
         _refund(params.poolKey, params.recipient, balance0Before, balance1Before);
     }
 
+    // slither-disable-next-line write-after-write
     function removeLiquidity(RemoveLiquidityParams calldata params)
         external
         nonReentrant
@@ -76,6 +79,7 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
         Position memory position = _positions[params.tokenId];
         if (params.liquidity == 0 || params.liquidity > position.liquidity) revert InvalidLiquidity();
 
+        // slither-disable-next-line write-after-write
         _unlockActive = true;
         bytes memory result =
             poolManager.unlock(abi.encode(Action.REMOVE, abi.encode(position, params.liquidity, params.hookData)));
@@ -93,6 +97,7 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
         _pay(position.poolKey, recipient, amount0, amount1);
     }
 
+    // slither-disable-next-line reentrancy-balance,reentrancy-no-eth,write-after-write
     function rebalancePosition(RebalancePositionParams calldata params)
         external
         payable
@@ -129,6 +134,7 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
             })
         );
 
+        // slither-disable-next-line write-after-write
         _unlockActive = true;
         bytes memory result = poolManager.unlock(
             abi.encode(Action.REBALANCE, abi.encode(position, params, balance0Before, balance1Before))
@@ -147,6 +153,7 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
         return _positions[tokenId];
     }
 
+    // slither-disable-next-line unused-return
     function unlockCallback(bytes calldata data)
         external
         override(IAetherPositionManager, IUnlockCallback)
@@ -245,6 +252,7 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
         _settle(currency, amount);
     }
 
+    // slither-disable-next-line unused-return
     function _settle(Currency currency, uint256 amount) internal {
         poolManager.sync(currency);
         if (currency.isAddressZero()) {
@@ -275,6 +283,7 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
         _refundCurrency(key.currency1, recipient, balance1Before);
     }
 
+    // slither-disable-next-line incorrect-equality
     function _refundCurrency(Currency currency, address recipient, uint256 balanceBefore) internal {
         uint256 balanceAfter = _balanceOf(currency);
         uint256 amount = balanceAfter > balanceBefore ? balanceAfter - balanceBefore : 0;
@@ -292,6 +301,7 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
         _payCurrency(key.currency1, recipient, amount1);
     }
 
+    // slither-disable-next-line arbitrary-send-eth
     function _payCurrency(Currency currency, address recipient, uint256 amount) internal {
         if (amount == 0) return;
         if (currency.isAddressZero()) {
