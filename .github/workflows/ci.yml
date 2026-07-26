@@ -233,7 +233,7 @@ jobs:
           set -euo pipefail
           # Hard gate: fail the job on any high or medium finding in project sources.
           # Vendored deps (lib/) and tests/scripts/build artifacts are excluded.
-          slither . --fail-high --fail-medium --exclude-dependencies \
+          slither . --fail-medium --exclude-dependencies \
             --filter-paths "lib|test|script|out|cache"
 
       - name: Upload coverage to Codecov
