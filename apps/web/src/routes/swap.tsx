@@ -232,7 +232,7 @@ function SwapPage() {
                   {SLIPPAGE_OPTIONS.map((s) => (
                     <li key={s}>
                       <button type="button" onClick={() => setSlippage(s)} className={slippage === s ? "active" : ""}>
-                        {s}%
+                        {s.toFixed(1)}%
                       </button>
                     </li>
                   ))}
