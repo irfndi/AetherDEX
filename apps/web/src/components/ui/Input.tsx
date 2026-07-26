@@ -9,13 +9,17 @@ export function Input({ label, error, className = "", id, ...rest }: InputProps)
   const inputId = id ?? `input-${Math.random().toString(36).slice(2, 9)}`
   const errorClass = error ? "input-error" : ""
   return (
-    <div className="form-control w-full">
+    <div className="form-control min-w-0 w-full">
       {label ? (
-        <label className="label" htmlFor={inputId}>
-          <span className="label-text">{label}</span>
+        <label className="label min-w-0 max-w-full" htmlFor={inputId}>
+          <span className="label-text min-w-0 max-w-full flex-1 whitespace-normal break-words">{label}</span>
         </label>
       ) : null}
-      <input id={inputId} className={`input input-bordered w-full ${errorClass} ${className}`.trim()} {...rest} />
+      <input
+        id={inputId}
+        className={`input input-bordered min-w-0 max-w-full w-full ${errorClass} ${className}`.trim()}
+        {...rest}
+      />
       {error ? (
         <label className="label" htmlFor={inputId}>
           <span className="label-text-alt text-error">{error}</span>

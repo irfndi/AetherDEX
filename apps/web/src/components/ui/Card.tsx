@@ -23,7 +23,7 @@ interface CardBodyProps extends HTMLAttributes<HTMLDivElement> {
 
 export function CardBody({ children, className = "", ...rest }: CardBodyProps) {
   return (
-    <div className={`card-body ${className}`.trim()} {...rest}>
+    <div className={`card-body min-w-0 max-w-full ${className}`.trim()} {...rest}>
       {children}
     </div>
   )

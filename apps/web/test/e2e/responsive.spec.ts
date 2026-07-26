@@ -1,0 +1,20 @@
+import { expect, test } from "@playwright/test"
+
+const routes = ["/swap", "/pools", "/pools/new", "/positions", "/portfolio"]
+
+test.describe("Responsive route shell", () => {
+  test.use({ viewport: { width: 375, height: 667 } })
+
+  for (const route of routes) {
+    test(`${route} fits a narrow viewport`, async ({ page }) => {
+      await page.goto(route)
+      await expect(page.locator("main")).toBeVisible()
+
+      const dimensions = await page.evaluate(() => ({
+        bodyWidth: document.body.scrollWidth,
+        viewportWidth: document.documentElement.clientWidth,
+      }))
+      expect(dimensions.bodyWidth, `${route} overflows horizontally`).toBeLessThanOrEqual(dimensions.viewportWidth)
+    })
+  }
+})

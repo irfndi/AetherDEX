@@ -325,10 +325,11 @@ function NewPoolPage() {
                 onChange={(e) => update("tickSpacing", e.target.value)}
               />
             </div>
-            <div className="mt-4 join w-full">
+            <fieldset className="mt-4 flex flex-wrap gap-2">
+              <legend className="sr-only">Initial price format</legend>
               <button
                 type="button"
-                className={`join-item btn btn-sm ${values.priceInput.kind === "price" ? "btn-primary" : "btn-ghost"}`}
+                className={`btn btn-sm ${values.priceInput.kind === "price" ? "btn-primary" : "btn-ghost border border-base-300"}`}
                 onClick={() =>
                   setValues((current) => ({
                     ...current,
@@ -340,7 +341,7 @@ function NewPoolPage() {
               </button>
               <button
                 type="button"
-                className={`join-item btn btn-sm ${values.priceInput.kind === "sqrtPriceX96" ? "btn-primary" : "btn-ghost"}`}
+                className={`btn btn-sm ${values.priceInput.kind === "sqrtPriceX96" ? "btn-primary" : "btn-ghost border border-base-300"}`}
                 onClick={() =>
                   setValues((current) => ({
                     ...current,
@@ -348,9 +349,9 @@ function NewPoolPage() {
                   }))
                 }
               >
-                sqrtPriceX96
+                Sqrt price
               </button>
-            </div>
+            </fieldset>
             <Input
               id="initial-price"
               label={
@@ -390,7 +391,9 @@ function NewPoolPage() {
               checked={recheckAcknowledged}
               onChange={(e) => setRecheckAcknowledged(e.target.checked)}
             />
-            <span className="label-text">I understand the price will be checked again at execution time.</span>
+            <span className="label-text min-w-0 whitespace-normal break-words">
+              I understand the price will be checked again at execution time.
+            </span>
           </label>
 
           {!config ? (
