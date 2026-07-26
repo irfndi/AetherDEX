@@ -286,6 +286,8 @@ This reframes the existing AGENTS.md "Wave 3+" backlog around the Alpine LP thes
 
 **Phase 1 security status (2026-07-26):** authenticated sessions reject malformed, expired, future-dated, or cross-chain records, and authentication failures are sanitized at the HTTP boundary. SIWE nonces now use one Durable Object per nonce with serialized consume and expiry alarms, so concurrent verification can mint at most one session from a nonce and unconsumed records are removed after expiry. Chain-state reads reject wrong-chain RPCs and pin all StateView calls to one block; focused regression coverage is green. The remaining production gate is provisioning the isolated environment resources and live end-to-end validation of the bindings and deployed contracts.
 
+**Phase 1 verification status (2026-07-26):** route guard tests now cover malformed pairs, unavailable prices, invalid v3 quote inputs, unsupported swap modes, and deadline/slippage boundaries. Web regression tests cover range snapping, missing depth, pool-stat failure states, and live ticker connection/trend handling. The backend production-surface gate reports 73.87% lines, the web suite reports 77.03% statements and 82.44% lines, and the Solidity suite passes 162 tests under Solidity 0.8.36. Contract CI coverage now excludes deployment scripts and test harnesses from the production threshold; the required 90% production-contract gate still needs to pass on PR CI. Phase 1 remains open until that CI gate, protected/private submission validation, and isolated live deployment checks are complete.
+
 ### Phase 2 — V4-native automation (the differentiator)
 
 > **Depends on** the Phase-0 TWAP fix (G2.5) being real and validated, and on the router position-ownership migration (Phase 1).
