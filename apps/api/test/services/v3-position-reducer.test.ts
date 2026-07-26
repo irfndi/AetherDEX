@@ -54,4 +54,12 @@ describe("reduceV3PositionEvents", () => {
     const positions = reduceV3PositionEvents([event({ eventType: "decrease", liquidityDelta: "101" })])
     expect(positions.has("7")).toBe(false)
   })
+
+  it("keeps a valid withdrawal when converted inventory exceeds deposited token amounts", () => {
+    const positions = reduceV3PositionEvents([
+      event({ eventType: "increase", amount0: "10", amount1: "20" }),
+      event({ eventType: "decrease", liquidityDelta: "40", amount0: "25", amount1: "5" }),
+    ])
+    expect(positions.get("7")).toMatchObject({ liquidity: 60n, amount0: 0n, amount1: 15n, isActive: true })
+  })
 })

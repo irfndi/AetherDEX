@@ -134,7 +134,7 @@ export const getUser = (address: string) =>
 /* ============ SWAP RECORD ============ */
 
 export interface RecordSwapInput {
-  chainId?: number
+  chainId: number
   txHash: string
   userAddress: string
   poolId: string | null
@@ -153,7 +153,7 @@ export const recordSwap = (tx: RecordSwapInput) =>
     yield* sql`
       INSERT INTO transactions
         (chain_id, tx_hash, user_address, pool_id, tx_type, token_in, token_out, amount_in, amount_out, amount_usd, block_number, block_timestamp, status, created_at)
-      VALUES (${tx.chainId ?? 1}, ${tx.txHash}, ${tx.userAddress}, ${tx.poolId}, 'swap', ${tx.tokenIn}, ${tx.tokenOut}, ${tx.amountIn}, ${tx.amountOut}, ${tx.amountUsd}, ${tx.blockNumber}, ${tx.blockTimestamp}, 'pending', ${Date.now()})
+      VALUES (${tx.chainId}, ${tx.txHash}, ${tx.userAddress}, ${tx.poolId}, 'swap', ${tx.tokenIn}, ${tx.tokenOut}, ${tx.amountIn}, ${tx.amountOut}, ${tx.amountUsd}, ${tx.blockNumber}, ${tx.blockTimestamp}, 'pending', ${Date.now()})
       ON CONFLICT(chain_id, tx_hash) DO NOTHING
     `
   })

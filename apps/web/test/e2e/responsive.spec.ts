@@ -9,6 +9,7 @@ test.describe("Responsive route shell", () => {
     test(`${route} fits a narrow viewport`, async ({ page }) => {
       await page.goto(route)
       await expect(page.locator("main")).toBeVisible()
+      await page.waitForLoadState("networkidle")
 
       const dimensions = await page.evaluate(() => ({
         bodyWidth: document.body.scrollWidth,

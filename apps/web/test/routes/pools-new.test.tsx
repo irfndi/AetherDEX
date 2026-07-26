@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   buildPoolCreationTransactionIntent,
   type PoolCreationFormValues,
+  sqrtPriceToPrice,
   validatePoolCreationForm,
 } from "../../src/routes/pools.new"
 
@@ -100,6 +101,10 @@ describe("pool creation validation", () => {
 })
 
 describe("pool creation transaction intent", () => {
+  it("preserves display precision when decoding a raw unit price", () => {
+    expect(sqrtPriceToPrice((2n ** 96n).toString(), 18, 18)).toBe("1")
+  })
+
   it("contains the factory method and no deployment address", () => {
     const result = validatePoolCreationForm(validValues, Math.floor(Date.parse("2029-01-01") / 1000))
     if (!result.request) throw new Error("expected valid request")

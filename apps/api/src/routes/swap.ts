@@ -188,9 +188,15 @@ swap.post("/record", requireAuth, async (c) => {
     return c.json({ error: "txHash, blockNumber, blockTimestamp required" }, 400)
   }
 
+  const chainId = Number.parseInt(c.env.CHAIN_ID ?? "", 10)
+  if (!Number.isSafeInteger(chainId) || chainId <= 0) {
+    return c.json({ error: "Invalid chain configuration" }, 500)
+  }
+
   try {
     await runEffect(
       recordSwap({
+        chainId,
         txHash: body.txHash,
         userAddress: session.userAddress,
         poolId: body.poolId ?? null,

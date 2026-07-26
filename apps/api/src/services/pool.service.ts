@@ -28,7 +28,7 @@ export interface PoolInfo {
 }
 
 export interface PoolQueryOptions {
-  chainId?: number
+  chainId: number
   limit?: number
   offset?: number
   sortBy?: "tvl" | "volume" | "fees" | "created"
@@ -53,15 +53,15 @@ export class PoolReadError {
 // --- Service interface ---
 
 export interface PoolService {
-  readonly getPool: (poolId: string, chainId?: number) => Effect.Effect<PoolInfo | null, PoolReadError>
-  readonly listPools: (options?: PoolQueryOptions) => Effect.Effect<PoolInfo[], PoolListError>
+  readonly getPool: (poolId: string, chainId: number) => Effect.Effect<PoolInfo | null, PoolReadError>
+  readonly listPools: (options: PoolQueryOptions) => Effect.Effect<PoolInfo[], PoolListError>
   readonly getPoolByTokens: (
     token0: string,
     token1: string,
     fee: number,
-    chainId?: number,
+    chainId: number,
   ) => Effect.Effect<PoolInfo | null>
-  readonly refreshPool: (poolId: string, chainId?: number) => Effect.Effect<PoolInfo>
+  readonly refreshPool: (poolId: string, chainId: number) => Effect.Effect<PoolInfo>
 }
 
 // --- Tag ---
@@ -73,7 +73,7 @@ export const PoolService = Context.Service<PoolService>("@aetherdex/PoolService"
 const makePoolService = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
 
-  const getPool = (poolId: string, chainId = 1): Effect.Effect<PoolInfo | null, PoolReadError, never> =>
+  const getPool = (poolId: string, chainId: number): Effect.Effect<PoolInfo | null, PoolReadError, never> =>
     Effect.gen(function* () {
       const rows =
         (yield* sql`SELECT * FROM pools WHERE chain_id = ${chainId} AND pool_id = ${poolId}`) as unknown as readonly Record<
@@ -84,14 +84,14 @@ const makePoolService = Effect.gen(function* () {
       return rowToPool(rows[0] as Record<string, unknown>)
     }).pipe(Effect.catch((error) => Effect.fail(new PoolReadError(String(error)))))
 
-  const listPools = (options?: PoolQueryOptions): Effect.Effect<PoolInfo[], PoolListError, never> =>
+  const listPools = (options: PoolQueryOptions): Effect.Effect<PoolInfo[], PoolListError, never> =>
     Effect.gen(function* () {
-      const limit = Math.min(options?.limit ?? 50, 200)
-      const offset = options?.offset ?? 0
-      const sortBy = options?.sortBy ?? "tvl"
-      const sortDirection = options?.sortDirection ?? "desc"
-      const filterByToken = options?.filterByToken
-      const chainId = options?.chainId ?? 1
+      const limit = Math.min(options.limit ?? 50, 200)
+      const offset = options.offset ?? 0
+      const sortBy = options.sortBy ?? "tvl"
+      const sortDirection = options.sortDirection ?? "desc"
+      const filterByToken = options.filterByToken
+      const chainId = options.chainId
 
       const sortColumn: Record<string, string> = {
         tvl: "tvl_usd",
@@ -125,7 +125,7 @@ const makePoolService = Effect.gen(function* () {
     token0: string,
     token1: string,
     fee: number,
-    chainId = 1,
+    chainId: number,
   ): Effect.Effect<PoolInfo | null, never, never> =>
     Effect.gen(function* () {
       const rows = (yield* sql`
@@ -137,7 +137,7 @@ const makePoolService = Effect.gen(function* () {
       return rowToPool(rows[0] as Record<string, unknown>)
     }).pipe(Effect.catch(() => Effect.succeed(null as PoolInfo | null)))
 
-  const refreshPool = (poolId: string, chainId = 1): Effect.Effect<PoolInfo, never, never> =>
+  const refreshPool = (poolId: string, chainId: number): Effect.Effect<PoolInfo, never, never> =>
     Effect.gen(function* () {
       const rows =
         (yield* sql`SELECT * FROM pools WHERE chain_id = ${chainId} AND pool_id = ${poolId}`) as unknown as readonly Record<

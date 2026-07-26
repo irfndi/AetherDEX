@@ -1,7 +1,7 @@
 import { useAppKit } from "@reown/appkit/react"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { type FormEvent, useEffect, useState } from "react"
-import { encodeFunctionData, getAddress, type Hex, isAddress, parseUnits } from "viem"
+import { encodeFunctionData, getAddress, type Hex, isAddress, parseUnits, zeroAddress } from "viem"
 import { useAccount, usePublicClient, useWalletClient } from "wagmi"
 import { DexScreenerChart } from "../components/DexScreenerChart"
 import { RangeSelector } from "../components/RangeSelector"
@@ -71,6 +71,43 @@ const ERC20_ABI = [
       { name: "amount", type: "uint256" },
     ],
     outputs: [{ name: "", type: "bool" }],
+  },
+] as const
+const V3_FACTORY_ABI = [
+  {
+    name: "getPool",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "tokenA", type: "address" },
+      { name: "tokenB", type: "address" },
+      { name: "fee", type: "uint24" },
+    ],
+    outputs: [{ name: "pool", type: "address" }],
+  },
+] as const
+const V3_POOL_STATE_ABI = [
+  {
+    name: "slot0",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [
+      { name: "sqrtPriceX96", type: "uint160" },
+      { name: "tick", type: "int24" },
+      { name: "observationIndex", type: "uint16" },
+      { name: "observationCardinality", type: "uint16" },
+      { name: "observationCardinalityNext", type: "uint16" },
+      { name: "feeProtocol", type: "uint8" },
+      { name: "unlocked", type: "bool" },
+    ],
+  },
+  {
+    name: "liquidity",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint128" }],
   },
 ] as const
 
@@ -252,6 +289,21 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
           const data = parseV3SwapQuote(await response.json())
           return { amountOut: BigInt(data.amountOut), minAmountOut: BigInt(data.minAmountOut) }
         }
+        const v3FactoryAddress = import.meta.env.VITE_V3_FACTORY_ADDRESS
+        if (!v3FactoryAddress || !isAddress(v3FactoryAddress)) throw new Error("V3 factory is not configured")
+        const v3PoolAddress = await publicClient.readContract({
+          address: getAddress(v3FactoryAddress),
+          abi: V3_FACTORY_ABI,
+          functionName: "getPool",
+          args: [getAddress(pool.token0Address), getAddress(pool.token1Address), pool.fee],
+        })
+        if (v3PoolAddress === zeroAddress) throw new Error("V3 pool is not deployed for this pair")
+        const [slot0, v3Liquidity] = await Promise.all([
+          publicClient.readContract({ address: v3PoolAddress, abi: V3_POOL_STATE_ABI, functionName: "slot0" }),
+          publicClient.readContract({ address: v3PoolAddress, abi: V3_POOL_STATE_ABI, functionName: "liquidity" }),
+        ])
+        const [sqrtPriceX96, currentTick] = slot0
+        if (sqrtPriceX96 === 0n || v3Liquidity === 0n) throw new Error("V3 pool has no active liquidity")
         const v3Pool = buildV3PoolContext({
           chainId: CHAIN_ID,
           token0: getAddress(pool.token0Address),
@@ -259,9 +311,9 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
           token0Decimals: token0.decimals,
           token1Decimals: token1.decimals,
           fee: pool.fee as 100 | 500 | 3_000 | 10_000,
-          sqrtPriceX96: BigInt(pool.sqrtPriceX96),
-          liquidity: BigInt(pool.liquidity),
-          currentTick: pool.currentTick,
+          sqrtPriceX96,
+          liquidity: v3Liquidity,
+          currentTick,
         })
         const search = await findV3SwapAmount({
           pool: v3Pool,

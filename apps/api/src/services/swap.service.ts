@@ -201,7 +201,7 @@ const makeSwapService = (deps: SwapServiceDeps, pools: PoolService, reader: Chai
   const resolvePoolMeta = (token0: string, token1: string): Effect.Effect<PoolMeta, SwapQuoteError> =>
     Effect.gen(function* () {
       for (const fee of FEE_TIERS) {
-        const pool = yield* pools.getPoolByTokens(token0.toLowerCase(), token1.toLowerCase(), fee)
+        const pool = yield* pools.getPoolByTokens(token0.toLowerCase(), token1.toLowerCase(), fee, chainId)
         if (pool) {
           return {
             poolId: pool.poolId,
@@ -328,7 +328,7 @@ const makeSwapService = (deps: SwapServiceDeps, pools: PoolService, reader: Chai
         return yield* Effect.fail(new SwapQuoteError("invalid_amount", "Invalid recipient address"))
       }
 
-      const pool = yield* pools.getPool(quote.poolId)
+      const pool = yield* pools.getPool(quote.poolId, chainId)
       if (!pool) {
         return yield* Effect.fail(new SwapQuoteError("no_pool", `Pool ${quote.poolId} not found`))
       }

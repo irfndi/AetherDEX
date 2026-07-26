@@ -519,12 +519,13 @@ function integerSqrt(value: bigint): bigint {
   return result
 }
 
-function sqrtPriceToPrice(value: string, token0Decimals: number, token1Decimals: number): string {
+export function sqrtPriceToPrice(value: string, token0Decimals: number, token1Decimals: number): string {
   const sqrtPriceX96 = BigInt(value)
   const numerator = sqrtPriceX96 * sqrtPriceX96 * 10n ** BigInt(token0Decimals)
   const denominator = 2n ** 192n * 10n ** BigInt(token1Decimals)
-  const scaled = numerator / denominator
-  const whole = scaled / 10n ** 18n
-  const fraction = (scaled % 10n ** 18n).toString().padStart(18, "0").replace(/0+$/, "")
+  const displayScale = 10n ** 18n
+  const scaled = (numerator * displayScale) / denominator
+  const whole = scaled / displayScale
+  const fraction = (scaled % displayScale).toString().padStart(18, "0").replace(/0+$/, "")
   return fraction ? `${whole}.${fraction}` : whole.toString()
 }

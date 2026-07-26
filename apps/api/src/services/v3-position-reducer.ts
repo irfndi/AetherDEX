@@ -75,14 +75,16 @@ function applyEvent(state: V3PositionState, event: V3LiquidityEvent): V3Position
     }
   }
   if (event.eventType === "decrease") {
-    if (deltaLiquidity > state.liquidity || delta0 > state.amount0 || delta1 > state.amount1) return null
+    if (deltaLiquidity > state.liquidity) return null
     const liquidity = state.liquidity - deltaLiquidity
+    const amount0 = delta0 >= state.amount0 ? 0n : state.amount0 - delta0
+    const amount1 = delta1 >= state.amount1 ? 0n : state.amount1 - delta1
     return {
       ...state,
       isActive: liquidity > 0n,
       liquidity,
-      amount0: state.amount0 - delta0,
-      amount1: state.amount1 - delta1,
+      amount0,
+      amount1,
       pendingPrincipal0: state.pendingPrincipal0 + delta0,
       pendingPrincipal1: state.pendingPrincipal1 + delta1,
     }
