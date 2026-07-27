@@ -33,7 +33,7 @@ export const V3LiquidityIndexer = Context.Service<V3LiquidityIndexer>("@aetherde
 
 const makeV3LiquidityIndexer = (config: V3LiquidityIndexerConfig) =>
   Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient
+    yield* SqlClient.SqlClient
     const client = createPublicClient({ transport: http(config.rpcUrl) })
 
     const indexRange = (fromBlock: bigint, toBlock: bigint) =>
