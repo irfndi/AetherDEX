@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  assertPoolTokenDecimals,
   buildPoolCreationTransactionIntent,
   type PoolCreationFormValues,
   sqrtPriceToPrice,
@@ -20,6 +21,12 @@ const validValues: PoolCreationFormValues = {
 }
 
 describe("pool creation validation", () => {
+  it("rejects form decimals that do not match the token contracts", () => {
+    expect(() => assertPoolTokenDecimals({ token0Decimals: 18, token1Decimals: 18 }, 18, 6)).toThrow(
+      "Token decimals changed or do not match the on-chain token contracts",
+    )
+  })
+
   it("returns a normalized typed request for a valid sorted pair", () => {
     const result = validatePoolCreationForm(validValues, Math.floor(Date.parse("2029-01-01") / 1000))
 

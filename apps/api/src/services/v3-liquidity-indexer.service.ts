@@ -22,6 +22,12 @@ export class V3LiquidityIndexerError {
   constructor(readonly message: string) {}
 }
 
+export function assertIndexerChainId(configuredChainId: number, rpcChainId: number): void {
+  if (rpcChainId !== configuredChainId) {
+    throw new V3LiquidityIndexerError(`RPC chain ${rpcChainId} does not match configured chain ${configuredChainId}`)
+  }
+}
+
 export interface V3LiquidityIndexer {
   readonly indexRange: (fromBlock: bigint, toBlock: bigint) => Effect.Effect<number, V3LiquidityIndexerError>
   readonly latestBlock: Effect.Effect<bigint, V3LiquidityIndexerError>
@@ -34,16 +40,35 @@ const makeV3LiquidityIndexer = (config: V3LiquidityIndexerConfig) =>
     const sql = yield* SqlClient.SqlClient
     const client = createPublicClient({ transport: http(config.rpcUrl) })
 
-    const latestBlock = Effect.tryPromise({
-      try: () => client.getBlockNumber(),
-      catch: (error) =>
-        new V3LiquidityIndexerError(
-          `Unable to read the latest v3 block: ${error instanceof Error ? error.message : String(error)}`,
-        ),
+    const verifyRpcChain = Effect.gen(function* () {
+      const rpcChainId = yield* Effect.tryPromise({
+        try: () => client.getChainId(),
+        catch: (error) =>
+          new V3LiquidityIndexerError(
+            `Unable to read the v3 RPC chain: ${error instanceof Error ? error.message : String(error)}`,
+          ),
+      })
+      yield* Effect.try({
+        try: () => assertIndexerChainId(config.chainId, rpcChainId),
+        catch: (error) =>
+          error instanceof V3LiquidityIndexerError ? error : new V3LiquidityIndexerError(String(error)),
+      })
+    })
+
+    const latestBlock = Effect.gen(function* () {
+      yield* verifyRpcChain
+      return yield* Effect.tryPromise({
+        try: () => client.getBlockNumber(),
+        catch: (error) =>
+          new V3LiquidityIndexerError(
+            `Unable to read the latest v3 block: ${error instanceof Error ? error.message : String(error)}`,
+          ),
+      })
     })
 
     const indexRange = (fromBlock: bigint, toBlock: bigint) =>
       Effect.gen(function* () {
+        yield* verifyRpcChain
         if (fromBlock < 0n || toBlock < fromBlock) {
           return yield* Effect.fail(new V3LiquidityIndexerError("Invalid v3 indexer block range"))
         }

@@ -18,7 +18,7 @@ import {
 } from "../lib/liquidity"
 import { submitProtectedRawTransaction } from "../lib/protected-submission"
 import { buildV3PoolContext, buildV3SingleSidedZapCall, findV3SwapAmount } from "../lib/v3-liquidity"
-import { buildV4SingleSidedCall, findV4SwapAmount } from "../lib/v4-liquidity"
+import { buildV4SingleSidedCall, findV4SwapAmount, getV4PoolId } from "../lib/v4-liquidity"
 
 interface Pool {
   poolId: string
@@ -108,6 +108,27 @@ const V3_POOL_STATE_ABI = [
     stateMutability: "view",
     inputs: [],
     outputs: [{ name: "", type: "uint128" }],
+  },
+] as const
+const V4_STATE_VIEW_ABI = [
+  {
+    name: "getSlot0",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "poolId", type: "bytes32" }],
+    outputs: [
+      { name: "sqrtPriceX96", type: "uint160" },
+      { name: "tick", type: "int24" },
+      { name: "protocolFee", type: "uint24" },
+      { name: "lpFee", type: "uint24" },
+    ],
+  },
+  {
+    name: "getLiquidity",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "poolId", type: "bytes32" }],
+    outputs: [{ name: "liquidity", type: "uint128" }],
   },
 ] as const
 
@@ -414,7 +435,7 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
         const data = parseSwapQuote(await response.json())
         return { amountOut: BigInt(data.amountOut), minAmountOut: BigInt(data.minAmountOut) }
       }
-      const poolInput = {
+      const poolKey = {
         chainId: CHAIN_ID,
         token0: getAddress(pool.token0Address),
         token1: getAddress(pool.token1Address),
@@ -423,9 +444,34 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
         fee: pool.fee,
         tickSpacing: pool.tickSpacing,
         hooks: getAddress(pool.hookAddress),
-        sqrtPriceX96: BigInt(pool.sqrtPriceX96),
-        liquidity: BigInt(pool.liquidity),
-        currentTick: pool.currentTick,
+      } as const
+      const stateViewAddress = import.meta.env.VITE_STATE_VIEW_ADDRESS
+      if (!stateViewAddress || !isAddress(stateViewAddress)) throw new Error("V4 StateView is not configured")
+      const blockNumber = await publicClient.getBlockNumber()
+      const poolId = getV4PoolId(poolKey)
+      const [slot0, v4Liquidity] = await Promise.all([
+        publicClient.readContract({
+          address: getAddress(stateViewAddress),
+          abi: V4_STATE_VIEW_ABI,
+          functionName: "getSlot0",
+          args: [poolId],
+          blockNumber,
+        }),
+        publicClient.readContract({
+          address: getAddress(stateViewAddress),
+          abi: V4_STATE_VIEW_ABI,
+          functionName: "getLiquidity",
+          args: [poolId],
+          blockNumber,
+        }),
+      ])
+      const [sqrtPriceX96, currentTick] = slot0
+      if (sqrtPriceX96 === 0n || v4Liquidity === 0n) throw new Error("V4 pool has no active liquidity")
+      const poolInput = {
+        ...poolKey,
+        sqrtPriceX96,
+        liquidity: v4Liquidity,
+        currentTick: Number(currentTick),
       } as const
       const search = await findV4SwapAmount({
         pool: poolInput,

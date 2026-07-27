@@ -65,6 +65,17 @@ export type V4LiquidityPoolInput = {
   readonly currentTick: number
 }
 
+export type V4PoolKeyInput = Pick<
+  V4LiquidityPoolInput,
+  "chainId" | "token0" | "token1" | "token0Decimals" | "token1Decimals" | "fee" | "tickSpacing" | "hooks"
+>
+
+export function getV4PoolId(input: V4PoolKeyInput): `0x${string}` {
+  const token0 = new Token(input.chainId, input.token0, input.token0Decimals)
+  const token1 = new Token(input.chainId, input.token1, input.token1Decimals)
+  return Pool.getPoolId(token0, token1, input.fee, input.tickSpacing, input.hooks) as `0x${string}`
+}
+
 export type V4SingleSidedCallInput = {
   readonly pool: V4LiquidityPoolInput
   readonly tickLower: number

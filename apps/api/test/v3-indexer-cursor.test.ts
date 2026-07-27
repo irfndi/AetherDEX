@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest"
+import { assertIndexerChainId, V3LiquidityIndexerError } from "../src/services/v3-liquidity-indexer.service"
 import { nextV3IndexerRange, V3_INDEXER_INITIAL_LOOKBACK, V3_INDEXER_MAX_RANGE } from "../src/workers/v3-indexer-cursor"
 
 describe("v3 indexer cursor", () => {
@@ -15,5 +16,9 @@ describe("v3 indexer cursor", () => {
 
   it("does not schedule a range beyond the chain head", () => {
     expect(nextV3IndexerRange(31n, 30n)).toBeNull()
+  })
+
+  it("rejects an RPC on a different chain", () => {
+    expect(() => assertIndexerChainId(11155111, 1)).toThrowError(V3LiquidityIndexerError)
   })
 })

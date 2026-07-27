@@ -22,6 +22,15 @@ const FACTORY_ABI = [
     outputs: [{ name: "poolId", type: "bytes32" }],
   },
 ] as const
+const ERC20_DECIMALS_ABI = [
+  {
+    name: "decimals",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8" }],
+  },
+] as const
 
 const Q96 = 2n ** 96n
 const MAX_UINT160 = 2n ** 160n - 1n
@@ -56,6 +65,16 @@ export interface PoolCreationRequest {
 export interface PoolCreationValidation {
   readonly errors: Readonly<Partial<Record<keyof PoolCreationFormValues | "pair", string>>>
   readonly request: PoolCreationRequest | null
+}
+
+export function assertPoolTokenDecimals(
+  request: Pick<PoolCreationRequest, "token0Decimals" | "token1Decimals">,
+  onChainToken0Decimals: number,
+  onChainToken1Decimals: number,
+): void {
+  if (request.token0Decimals !== onChainToken0Decimals || request.token1Decimals !== onChainToken1Decimals) {
+    throw new Error("Token decimals changed or do not match the on-chain token contracts")
+  }
 }
 
 export function validatePoolCreationForm(
@@ -270,6 +289,19 @@ function NewPoolPage() {
       if (config.chainId !== null && publicClient.chain?.id !== config.chainId) {
         throw new Error(`Switch to chain ${config.chainId} before creating the pool`)
       }
+      const [onChainToken0Decimals, onChainToken1Decimals] = await Promise.all([
+        publicClient.readContract({
+          address: validation.request.token0,
+          abi: ERC20_DECIMALS_ABI,
+          functionName: "decimals",
+        }),
+        publicClient.readContract({
+          address: validation.request.token1,
+          abi: ERC20_DECIMALS_ABI,
+          functionName: "decimals",
+        }),
+      ])
+      assertPoolTokenDecimals(validation.request, onChainToken0Decimals, onChainToken1Decimals)
       const intent = buildPoolCreationTransactionIntent(validation.request)
       const prepared = await walletClient.prepareTransactionRequest({
         account: address,
