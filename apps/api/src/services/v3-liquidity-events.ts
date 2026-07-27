@@ -97,10 +97,14 @@ export type RawLog = {
 
 export function parseV3LiquidityLog(
   log: RawLog,
-  config: { readonly positionManager: `0x${string}`; readonly poolAddress?: `0x${string}`; readonly poolId?: string },
+  config: {
+    readonly positionManager?: `0x${string}`
+    readonly poolAddress?: `0x${string}`
+    readonly poolId?: string
+  },
 ): V3LiquidityEvent | null {
   const address = log.address.toLowerCase()
-  if (address === config.positionManager.toLowerCase()) return parsePositionManagerLog(log)
+  if (config.positionManager && address === config.positionManager.toLowerCase()) return parsePositionManagerLog(log)
   if (config.poolAddress && address === config.poolAddress.toLowerCase()) {
     return parsePoolLog(log, config.poolId ?? null)
   }

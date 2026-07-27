@@ -54,6 +54,10 @@
       {
         "name": "SIWE_NONCE",
         "class_name": "SiweNonceDO"
+      },
+      {
+        "name": "VOLUME_ALERT_HUB",
+        "class_name": "VolumeAlertHubDO"
       }
     ]
   },
@@ -65,6 +69,10 @@
     {
       "tag": "v2",
       "new_sqlite_classes": ["SiweNonceDO"]
+    },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": ["VolumeAlertHubDO"]
     }
   ],
 
@@ -119,16 +127,41 @@
     "V3_POSITION_MANAGER_ADDRESS": "",
     "V3_POSITION_MANAGER_DEPLOYMENT_BLOCK": "0",
     "RPC_URL": "",
+    // Phase 3 indexer — disabled until explicitly enabled with INDEXER_ENABLED=true
+    // and at least one source contract address below. Comma list for V3 pools.
+    "INDEXER_ENABLED": "false",
+    "INDEXER_BATCH_SIZE": "2000",
+    "V4_POOL_MANAGER_ADDRESS": "",
+    "V3_INDEXED_POOL_ADDRESSES": "",
     // "auto" = V4 tick-math when STATE_VIEW_ADDRESS+RPC_URL are set, else legacy D1 approximation.
     "QUOTE_ENGINE_MODE": "auto",
     // Canonical Uniswap default token list (Phase-0 G4) — the only token list AetherDEX serves.
     "TOKEN_LIST_URL": "https://tokens.uniswap.org",
+    // Phase-3 API safety suite (src/middleware/*) — parsed with safe fallbacks in src/lib/safety-config.ts.
+    "RATE_LIMIT_MAX": "60",
+    "RATE_LIMIT_WINDOW_SECONDS": "60",
+    "CIRCUIT_FAILURE_THRESHOLD": "5",
+    "CIRCUIT_COOLDOWN_SECONDS": "30",
+    "HIGH_VALUE_USD_THRESHOLD": "10000",
+    // MEV protection: off | client | private. "private" degrades to "client" until PRIVATE_TX_RELAY_URL is set.
+    "MEV_PROTECTION_MODE": "client",
+    "MEV_MAX_SLIPPAGE_BPS": "500",
+    "PRIVATE_TX_RELAY_URL": "",
+    // Phase-3 volume-spike alerts — enabled with conservative defaults; the tick
+    // reads these in src/services/volume-alerts.service.ts (invalid values fall back).
+    "VOLUME_ALERT_WINDOW_SECONDS": "300",
+    "VOLUME_ALERT_THRESHOLD_USD": "1000000",
+    "VOLUME_ALERT_COOLDOWN_SECONDS": "900",
     "ENVIRONMENT": "development"
   },
 
   // Phase 2 keeper secrets (set via `wrangler secret put`):
   //   KEEPER_PRIVATE_KEY — hex-encoded private key for keeper transaction signing
   //   KEEPER_RPC_URL — RPC endpoint used by the keeper to submit transactions
+  //
+  // Phase 3 volume-alert Telegram notifications (set via `wrangler secret put`):
+  //   TELEGRAM_BOT_TOKEN — bot API token; alerts stay off until this is set
+  //   TELEGRAM_CHAT_ID — destination chat id; both are required to enable sends
 
   // Environments
   "env": {
@@ -148,8 +181,23 @@
         "V3_POSITION_MANAGER_ADDRESS": "",
         "V3_POSITION_MANAGER_DEPLOYMENT_BLOCK": "0",
         "RPC_URL": "",
+        "INDEXER_ENABLED": "false",
+        "INDEXER_BATCH_SIZE": "2000",
+        "V4_POOL_MANAGER_ADDRESS": "",
+        "V3_INDEXED_POOL_ADDRESSES": "",
         "QUOTE_ENGINE_MODE": "auto",
         "TOKEN_LIST_URL": "https://tokens.uniswap.org",
+        "RATE_LIMIT_MAX": "60",
+        "RATE_LIMIT_WINDOW_SECONDS": "60",
+        "CIRCUIT_FAILURE_THRESHOLD": "5",
+        "CIRCUIT_COOLDOWN_SECONDS": "30",
+        "HIGH_VALUE_USD_THRESHOLD": "10000",
+        "MEV_PROTECTION_MODE": "client",
+        "MEV_MAX_SLIPPAGE_BPS": "500",
+        "PRIVATE_TX_RELAY_URL": "",
+        "VOLUME_ALERT_WINDOW_SECONDS": "300",
+        "VOLUME_ALERT_THRESHOLD_USD": "1000000",
+        "VOLUME_ALERT_COOLDOWN_SECONDS": "900",
         "ENVIRONMENT": "staging"
       },
       "d1_databases": [
@@ -205,7 +253,8 @@
         "bindings": [
           { "name": "ORDER_BOOK", "class_name": "OrderBookDO" },
           { "name": "WEBSOCKET_HUB", "class_name": "WebSocketHubDO" },
-          { "name": "SIWE_NONCE", "class_name": "SiweNonceDO" }
+          { "name": "SIWE_NONCE", "class_name": "SiweNonceDO" },
+          { "name": "VOLUME_ALERT_HUB", "class_name": "VolumeAlertHubDO" }
         ]
       }
     },
@@ -225,8 +274,23 @@
         "V3_POSITION_MANAGER_ADDRESS": "",
         "V3_POSITION_MANAGER_DEPLOYMENT_BLOCK": "0",
         "RPC_URL": "",
+        "INDEXER_ENABLED": "false",
+        "INDEXER_BATCH_SIZE": "2000",
+        "V4_POOL_MANAGER_ADDRESS": "",
+        "V3_INDEXED_POOL_ADDRESSES": "",
         "QUOTE_ENGINE_MODE": "auto",
         "TOKEN_LIST_URL": "https://tokens.uniswap.org",
+        "RATE_LIMIT_MAX": "60",
+        "RATE_LIMIT_WINDOW_SECONDS": "60",
+        "CIRCUIT_FAILURE_THRESHOLD": "5",
+        "CIRCUIT_COOLDOWN_SECONDS": "30",
+        "HIGH_VALUE_USD_THRESHOLD": "10000",
+        "MEV_PROTECTION_MODE": "client",
+        "MEV_MAX_SLIPPAGE_BPS": "500",
+        "PRIVATE_TX_RELAY_URL": "",
+        "VOLUME_ALERT_WINDOW_SECONDS": "300",
+        "VOLUME_ALERT_THRESHOLD_USD": "1000000",
+        "VOLUME_ALERT_COOLDOWN_SECONDS": "900",
         "ENVIRONMENT": "production"
       },
       "d1_databases": [
@@ -282,7 +346,8 @@
         "bindings": [
           { "name": "ORDER_BOOK", "class_name": "OrderBookDO" },
           { "name": "WEBSOCKET_HUB", "class_name": "WebSocketHubDO" },
-          { "name": "SIWE_NONCE", "class_name": "SiweNonceDO" }
+          { "name": "SIWE_NONCE", "class_name": "SiweNonceDO" },
+          { "name": "VOLUME_ALERT_HUB", "class_name": "VolumeAlertHubDO" }
         ]
       }
     }

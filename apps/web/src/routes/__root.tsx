@@ -32,6 +32,9 @@ function RootComponent() {
             <Link to="/portfolio" className="text-sm font-medium hover:text-primary [&.active]:text-primary">
               Portfolio
             </Link>
+            <Link to="/playground" className="text-sm font-medium hover:text-primary [&.active]:text-primary">
+              Playground
+            </Link>
           </nav>
           <div className="flex items-center gap-2">
             <ThemeToggle />
