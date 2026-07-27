@@ -232,7 +232,7 @@ function SwapPage() {
                   {SLIPPAGE_OPTIONS.map((s) => (
                     <li key={s}>
                       <button type="button" onClick={() => setSlippage(s)} className={slippage === s ? "active" : ""}>
-                        {s}%
+                        {s.toFixed(1)}%
                       </button>
                     </li>
                   ))}
@@ -256,7 +256,7 @@ function SwapPage() {
                   onChange={(e) => setAmountIn(e.target.value.replace(/[^0-9.]/g, ""))}
                   className="input flex-1 border-0 bg-transparent text-3xl font-medium focus:outline-none"
                 />
-                <TokenSearch onSelect={setTokenIn} selectedToken={tokenIn} placeholder="Select token" />
+                <TokenSearch onSelect={setTokenIn} selectedToken={tokenIn} placeholder="Search token" />
               </div>
               {tokenIn && (
                 <div className="mt-2">
@@ -298,7 +298,7 @@ function SwapPage() {
                     <span className="text-base-content/40">0.0</span>
                   )}
                 </div>
-                <TokenSearch onSelect={setTokenOut} selectedToken={tokenOut} placeholder="Select token" />
+                <TokenSearch onSelect={setTokenOut} selectedToken={tokenOut} placeholder="Search token" />
               </div>
               {tokenOut && (
                 <div className="mt-2">

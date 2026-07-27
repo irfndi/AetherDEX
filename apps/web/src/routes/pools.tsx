@@ -91,23 +91,21 @@ function PoolsIndexPage() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </form>
-        <div className="flex flex-col gap-1">
-          <label htmlFor="sort-select" className="label-text text-xs">
-            Sort by
-          </label>
-          <div className="join" id="sort-select">
+        <fieldset className="flex flex-col gap-1">
+          <legend className="label-text text-xs">Sort by</legend>
+          <div className="flex flex-wrap gap-1" id="sort-select">
             {SORT_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
                 type="button"
                 onClick={() => navigate({ search: { sortBy: opt.value, filterToken } })}
-                className={`join-item btn btn-sm ${sortBy === opt.value ? "btn-primary" : "btn-ghost"}`}
+                className={`btn btn-sm ${sortBy === opt.value ? "btn-primary" : "btn-ghost border border-base-300"}`}
               >
                 {opt.label}
               </button>
             ))}
           </div>
-        </div>
+        </fieldset>
       </div>
 
       <PoolsResults isPending={isPending} isError={isError} pools={pools} tokens={tokens} onRetry={() => refetch()} />
@@ -126,8 +124,9 @@ interface PoolsResultsProps {
 export function PoolsResults({ isPending, isError, pools, tokens, onRetry }: PoolsResultsProps) {
   if (isPending) {
     return (
-      <div className="flex justify-center py-12">
-        <span className="loading loading-spinner loading-lg" />
+      <div className="flex items-center justify-center gap-3 py-12" role="status" aria-label="Loading pools">
+        <span className="loading loading-spinner loading-md text-primary" aria-hidden="true" />
+        <span className="text-sm text-base-content/60">Loading pools…</span>
       </div>
     )
   }

@@ -8,12 +8,15 @@
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { logger } from "hono/logger"
+import { type AuthVariables, authMiddleware } from "./auth/middleware"
 import { auth } from "./auth/routes"
-import { OrderBookDO, WebSocketHubDO } from "./durable-objects"
+import { OrderBookDO, SiweNonceDO, WebSocketHubDO } from "./durable-objects"
 import { pools } from "./routes/pools"
 import { positions } from "./routes/positions"
+import { priceGuard } from "./routes/price-guard"
 import { swap } from "./routes/swap"
 import { tokens } from "./routes/tokens"
+import { v3Quote } from "./routes/v3-quote"
 import { handleScheduled } from "./workers/cron-handler"
 import { processQueueBatch, type QueueMessage } from "./workers/queue-handler"
 
@@ -23,6 +26,7 @@ type Bindings = {
   STORAGE: R2Bucket
   ORDER_BOOK: DurableObjectNamespace
   WEBSOCKET_HUB: DurableObjectNamespace
+  SIWE_NONCE: DurableObjectNamespace
   PRICE_QUEUE: Queue
   SETTLE_QUEUE: Queue
   KEEPER_QUEUE: Queue
@@ -30,7 +34,7 @@ type Bindings = {
   ENVIRONMENT: string
 }
 
-const app = new Hono<{ Bindings: Bindings }>()
+const app = new Hono<{ Bindings: Bindings; Variables: AuthVariables }>()
 
 // Middleware
 app.use("*", logger())
@@ -43,6 +47,7 @@ app.use(
     credentials: true,
   }),
 )
+app.use("/api/v1/*", authMiddleware)
 
 // Structured error logging for observability
 app.use("*", async (c, next) => {
@@ -152,6 +157,8 @@ app.route("/api/v1", swap)
 app.route("/api/v1/pools", pools)
 app.route("/api/v1/tokens", tokens)
 app.route("/api/v1", positions)
+app.route("/api/v1", priceGuard)
+app.route("/api/v1", v3Quote)
 app.get("/api/v1/ping", (c) => c.json({ pong: true }))
 
 // 404
@@ -165,7 +172,7 @@ app.onError((err, c) => {
 
 // ─── Durable Object classes — imported from dedicated modules ─────────────────
 
-export { OrderBookDO, WebSocketHubDO }
+export { OrderBookDO, SiweNonceDO, WebSocketHubDO }
 
 // ─── Worker entry — combined Hono + DOs + Queue + Cron ────────────────────────
 

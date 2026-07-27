@@ -88,6 +88,15 @@ export interface LiquidityPosition {
   isActive: boolean
   createdAt: number
   updatedAt: number
+  readonly poolToken0Address?: string
+  readonly poolToken1Address?: string
+  readonly poolToken0Decimals?: number
+  readonly poolToken1Decimals?: number
+  readonly poolFee?: number
+  readonly poolHookAddress?: string | null
+  readonly poolSqrtPriceX96?: string
+  readonly poolCurrentTick?: number
+  readonly poolLiquidity?: string
 }
 
 export type LiquidityEventType = "mint" | "burn" | "increase" | "decrease" | "collect" | "transfer"
@@ -212,6 +221,15 @@ export function rowToLiquidityPosition(row: Record<string, unknown>): LiquidityP
     isActive: Boolean(row.is_active),
     createdAt: row.created_at as number,
     updatedAt: row.updated_at as number,
+    poolToken0Address: (row.pool_token0_address as string | undefined) ?? undefined,
+    poolToken1Address: (row.pool_token1_address as string | undefined) ?? undefined,
+    poolToken0Decimals: (row.pool_token0_decimals as number | undefined) ?? undefined,
+    poolToken1Decimals: (row.pool_token1_decimals as number | undefined) ?? undefined,
+    poolFee: (row.pool_fee as number | undefined) ?? undefined,
+    poolHookAddress: (row.pool_hook_address as string | null | undefined) ?? null,
+    poolSqrtPriceX96: (row.pool_sqrt_price_x96 as string | undefined) ?? undefined,
+    poolCurrentTick: (row.pool_current_tick as number | undefined) ?? undefined,
+    poolLiquidity: (row.pool_liquidity as string | undefined) ?? undefined,
   }
 }
 

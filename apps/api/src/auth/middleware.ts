@@ -38,6 +38,7 @@ export async function authMiddleware(
   }
 
   const kv = (c.env as { CACHE: KVNamespace }).CACHE
+  const configuredChainId = Number((c.env as { CHAIN_ID?: string }).CHAIN_ID)
   const raw = await kv.get(`session:${token}`)
   if (!raw) {
     await next()
@@ -46,6 +47,21 @@ export async function authMiddleware(
 
   try {
     const session = JSON.parse(raw) as AuthSession
+    if (
+      typeof session.userAddress !== "string" ||
+      !/^0x[a-fA-F0-9]{40}$/.test(session.userAddress) ||
+      !Number.isFinite(session.issuedAt) ||
+      !Number.isFinite(session.expiresAt) ||
+      session.issuedAt > Date.now() + 5 * 60 * 1000 ||
+      session.expiresAt <= session.issuedAt ||
+      session.expiresAt <= Date.now() ||
+      !Number.isFinite(configuredChainId) ||
+      session.chainId !== configuredChainId
+    ) {
+      await kv.delete(`session:${token}`)
+      await next()
+      return
+    }
     c.set("session", session)
     c.set("sessionToken", token)
   } catch {

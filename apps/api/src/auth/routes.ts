@@ -4,14 +4,18 @@ import { KVCacheService } from "../services/kv"
 import { type AuthVariables, authMiddleware, requireAuth } from "./middleware"
 import { deleteSession, issueNonce, verifyAndCreateSession } from "./siwe"
 
-const auth = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
+type AuthBindings = Env & {
+  SIWE_NONCE: DurableObjectNamespace
+  SIWE_DOMAIN: string
+  SIWE_URI: string
+}
+
+const auth = new Hono<{ Bindings: AuthBindings; Variables: AuthVariables }>()
 
 auth.use("*", authMiddleware)
 
 auth.post("/nonce", async (c) => {
-  const kv = (c.env as { CACHE: KVNamespace }).CACHE
-
-  const result = await Effect.runPromise(issueNonce(kv).pipe(Effect.provide(KVCacheService.layer))).catch((err) => ({
+  const result = await Effect.runPromise(issueNonce(c.env.SIWE_NONCE)).catch((err) => ({
     error: String(err),
   }))
 
@@ -31,13 +35,20 @@ auth.post("/verify", async (c) => {
   const kv = (c.env as { CACHE: KVNamespace }).CACHE
 
   const result = await Effect.runPromise(
-    verifyAndCreateSession(kv, { message: body.message, signature: body.signature }).pipe(
-      Effect.provide(KVCacheService.layer),
-    ),
+    verifyAndCreateSession(
+      c.env.SIWE_NONCE,
+      kv,
+      { message: body.message, signature: body.signature },
+      {
+        domain: c.env.SIWE_DOMAIN,
+        uri: c.env.SIWE_URI,
+        chainId: Number(c.env.CHAIN_ID),
+      },
+    ).pipe(Effect.provide(KVCacheService.layer)),
   ).catch((err) => ({ error: String(err) }))
 
   if ("error" in result) {
-    return c.json({ error: result.error }, 401)
+    return c.json({ error: "Authentication failed" }, 401)
   }
 
   return c.json({

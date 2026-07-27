@@ -28,9 +28,9 @@ export class PriceFetchError {
 // --- Service interface (unchanged) ---
 
 export interface PriceService {
-  readonly getPrice: (tokenAddress: string) => Effect.Effect<PriceData, PriceFetchError>
-  readonly getPrices: (tokenAddresses: string[]) => Effect.Effect<PriceData[], PriceFetchError>
-  readonly refreshPrice: (tokenAddress: string) => Effect.Effect<PriceData, PriceFetchError>
+  readonly getPrice: (tokenAddress: string, chainId: number) => Effect.Effect<PriceData, PriceFetchError>
+  readonly getPrices: (tokenAddresses: string[], chainId: number) => Effect.Effect<PriceData[], PriceFetchError>
+  readonly refreshPrice: (tokenAddress: string, chainId: number) => Effect.Effect<PriceData, PriceFetchError>
 }
 
 // --- Tag ---
@@ -53,10 +53,15 @@ const D1_FRESHNESS_MS = 5 * 60 * 1000 // 5 minutes
 
 // --- CoinGecko fetch ---
 
-function fetchFromCoinGecko(tokenAddress: string): Effect.Effect<PriceData, PriceFetchError> {
+const COINGECKO_PLATFORMS: Readonly<Record<number, string>> = { 1: "ethereum" }
+const DEXSCREENER_CHAINS: Readonly<Record<number, string>> = { 1: "ethereum", 11155111: "sepolia" }
+
+function fetchFromCoinGecko(tokenAddress: string, chainId: number): Effect.Effect<PriceData, PriceFetchError> {
   return Effect.tryPromise({
     try: async () => {
-      const url = `https://api.coingecko.com/api/v3/simple/token_price/ethereum?contract_addresses=${tokenAddress}&vs_currencies=usd&include_24hr_change=false`
+      const platform = COINGECKO_PLATFORMS[chainId]
+      if (!platform) throw new Error(`CoinGecko does not support chain ${chainId}`)
+      const url = `https://api.coingecko.com/api/v3/simple/token_price/${platform}?contract_addresses=${tokenAddress}&vs_currencies=usd&include_24hr_change=false`
       const res = await fetch(url, {
         headers: { Accept: "application/json" },
         signal: AbortSignal.timeout(10_000),
@@ -84,7 +89,7 @@ function fetchFromCoinGecko(tokenAddress: string): Effect.Effect<PriceData, Pric
 
 // --- DexScreener fetch ---
 
-function fetchFromDexScreener(tokenAddress: string): Effect.Effect<PriceData, PriceFetchError> {
+function fetchFromDexScreener(tokenAddress: string, chainId: number): Effect.Effect<PriceData, PriceFetchError> {
   return Effect.tryPromise({
     try: async () => {
       const url = `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`
@@ -96,11 +101,11 @@ function fetchFromDexScreener(tokenAddress: string): Effect.Effect<PriceData, Pr
         throw new Error(`DexScreener HTTP ${res.status}`)
       }
       const data = (await res.json()) as {
-        pairs?: Array<{ priceUsd?: string }>
+        pairs?: Array<{ chainId?: string; priceUsd?: string }>
       }
-      const pairs = data.pairs
+      const pairs = data.pairs?.filter((pair) => pair.chainId === DEXSCREENER_CHAINS[chainId])
       if (!pairs || pairs.length === 0) {
-        throw new Error(`DexScreener has no pairs for ${tokenAddress}`)
+        throw new Error(`DexScreener has no pair for ${tokenAddress} on chain ${chainId}`)
       }
       const price = Number.parseFloat(pairs[0]?.priceUsd ?? "0")
       if (!price || price <= 0) {
@@ -120,12 +125,16 @@ function fetchFromDexScreener(tokenAddress: string): Effect.Effect<PriceData, Pr
 
 // --- D1 cache read/write ---
 
-function readD1Price(db: D1Database, tokenAddress: string): Effect.Effect<Option.Option<PriceData>, never> {
+function readD1Price(
+  db: D1Database,
+  tokenAddress: string,
+  chainId: number,
+): Effect.Effect<Option.Option<PriceData>, never> {
   return Effect.tryPromise({
     try: async () => {
       const row = await db
-        .prepare("SELECT price_usd, updated_at FROM price_cache WHERE token_address = ?")
-        .bind(tokenAddress)
+        .prepare("SELECT price_usd, updated_at FROM price_cache WHERE token_address = ? AND chain_id = ?")
+        .bind(tokenAddress, chainId)
         .first<{ price_usd: number; updated_at: number }>()
       if (!row) return Option.none<PriceData>()
       const rowUpdatedAtMs = row.updated_at > 1e12 ? row.updated_at : row.updated_at * 1000
@@ -142,15 +151,15 @@ function readD1Price(db: D1Database, tokenAddress: string): Effect.Effect<Option
   }) as Effect.Effect<Option.Option<PriceData>, never, never>
 }
 
-function writeD1Price(db: D1Database, data: PriceData): Effect.Effect<void, never> {
+function writeD1Price(db: D1Database, data: PriceData, chainId: number): Effect.Effect<void, never> {
   return Effect.tryPromise({
     try: async () => {
       const ts = Math.floor(data.updatedAt / 1000)
       await db
         .prepare(
-          "INSERT INTO price_cache (token_address, price_usd, updated_at) VALUES (?, ?, ?) ON CONFLICT(token_address) DO UPDATE SET price_usd = excluded.price_usd, updated_at = excluded.updated_at",
+          "INSERT INTO price_cache (token_address, chain_id, price_usd, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(token_address, chain_id) DO UPDATE SET price_usd = excluded.price_usd, updated_at = excluded.updated_at",
         )
-        .bind(data.tokenAddress, data.priceUsd, ts)
+        .bind(data.tokenAddress, chainId, data.priceUsd, ts)
         .run()
     },
     catch: () => undefined, // best-effort — don't fail the caller
@@ -178,16 +187,12 @@ function readKvPrice(kv: KVNamespace, tokenAddress: string): Effect.Effect<Optio
   }).pipe(Effect.catch(() => Effect.succeed(Option.none<PriceData>() as Option.Option<PriceData>)))
 }
 
-function writeKvPrice(kv: KVNamespace, data: PriceData): Effect.Effect<void, never> {
+function writeKvPrice(kv: KVNamespace, data: PriceData, cacheKey = data.tokenAddress): Effect.Effect<void, never> {
   return Effect.tryPromise({
     try: async () => {
-      await kv.put(
-        `price:${data.tokenAddress}`,
-        JSON.stringify({ priceUsd: data.priceUsd, updatedAt: data.updatedAt }),
-        {
-          expirationTtl: KV_TTL_SECONDS,
-        },
-      )
+      await kv.put(`price:${cacheKey}`, JSON.stringify({ priceUsd: data.priceUsd, updatedAt: data.updatedAt }), {
+        expirationTtl: KV_TTL_SECONDS,
+      })
     },
     catch: () => undefined, // best-effort
   }).pipe(Effect.catch(() => Effect.succeed(undefined))) as Effect.Effect<void, never>
@@ -199,12 +204,13 @@ function fetchExternalPrice(
   kv: KVNamespace,
   db: D1Database,
   tokenAddress: string,
+  chainId: number,
 ): Effect.Effect<PriceData, PriceFetchError> {
   // Try CoinGecko first, fall back to DexScreener
-  return fetchFromCoinGecko(tokenAddress).pipe(
-    Effect.catch(() => fetchFromDexScreener(tokenAddress)),
-    Effect.tap((data) => writeD1Price(db, data)),
-    Effect.tap((data) => writeKvPrice(kv, data)),
+  return fetchFromCoinGecko(tokenAddress, chainId).pipe(
+    Effect.catch(() => fetchFromDexScreener(tokenAddress, chainId)),
+    Effect.tap((data) => writeD1Price(db, data, chainId)),
+    Effect.tap((data) => writeKvPrice(kv, data, `${chainId}:${tokenAddress}`)),
   )
 }
 
@@ -214,32 +220,32 @@ const makePriceService = (deps: PriceServiceDeps): PriceService => {
   const { kv, db } = deps
 
   return {
-    getPrice: (tokenAddress: string): Effect.Effect<PriceData, PriceFetchError> =>
+    getPrice: (tokenAddress: string, chainId: number): Effect.Effect<PriceData, PriceFetchError> =>
       Effect.gen(function* () {
         // 1. Check KV cache (60s TTL)
-        const kvHit = yield* readKvPrice(kv, tokenAddress)
+        const kvHit = yield* readKvPrice(kv, `${chainId}:${tokenAddress}`)
         if (Option.isSome(kvHit)) return kvHit.value
 
         // 2. Check D1 cache (5min freshness)
-        const d1Hit = yield* readD1Price(db, tokenAddress)
+        const d1Hit = yield* readD1Price(db, tokenAddress, chainId)
         if (Option.isSome(d1Hit)) {
           // Backfill KV for next time
-          yield* writeKvPrice(kv, d1Hit.value)
+          yield* writeKvPrice(kv, d1Hit.value, `${chainId}:${tokenAddress}`)
           return d1Hit.value
         }
 
         // 3. Fetch from external sources
-        return yield* fetchExternalPrice(kv, db, tokenAddress)
+        return yield* fetchExternalPrice(kv, db, tokenAddress, chainId)
       }),
 
-    getPrices: (tokenAddresses: string[]): Effect.Effect<PriceData[], PriceFetchError> =>
-      Effect.forEach(tokenAddresses, (addr) => fetchPriceWithFallback(kv, db, addr), {
+    getPrices: (tokenAddresses: string[], chainId: number): Effect.Effect<PriceData[], PriceFetchError> =>
+      Effect.forEach(tokenAddresses, (addr) => fetchPriceWithFallback(kv, db, addr, chainId), {
         concurrency: 10,
       }),
 
-    refreshPrice: (tokenAddress: string): Effect.Effect<PriceData, PriceFetchError> =>
+    refreshPrice: (tokenAddress: string, chainId: number): Effect.Effect<PriceData, PriceFetchError> =>
       // Bypass all caches — force fresh fetch
-      fetchExternalPrice(kv, db, tokenAddress),
+      fetchExternalPrice(kv, db, tokenAddress, chainId),
   }
 }
 
@@ -251,18 +257,19 @@ function fetchPriceWithFallback(
   kv: KVNamespace,
   db: D1Database,
   tokenAddress: string,
+  chainId: number,
 ): Effect.Effect<PriceData, PriceFetchError> {
   return Effect.gen(function* () {
-    const kvHit = yield* readKvPrice(kv, tokenAddress)
+    const kvHit = yield* readKvPrice(kv, `${chainId}:${tokenAddress}`)
     if (Option.isSome(kvHit)) return kvHit.value
 
-    const d1Hit = yield* readD1Price(db, tokenAddress)
+    const d1Hit = yield* readD1Price(db, tokenAddress, chainId)
     if (Option.isSome(d1Hit)) {
-      yield* writeKvPrice(kv, d1Hit.value)
+      yield* writeKvPrice(kv, d1Hit.value, `${chainId}:${tokenAddress}`)
       return d1Hit.value
     }
 
-    return yield* fetchExternalPrice(kv, db, tokenAddress)
+    return yield* fetchExternalPrice(kv, db, tokenAddress, chainId)
   })
 }
 
