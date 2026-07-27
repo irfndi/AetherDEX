@@ -206,7 +206,7 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
                 abi.decode(actionData, (Position, SingleSidedMintParams, uint256, uint256));
             SwapParams memory swapParams = SwapParams({
                 zeroForOne: params.zeroForOne,
-                amountSpecified: int256(uint256(params.swapAmountIn)),
+                amountSpecified: -int256(uint256(params.swapAmountIn)),
                 sqrtPriceLimitX96: params.zeroForOne
                     ? _minSqrtPriceLimit()
                     : _maxSqrtPriceLimit()
@@ -332,6 +332,7 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
     ) internal returns (uint256 amount0, uint256 amount1) {
         amount0 = uint256(-int256(delta.amount0()));
         amount1 = uint256(-int256(delta.amount1()));
+        if (amount0 > amount0Max || amount1 > amount1Max) revert AmountMaximumExceeded();
         _pullRebalanceShortfall(key.currency0, amount0, balance0Before, positionOwner, amount0Max);
         _pullRebalanceShortfall(key.currency1, amount1, balance1Before, positionOwner, amount1Max);
         if (amount0 > 0) _settle(key.currency0, amount0);

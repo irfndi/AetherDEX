@@ -212,6 +212,17 @@ contract AetherPositionManagerTest is Test {
         assertEq(token1.balanceOf(address(positionManager)), 13);
     }
 
+    function test_rebalancePosition_revertsWhenTotalSpendExceedsMaximumDespiteClosedProceeds() public {
+        uint256 tokenId = _mintForUser();
+        IAetherPositionManager.RebalancePositionParams memory params = _rebalanceParams(tokenId);
+        params.amount0Max = LIQUIDITY / 1000 - 1;
+        params.amount1Max = LIQUIDITY / 1000 - 1;
+
+        vm.expectRevert(IAetherPositionManager.AmountMaximumExceeded.selector);
+        vm.prank(user);
+        positionManager.rebalancePosition(params);
+    }
+
     function test_rebalancePosition_revertsForUnapprovedCaller() public {
         uint256 tokenId = _mintForUser();
 
@@ -477,6 +488,7 @@ contract PositionPoolManagerMock {
     error InsufficientCredit();
     error SettlementExceedsDebt();
     error NativeTransferFailed();
+    error InvalidSwapAmount();
 
     bool internal unlocked;
     Currency internal syncedCurrency;
@@ -501,6 +513,7 @@ contract PositionPoolManagerMock {
         returns (BalanceDelta delta)
     {
         if (!unlocked) revert ManagerLocked();
+        if (params.amountSpecified >= 0) revert InvalidSwapAmount();
         delta = configuredSwapDelta;
         Currency input = params.zeroForOne ? key.currency0 : key.currency1;
         Currency output = params.zeroForOne ? key.currency1 : key.currency0;

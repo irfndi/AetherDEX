@@ -6,7 +6,13 @@
  * - Cleanup expired sessions
  */
 
-import { Effect } from "effect"
+import { Effect, Layer } from "effect"
+import { makeDbLayer } from "../db/client"
+import { getIndexerCursor, setIndexerCursor } from "../db/queries"
+import { parseChainId } from "../lib/chain-id"
+import { runEffect } from "../lib/effect-bridge"
+import { V3LiquidityIndexer, V3LiquidityIndexerLive } from "../services/v3-liquidity-indexer.service"
+import { nextV3IndexerRange, V3_INDEXER_NAME } from "./v3-indexer-cursor"
 
 interface CronEnv {
   DB: D1Database
@@ -15,6 +21,8 @@ interface CronEnv {
   PRICE_QUEUE: Queue
   SETTLE_QUEUE: Queue
   CHAIN_ID: string
+  RPC_URL?: string
+  V3_POSITION_MANAGER_ADDRESS?: string
 }
 
 /**
@@ -44,6 +52,32 @@ export const handleScheduled = async (event: ScheduledEvent, env: CronEnv, ctx: 
         })
       }),
     ).catch((err) => console.error("Cron price enqueue error:", err)),
+  )
+
+  ctx.waitUntil(runV3LiquidityIndexer(env).catch((err) => console.error("Cron v3 indexer error:", err)))
+}
+
+async function runV3LiquidityIndexer(env: CronEnv): Promise<void> {
+  const chainId = parseChainId(env.CHAIN_ID)
+  if (chainId === null || !env.RPC_URL || !env.V3_POSITION_MANAGER_ADDRESS) return
+
+  const indexerLayer = V3LiquidityIndexerLive({
+    chainId,
+    rpcUrl: env.RPC_URL,
+    positionManager: env.V3_POSITION_MANAGER_ADDRESS as `0x${string}`,
+    pools: [],
+  }).pipe(Layer.provide(makeDbLayer(env.DB)))
+
+  await runEffect(
+    Effect.gen(function* () {
+      const indexer = yield* V3LiquidityIndexer
+      const latestBlock = yield* indexer.latestBlock
+      const cursor = yield* getIndexerCursor(chainId, V3_INDEXER_NAME)
+      const range = nextV3IndexerRange(cursor, latestBlock)
+      if (!range) return
+      yield* indexer.indexRange(range.fromBlock, range.toBlock)
+      yield* setIndexerCursor(chainId, V3_INDEXER_NAME, range.toBlock + 1n)
+    }).pipe(Effect.provide(indexerLayer)),
   )
 }
 

@@ -24,6 +24,7 @@ export class V3LiquidityIndexerError {
 
 export interface V3LiquidityIndexer {
   readonly indexRange: (fromBlock: bigint, toBlock: bigint) => Effect.Effect<number, V3LiquidityIndexerError>
+  readonly latestBlock: Effect.Effect<bigint, V3LiquidityIndexerError>
 }
 
 export const V3LiquidityIndexer = Context.Service<V3LiquidityIndexer>("@aetherdex/V3LiquidityIndexer")
@@ -32,6 +33,14 @@ const makeV3LiquidityIndexer = (config: V3LiquidityIndexerConfig) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient
     const client = createPublicClient({ transport: http(config.rpcUrl) })
+
+    const latestBlock = Effect.tryPromise({
+      try: () => client.getBlockNumber(),
+      catch: (error) =>
+        new V3LiquidityIndexerError(
+          `Unable to read the latest v3 block: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+    })
 
     const indexRange = (fromBlock: bigint, toBlock: bigint) =>
       Effect.gen(function* () {
@@ -104,7 +113,7 @@ const makeV3LiquidityIndexer = (config: V3LiquidityIndexerConfig) =>
         ),
       )
 
-    return { indexRange }
+    return { indexRange, latestBlock }
   })
 
 export const V3LiquidityIndexerLive = (config: V3LiquidityIndexerConfig) =>

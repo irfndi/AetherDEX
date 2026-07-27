@@ -172,6 +172,28 @@ export const insertLiquidityEvent = (event: Omit<LiquidityEvent, "id" | "created
     `
   })
 
+export const getIndexerCursor = (chainId: number, indexer: string) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    const rows = yield* sql`
+      SELECT next_block FROM indexer_cursors
+      WHERE chain_id = ${chainId} AND indexer = ${indexer}
+    `
+    return rows.length === 0 ? null : BigInt(String((rows[0] as { next_block: number | string }).next_block))
+  })
+
+export const setIndexerCursor = (chainId: number, indexer: string, nextBlock: bigint) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    yield* sql`
+      INSERT INTO indexer_cursors (chain_id, indexer, next_block, updated_at)
+      VALUES (${chainId}, ${indexer}, ${nextBlock.toString()}, ${Date.now()})
+      ON CONFLICT(chain_id, indexer) DO UPDATE SET
+        next_block = excluded.next_block,
+        updated_at = excluded.updated_at
+    `
+  })
+
 export const listLiquidityEvents = (chainId: number, protocol: "v3" | "v4", tokenId: string) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient
