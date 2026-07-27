@@ -11,6 +11,7 @@ import { Hono } from "hono"
 import { type AuthVariables, requireAuth } from "../auth/middleware"
 import { makeDbLayer } from "../db/client"
 import { recordSwap } from "../db/queries"
+import { parseChainId } from "../lib/chain-id"
 import { runEffect } from "../lib/effect-bridge"
 import {
   type ChainStateReader,
@@ -53,7 +54,8 @@ const swapServiceLayer = (env: QuoteEnv) => {
   const db = env.DB as D1Database
   const stateViewAddress = env.STATE_VIEW_ADDRESS ?? ""
   const rpcUrl = env.RPC_URL ?? ""
-  const chainId = Number.parseInt(env.CHAIN_ID ?? "1", 10)
+  const chainId = parseChainId(env.CHAIN_ID)
+  if (chainId === null) throw new Error("Invalid chain configuration")
 
   const readerLayer: Layer.Layer<ChainStateReader> =
     HEX_ADDRESS_RE.test(stateViewAddress) && rpcUrl.length > 0
@@ -188,8 +190,8 @@ swap.post("/record", requireAuth, async (c) => {
     return c.json({ error: "txHash, blockNumber, blockTimestamp required" }, 400)
   }
 
-  const chainId = Number.parseInt(c.env.CHAIN_ID ?? "", 10)
-  if (!Number.isSafeInteger(chainId) || chainId <= 0) {
+  const chainId = parseChainId(c.env.CHAIN_ID)
+  if (chainId === null) {
     return c.json({ error: "Invalid chain configuration" }, 500)
   }
 

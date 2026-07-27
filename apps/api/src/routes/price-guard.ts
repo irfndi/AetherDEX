@@ -1,5 +1,6 @@
 import { Effect, Layer } from "effect"
 import { Hono } from "hono"
+import { parseChainId } from "../lib/chain-id"
 import { runEffect } from "../lib/effect-bridge"
 import { PriceService, PriceServiceDeps, PriceServiceLive } from "../services/price.service"
 
@@ -78,6 +79,8 @@ priceGuard.get("/price-guard", async (c) => {
   if (!Number.isSafeInteger(maxDeviationBps) || maxDeviationBps <= 0 || maxDeviationBps > MAX_DEVIATION_BPS) {
     return c.json({ error: `maxDeviationBps must be an integer from 1 to ${MAX_DEVIATION_BPS}` }, 400)
   }
+  const chainId = parseChainId(c.env.CHAIN_ID)
+  if (chainId === null) return c.json({ error: "Invalid chain configuration" }, 500)
 
   try {
     const layer = PriceServiceLive.pipe(
@@ -92,7 +95,7 @@ priceGuard.get("/price-guard", async (c) => {
       Effect.gen(function* () {
         const service = yield* PriceService
         const [token0Price, token1Price] = yield* Effect.all(
-          [service.refreshPrice(token0), service.refreshPrice(token1)],
+          [service.refreshPrice(token0, chainId), service.refreshPrice(token1, chainId)],
           { concurrency: 2 },
         )
         return evaluatePriceGuard(token0Price.priceUsd, token1Price.priceUsd, requestedPrice, maxDeviationBps)

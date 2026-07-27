@@ -14,6 +14,7 @@ import { type AuthVariables, requireAuth } from "../auth/middleware"
 import { makeDbLayer } from "../db/client"
 import { runEffect } from "../lib/effect-bridge"
 import { PositionService, PositionServiceLive } from "../services/position.service"
+import { readV3PositionState } from "../services/v3-position-reader.service"
 import {
   isValidV4TokenId,
   V4PositionReadError,
@@ -30,6 +31,7 @@ type Bindings = {
   ENVIRONMENT: string
   RPC_URL: string
   POSITION_MANAGER_ADDRESS: string
+  V3_POSITION_MANAGER_ADDRESS: string
 }
 
 const positions = new Hono<{ Bindings: Bindings; Variables: AuthVariables }>()
@@ -115,7 +117,21 @@ positions.post("/:tokenId/reconcile", requireAuth, async (c) => {
   if (!session) return c.json({ error: "Unauthorized" }, 401)
   if (typeof tokenId !== "string" || !/^\d+$/.test(tokenId)) return c.json({ error: "Invalid token id" }, 400)
   if (!Number.isSafeInteger(chainId) || chainId <= 0) return c.json({ error: "Invalid chain configuration" }, 500)
+  const rpcUrl = c.env.RPC_URL
+  const managerAddress = c.env.V3_POSITION_MANAGER_ADDRESS
+  if (!rpcUrl || !/^0x[a-fA-F0-9]{40}$/.test(managerAddress ?? "")) {
+    return c.json({ error: "V3 position reconciliation is not configured" }, 503)
+  }
   try {
+    const onchain = await readV3PositionState({
+      rpcUrl,
+      managerAddress: getAddress(managerAddress),
+      chainId,
+      tokenId,
+    })
+    if (onchain.owner.toLowerCase() !== session.userAddress.toLowerCase() || onchain.liquidity === 0n) {
+      return c.json({ error: "Position is not owned by the authenticated wallet" }, 403)
+    }
     const program = Effect.gen(function* () {
       const positionService = yield* PositionService
       return yield* positionService.reconcileV3Position(session.userAddress, tokenId, chainId)

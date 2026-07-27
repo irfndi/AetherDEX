@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest"
+import { parseChainId, parseNonNegativeInteger } from "../src/lib/chain-id"
 import { pools } from "../src/routes/pools"
 import { priceGuard } from "../src/routes/price-guard"
 import { swap } from "../src/routes/swap"
@@ -6,6 +7,15 @@ import { tokens } from "../src/routes/tokens"
 import { v3Quote } from "../src/routes/v3-quote"
 
 describe("route validation", () => {
+  it("requires fully numeric, safe chain configuration and pagination values", () => {
+    expect(parseChainId("1-prod")).toBeNull()
+    expect(parseChainId("0")).toBeNull()
+    expect(parseChainId("11155111")).toBe(11155111)
+    expect(parseNonNegativeInteger("-1")).toBeNull()
+    expect(parseNonNegativeInteger("10-preview")).toBeNull()
+    expect(parseNonNegativeInteger("10")).toBe(10)
+  })
+
   it("rejects an incomplete price guard request", async () => {
     const response = await priceGuard.request("/price-guard")
 

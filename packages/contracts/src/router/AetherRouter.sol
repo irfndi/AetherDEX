@@ -526,7 +526,7 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
 
     /// @dev Returns the appropriate sqrt price limit for the swap direction
     function _sqrtPriceLimit(bool zeroForOne) internal pure returns (uint160) {
-        return zeroForOne ? TickMath.MIN_SQRT_PRICE : TickMath.MAX_SQRT_PRICE;
+        return zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
     }
 
     function _positionId(PoolKey calldata poolKey, ModifyLiquidityParams calldata params)
