@@ -11,6 +11,7 @@ import { logger } from "hono/logger"
 import { type AuthVariables, authMiddleware } from "./auth/middleware"
 import { auth } from "./auth/routes"
 import { OrderBookDO, SiweNonceDO, VolumeAlertHubDO, WebSocketHubDO } from "./durable-objects"
+import { liquidity } from "./routes/liquidity"
 import { pools } from "./routes/pools"
 import { positions } from "./routes/positions"
 import { priceGuard } from "./routes/price-guard"
@@ -203,6 +204,7 @@ app.get("/ws/alerts/:poolId", async (c) => {
 app.route("/api/v1/auth", auth)
 
 app.route("/api/v1", swap)
+app.route("/api/v1/liquidity", liquidity)
 app.route("/api/v1/pools", pools)
 app.route("/api/v1/tokens", tokens)
 app.route("/api/v1", positions)

@@ -13,6 +13,7 @@ import { makeDbLayer } from "../db/client"
 import { recordSwap } from "../db/queries"
 import { parseChainId } from "../lib/chain-id"
 import { runEffect } from "../lib/effect-bridge"
+import { ZERO_PROTOCOL_FEE_BREAKDOWN } from "../lib/protocol-fee"
 import { readCircuitBreakerConfig, type SafetyEnv } from "../lib/safety-config"
 import { circuitBreaker } from "../middleware/circuit-breaker"
 import { mevProtection } from "../middleware/mev-protection"
@@ -163,7 +164,8 @@ swap.get("/quote", async (c) => {
       })
     })
     const quote = await Effect.runPromise(program.pipe(Effect.provide(swapServiceLayer(c.env))))
-    return c.json(quote)
+    // Phase 4 fee invariant: swaps are protocol-fee-free (only deposits pay); additive metadata only.
+    return c.json({ ...quote, protocolFee: ZERO_PROTOCOL_FEE_BREAKDOWN })
   } catch (err) {
     return c.json({ error: String(err) }, 500)
   }
@@ -207,7 +209,8 @@ swap.post(
         return yield* swapService.buildCalldata(quote, recipient)
       })
       const calldata = await Effect.runPromise(program.pipe(Effect.provide(swapServiceLayer(c.env))))
-      return c.json(calldata)
+      // Phase 4 fee invariant: swap calldata carries no protocol fee; additive indicator only.
+      return c.json({ ...calldata, protocolFee: ZERO_PROTOCOL_FEE_BREAKDOWN })
     } catch (err) {
       return c.json({ error: String(err) }, 500)
     }

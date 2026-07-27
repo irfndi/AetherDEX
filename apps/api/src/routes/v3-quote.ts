@@ -1,6 +1,7 @@
 import { Effect, Layer } from "effect"
 import { Hono } from "hono"
 import { runEffect } from "../lib/effect-bridge"
+import { ZERO_PROTOCOL_FEE_BREAKDOWN } from "../lib/protocol-fee"
 import {
   V3QuoteError,
   type V3QuoteService,
@@ -62,6 +63,8 @@ v3Quote.get("/v3/quote", async (c) => {
       minAmountOut: ((result.amountOut * (10_000n - slippageBps)) / 10_000n).toString(),
       initializedTicksCrossed: result.initializedTicksCrossed,
       gasEstimate: result.gasEstimate.toString(),
+      // Phase 4 fee invariant: swaps are protocol-fee-free (only deposits pay); additive metadata only.
+      protocolFee: ZERO_PROTOCOL_FEE_BREAKDOWN,
     })
   } catch (error) {
     const reason = error instanceof V3QuoteError ? error.reason : "rpc_error"
