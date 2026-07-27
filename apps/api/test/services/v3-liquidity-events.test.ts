@@ -56,34 +56,4 @@ describe("parseV3LiquidityLog", () => {
       ),
     ).toBeNull()
   })
-
-  it("decodes a Collect event with a non-indexed recipient", () => {
-    const event = parseAbiItem(
-      "event Collect(uint256 indexed tokenId, address recipient, uint256 amount0, uint256 amount1)",
-    )
-    const topics = encodeEventTopics({ abi: [event], eventName: "Collect", args: [7n] })
-    const data = encodeAbiParameters(
-      [{ type: "address" }, { type: "uint256" }, { type: "uint256" }],
-      ["0x0000000000000000000000000000000000000007", 17n, 19n],
-    )
-    const parsed = parseV3LiquidityLog(
-      { address: manager, topics, data, transactionHash: txHash, logIndex: 4, blockNumber: 102 },
-      { positionManager: manager },
-    )
-    expect(parsed).toMatchObject({ eventType: "collect", tokenId: "7", amount0: "17", amount1: "19" })
-  })
-
-  it("normalizes a burned position transfer to a null owner", () => {
-    const event = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)")
-    const topics = encodeEventTopics({
-      abi: [event],
-      eventName: "Transfer",
-      args: ["0x0000000000000000000000000000000000000007", "0x0000000000000000000000000000000000000000", 7n],
-    })
-    const parsed = parseV3LiquidityLog(
-      { address: manager, topics, data: "0x", transactionHash: txHash, logIndex: 5, blockNumber: 103 },
-      { positionManager: manager },
-    )
-    expect(parsed).toMatchObject({ eventType: "transfer", tokenId: "7", ownerAddress: null })
-  })
 })

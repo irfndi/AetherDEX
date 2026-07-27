@@ -6,8 +6,10 @@ import {AetherFactory} from "../src/factory/AetherFactory.sol";
 import {AetherRouter} from "../src/router/AetherRouter.sol";
 import {AetherPositionManager} from "../src/position/AetherPositionManager.sol";
 import {AetherHook} from "../src/hook/AetherHook.sol";
+import {AetherHookAddressMiner} from "../src/hook/AetherHookAddressMiner.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 
 /// @title AetherDEX Deploy Script
 /// @notice Deploys AetherDEX contracts to a network (testnet or mainnet)
@@ -18,6 +20,35 @@ contract Deploy is Script {
     // Initial protocol fee: 0.30% (30 basis points)
     uint24 constant INITIAL_PROTOCOL_FEE_BPS = 30;
 
+    /// @dev Upper bound for the CREATE2 salt search. The hook needs a 2-bit address suffix
+    ///      (BEFORE_SWAP | AFTER_SWAP), so a valid salt is found in ~2^14 iterations on average.
+    uint256 constant HOOK_SALT_MAX_ITERATIONS = 100_000;
+
+    /// @notice The exact permission set AetherHook implements (beforeSwap + afterSwap).
+    /// @dev V4 encodes hook permissions in the low 14 bits of the hook's address:
+    ///      beforeSwap = bit 6 (Hooks.BEFORE_SWAP_FLAG = 0x0040),
+    ///      afterSwap  = bit 7 (Hooks.AFTER_SWAP_FLAG  = 0x0080),
+    ///      so the deployment address must carry exactly BEFORE_SWAP | AFTER_SWAP = 0x00c0
+    ///      and no other flag bits (AetherHookAddressMiner.REQUIRED_FLAGS).
+    function _hookPermissions() internal pure returns (Hooks.Permissions memory) {
+        return Hooks.Permissions({
+            beforeInitialize: false,
+            afterInitialize: false,
+            beforeAddLiquidity: false,
+            afterAddLiquidity: false,
+            beforeRemoveLiquidity: false,
+            afterRemoveLiquidity: false,
+            beforeSwap: true,
+            afterSwap: true,
+            beforeDonate: false,
+            afterDonate: false,
+            beforeSwapReturnDelta: false,
+            afterSwapReturnDelta: false,
+            afterAddLiquidityReturnDelta: false,
+            afterRemoveLiquidityReturnDelta: false
+        });
+    }
+
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
         address treasury = vm.envAddress("AETHERDEX_TREASURY");
@@ -25,8 +56,22 @@ contract Deploy is Script {
         vm.startBroadcast(deployerPrivateKey);
         address deployer = vm.addr(deployerPrivateKey);
 
-        // 1. Deploy AetherHook
-        AetherHook hook = new AetherHook(IPoolManager(POOL_MANAGER), treasury, INITIAL_PROTOCOL_FEE_BPS, deployer);
+        // 1. Deploy AetherHook via CREATE2 with a mined salt.
+        //    V4 reads hook permissions from the hook ADDRESS itself, so the hook can only
+        //    be placed at an address whose flag bits match `_hookPermissions()`; the salt is
+        //    mined off-chain (AetherHookAddressMiner.findSalt) against the broadcast EOA as
+        //    the CREATE2 deployer. The constructor also self-validates and would revert on a
+        //    mismatched address.
+        bytes memory hookCtorArgs = abi.encode(IPoolManager(POOL_MANAGER), treasury, INITIAL_PROTOCOL_FEE_BPS, deployer);
+        bytes32 hookInitCodeHash = keccak256(abi.encodePacked(type(AetherHook).creationCode, hookCtorArgs));
+        (bool saltFound, bytes32 hookSalt,) =
+            AetherHookAddressMiner.findSalt(deployer, hookInitCodeHash, HOOK_SALT_MAX_ITERATIONS);
+        require(saltFound, "Deploy: no CREATE2 salt satisfies BEFORE_SWAP|AFTER_SWAP flags");
+        AetherHook hook =
+            new AetherHook{salt: hookSalt}(IPoolManager(POOL_MANAGER), treasury, INITIAL_PROTOCOL_FEE_BPS, deployer);
+        // Fail loudly if the deployed address does not encode exactly the implemented
+        // permissions — a guard against a future hook variant lacking constructor validation.
+        Hooks.validateHookPermissions(IHooks(address(hook)), _hookPermissions());
         console.log("AetherHook deployed at:", address(hook));
 
         // 2. Deploy AetherFactory

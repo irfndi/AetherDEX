@@ -1,7 +1,3 @@
-import { Token } from "@uniswap/sdk-core"
-import { Pool, Position } from "@uniswap/v4-sdk"
-import { encodeFunctionData, type Hex } from "viem"
-
 export type RebalancePosition = {
   readonly positionId: string
   readonly poolId: string
@@ -67,129 +63,6 @@ export type RebalanceManagerCall = {
   readonly address: `0x${string}`
   readonly functionName: "rebalancePosition"
   readonly args: readonly [RebalanceManagerParams]
-}
-
-export type V4RebalancePoolInput = {
-  readonly chainId: number
-  readonly token0: `0x${string}`
-  readonly token1: `0x${string}`
-  readonly token0Decimals: number
-  readonly token1Decimals: number
-  readonly fee: number
-  readonly tickSpacing: number
-  readonly hooks: `0x${string}`
-  readonly sqrtPriceX96: bigint
-  readonly poolLiquidity: bigint
-  readonly currentTick: number
-}
-
-export type V4RebalanceBuildInput = {
-  readonly managerAddress: `0x${string}`
-  readonly pool: V4RebalancePoolInput
-  readonly tokenId: bigint
-  readonly currentLiquidity: bigint
-  readonly currentRange: { readonly tickLower: number; readonly tickUpper: number }
-  readonly newRange: { readonly tickLower: number; readonly tickUpper: number }
-  readonly slippageBps: number
-  readonly deadline: bigint
-  readonly hookData?: Hex
-}
-
-export type V4RebalanceCall = RebalanceManagerCall & {
-  readonly calldata: Hex
-  readonly expectedClosedAmount0: bigint
-  readonly expectedClosedAmount1: bigint
-  readonly expectedMintAmount0: bigint
-  readonly expectedMintAmount1: bigint
-}
-
-const AETHER_POSITION_MANAGER_ABI = [
-  {
-    name: "rebalancePosition",
-    type: "function",
-    stateMutability: "payable",
-    inputs: [
-      {
-        name: "params",
-        type: "tuple",
-        components: [
-          { name: "tokenId", type: "uint256" },
-          { name: "tickLower", type: "int24" },
-          { name: "tickUpper", type: "int24" },
-          { name: "liquidity", type: "uint128" },
-          { name: "amount0Max", type: "uint256" },
-          { name: "amount1Max", type: "uint256" },
-          { name: "amount0Min", type: "uint256" },
-          { name: "amount1Min", type: "uint256" },
-          { name: "deadline", type: "uint256" },
-          { name: "hookData", type: "bytes" },
-        ],
-      },
-    ],
-    outputs: [
-      { name: "closedAmount0", type: "uint256" },
-      { name: "closedAmount1", type: "uint256" },
-      { name: "usedAmount0", type: "uint256" },
-      { name: "usedAmount1", type: "uint256" },
-    ],
-  },
-] as const
-
-export function buildV4RebalanceCall(input: V4RebalanceBuildInput): V4RebalanceCall {
-  if (input.currentLiquidity <= 0n) throw new Error("V4 position liquidity must be positive")
-  if (input.slippageBps < 0 || input.slippageBps > 500) throw new Error("V4 rebalance slippage is invalid")
-  if (input.deadline <= 0n) throw new Error("V4 rebalance deadline is invalid")
-  const token0 = new Token(input.pool.chainId, input.pool.token0, input.pool.token0Decimals)
-  const token1 = new Token(input.pool.chainId, input.pool.token1, input.pool.token1Decimals)
-  const pool = new Pool(
-    token0,
-    token1,
-    input.pool.fee,
-    input.pool.tickSpacing,
-    input.pool.hooks,
-    input.pool.sqrtPriceX96.toString(),
-    input.pool.poolLiquidity.toString(),
-    input.pool.currentTick,
-  )
-  const currentPosition = new Position({
-    pool,
-    tickLower: input.currentRange.tickLower,
-    tickUpper: input.currentRange.tickUpper,
-    liquidity: input.currentLiquidity.toString(),
-  })
-  const nextPosition = Position.fromAmounts({
-    pool,
-    tickLower: input.newRange.tickLower,
-    tickUpper: input.newRange.tickUpper,
-    amount0: currentPosition.mintAmounts.amount0.toString(),
-    amount1: currentPosition.mintAmounts.amount1.toString(),
-    useFullPrecision: true,
-  })
-  const expectedClosedAmount0 = BigInt(currentPosition.mintAmounts.amount0.toString())
-  const expectedClosedAmount1 = BigInt(currentPosition.mintAmounts.amount1.toString())
-  const expectedMintAmount0 = BigInt(nextPosition.mintAmounts.amount0.toString())
-  const expectedMintAmount1 = BigInt(nextPosition.mintAmounts.amount1.toString())
-  const factor = BPS - BigInt(input.slippageBps)
-  const params = {
-    tokenId: input.tokenId,
-    tickLower: input.newRange.tickLower,
-    tickUpper: input.newRange.tickUpper,
-    liquidity: BigInt(nextPosition.liquidity.toString()),
-    amount0Max: expectedMintAmount0,
-    amount1Max: expectedMintAmount1,
-    amount0Min: (expectedClosedAmount0 * factor) / BPS,
-    amount1Min: (expectedClosedAmount1 * factor) / BPS,
-    deadline: input.deadline,
-    hookData: input.hookData ?? "0x",
-  } satisfies RebalanceManagerParams
-  return {
-    ...buildRebalanceManagerCall(input.managerAddress, params),
-    calldata: encodeFunctionData({ abi: AETHER_POSITION_MANAGER_ABI, functionName: "rebalancePosition", args: [params] }),
-    expectedClosedAmount0,
-    expectedClosedAmount1,
-    expectedMintAmount0,
-    expectedMintAmount1,
-  }
 }
 
 export function buildRebalanceManagerCall(
@@ -276,5 +149,3 @@ export function buildRebalanceIntent(
     },
   }
 }
-
-const BPS = 10_000n

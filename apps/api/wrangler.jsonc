@@ -40,7 +40,7 @@
     }
   ],
 
-  // Durable Objects — WebSocket state, per-pair order book
+  // Durable Objects — WebSocket state, per-pair order book, SIWE nonce authority
   "durable_objects": {
     "bindings": [
       {
@@ -72,7 +72,8 @@
   "queues": {
     "producers": [
       { "queue": "price-refresh", "binding": "PRICE_QUEUE" },
-      { "queue": "trade-settlement", "binding": "SETTLE_QUEUE" }
+      { "queue": "trade-settlement", "binding": "SETTLE_QUEUE" },
+      { "queue": "keeper-jobs", "binding": "KEEPER_QUEUE" }
     ],
     "consumers": [
       {
@@ -86,6 +87,12 @@
         "max_batch_size": 10,
         "max_retries": 3,
         "dead_letter_queue": "trade-settlement-dlq"
+      },
+      {
+        "queue": "keeper-jobs",
+        "max_batch_size": 5,
+        "max_retries": 5,
+        "dead_letter_queue": "keeper-jobs-dlq"
       }
     ]
   },
@@ -128,6 +135,10 @@
     "PRIVATE_TX_RELAY_URL": "",
     "ENVIRONMENT": "development"
   },
+
+  // Phase 2 keeper secrets (set via `wrangler secret put`):
+  //   KEEPER_PRIVATE_KEY — hex-encoded private key for keeper transaction signing
+  //   KEEPER_RPC_URL — RPC endpoint used by the keeper to submit transactions
 
   // Environments
   "env": {
@@ -182,7 +193,8 @@
       "queues": {
         "producers": [
           { "queue": "price-refresh-staging", "binding": "PRICE_QUEUE" },
-          { "queue": "trade-settlement-staging", "binding": "SETTLE_QUEUE" }
+          { "queue": "trade-settlement-staging", "binding": "SETTLE_QUEUE" },
+          { "queue": "keeper-jobs-staging", "binding": "KEEPER_QUEUE" }
         ],
         "consumers": [
           {
@@ -196,6 +208,14 @@
             "max_batch_size": 10,
             "max_retries": 3,
             "dead_letter_queue": "trade-settlement-staging-dlq"
+          },
+          {
+            "queue": "keeper-jobs-staging",
+            "max_batch_size": 5,
+            "max_batch_timeout": 5,
+            "max_retries": 5,
+            "retry_delay": 10,
+            "dead_letter_queue": "keeper-jobs-staging-dlq"
           }
         ]
       },
@@ -258,7 +278,8 @@
       "queues": {
         "producers": [
           { "queue": "price-refresh-production", "binding": "PRICE_QUEUE" },
-          { "queue": "trade-settlement-production", "binding": "SETTLE_QUEUE" }
+          { "queue": "trade-settlement-production", "binding": "SETTLE_QUEUE" },
+          { "queue": "keeper-jobs-production", "binding": "KEEPER_QUEUE" }
         ],
         "consumers": [
           {
@@ -272,6 +293,14 @@
             "max_batch_size": 10,
             "max_retries": 3,
             "dead_letter_queue": "trade-settlement-production-dlq"
+          },
+          {
+            "queue": "keeper-jobs-production",
+            "max_batch_size": 5,
+            "max_batch_timeout": 5,
+            "max_retries": 5,
+            "retry_delay": 10,
+            "dead_letter_queue": "keeper-jobs-production-dlq"
           }
         ]
       },

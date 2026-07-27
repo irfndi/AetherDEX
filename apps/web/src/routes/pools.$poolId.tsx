@@ -1,13 +1,13 @@
 import { useAppKit } from "@reown/appkit/react"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { type FormEvent, useEffect, useState } from "react"
-import { encodeFunctionData, getAddress, type Hex, isAddress, parseEventLogs, parseUnits, zeroAddress } from "viem"
-import { useAccount, usePublicClient, useWalletClient } from "wagmi"
+import { encodeFunctionData, getAddress, isAddress, parseUnits } from "viem"
+import { useAccount, useChainId, usePublicClient, useSwitchChain, useWalletClient } from "wagmi"
 import { DexScreenerChart } from "../components/DexScreenerChart"
 import { RangeSelector } from "../components/RangeSelector"
 import { TokenChip } from "../components/TokenChip"
 import { Button, Card, CardBody, Input, Stat } from "../components/ui"
-import { useSiweAuth } from "../hooks/useSiweAuth"
+import { API_URL } from "../lib/api"
 import {
   buildLiquidityRequest,
   LIQUIDITY_PROTOCOLS,
@@ -17,9 +17,7 @@ import {
   type LiquidityTransactionRequest,
   validateLiquidityForm,
 } from "../lib/liquidity"
-import { submitProtectedRawTransaction } from "../lib/protected-submission"
-import { buildV3PoolContext, buildV3SingleSidedZapCall, findV3SwapAmount } from "../lib/v3-liquidity"
-import { buildV4SingleSidedCall, findV4SwapAmount, getV4PoolId } from "../lib/v4-liquidity"
+import { buildV4SingleSidedCall, findV4SwapAmount } from "../lib/v4-liquidity"
 
 interface Pool {
   poolId: string
@@ -50,7 +48,6 @@ export const Route = createFileRoute("/pools/$poolId")({
   loader: ({ params }) => ({ poolId: params.poolId }),
 })
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080/api/v1"
 const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID ?? "11155111")
 const ERC20_ABI = [
   {
@@ -72,75 +69,6 @@ const ERC20_ABI = [
       { name: "amount", type: "uint256" },
     ],
     outputs: [{ name: "", type: "bool" }],
-  },
-] as const
-const V3_FACTORY_ABI = [
-  {
-    name: "getPool",
-    type: "function",
-    stateMutability: "view",
-    inputs: [
-      { name: "tokenA", type: "address" },
-      { name: "tokenB", type: "address" },
-      { name: "fee", type: "uint24" },
-    ],
-    outputs: [{ name: "pool", type: "address" }],
-  },
-] as const
-const V3_POOL_STATE_ABI = [
-  {
-    name: "slot0",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [
-      { name: "sqrtPriceX96", type: "uint160" },
-      { name: "tick", type: "int24" },
-      { name: "observationIndex", type: "uint16" },
-      { name: "observationCardinality", type: "uint16" },
-      { name: "observationCardinalityNext", type: "uint16" },
-      { name: "feeProtocol", type: "uint8" },
-      { name: "unlocked", type: "bool" },
-    ],
-  },
-  {
-    name: "liquidity",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint128" }],
-  },
-] as const
-const V4_STATE_VIEW_ABI = [
-  {
-    name: "getSlot0",
-    type: "function",
-    stateMutability: "view",
-    inputs: [{ name: "poolId", type: "bytes32" }],
-    outputs: [
-      { name: "sqrtPriceX96", type: "uint160" },
-      { name: "tick", type: "int24" },
-      { name: "protocolFee", type: "uint24" },
-      { name: "lpFee", type: "uint24" },
-    ],
-  },
-  {
-    name: "getLiquidity",
-    type: "function",
-    stateMutability: "view",
-    inputs: [{ name: "poolId", type: "bytes32" }],
-    outputs: [{ name: "liquidity", type: "uint128" }],
-  },
-] as const
-const POSITION_MANAGER_EVENTS_ABI = [
-  {
-    name: "Transfer",
-    type: "event",
-    inputs: [
-      { name: "from", type: "address", indexed: true },
-      { name: "to", type: "address", indexed: true },
-      { name: "tokenId", type: "uint256", indexed: true },
-    ],
   },
 ] as const
 
@@ -263,7 +191,9 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
   const { address, isConnected } = useAccount()
   const publicClient = usePublicClient()
   const { data: walletClient } = useWalletClient()
-  const { signIn } = useSiweAuth()
+  const chainId = useChainId()
+  const { mutate: switchChain, isPending: isSwitchingChain } = useSwitchChain()
+  const isWrongChain = isConnected && chainId !== CHAIN_ID
   const [values, setValues] = useState<LiquidityFormValues>({
     protocol: "v4",
     tokenSide: "token0",
@@ -297,6 +227,10 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
       open()
       return
     }
+    if (isWrongChain) {
+      setErrorMessage(`This pool is on chain ${CHAIN_ID}; switch your wallet network before continuing.`)
+      return
+    }
 
     const nextRequest = buildLiquidityRequest(pool.poolId, values, pool.tickSpacing)
     if (!nextRequest) return
@@ -304,134 +238,12 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
     setPreparing(true)
     try {
       if (values.protocol === "v3") {
-        if (!address || !walletClient || !publicClient) throw new Error("Wallet client is not ready")
-        const walletChainId = walletClient.chain?.id ?? publicClient.chain?.id
-        if (publicClient.chain?.id !== CHAIN_ID || walletChainId !== CHAIN_ID) {
-          throw new Error(`Switch wallet to chain ${CHAIN_ID} before adding liquidity`)
-        }
-        const executorAddress = import.meta.env.VITE_V3_ZAP_EXECUTOR_ADDRESS
-        const privateRpcUrl = import.meta.env.VITE_PRIVATE_RPC_URL
-        if (!executorAddress || !isAddress(executorAddress)) throw new Error("V3 zap executor is not configured")
-        if (!privateRpcUrl) throw new Error("Protected submission is not configured")
-        if (!selectedToken || !otherToken || !token0 || !token1) throw new Error("Pool token metadata is incomplete")
-        const amountIn = parseUnits(values.amount.trim(), selectedToken.decimals)
-        const tokenInIsToken0 = selectedToken.address.toLowerCase() === pool.token0Address.toLowerCase()
-        if (!tokenInIsToken0 && selectedToken.address.toLowerCase() !== pool.token1Address.toLowerCase()) {
-          throw new Error("Selected token is not part of this pool")
-        }
-        const quote = async (swapAmountIn: bigint) => {
-          const response = await fetch(
-            `${API_URL}/v3/quote?tokenIn=${selectedToken.address}&tokenOut=${otherToken.address}&fee=${pool.fee}&amountIn=${swapAmountIn}&slippage=${values.slippage}`,
-          )
-          if (!response.ok) throw new Error(`V3 quote failed with HTTP ${response.status}`)
-          const data = parseV3SwapQuote(await response.json())
-          return { amountOut: BigInt(data.amountOut), minAmountOut: BigInt(data.minAmountOut) }
-        }
-        const v3FactoryAddress = import.meta.env.VITE_V3_FACTORY_ADDRESS
-        if (!v3FactoryAddress || !isAddress(v3FactoryAddress)) throw new Error("V3 factory is not configured")
-        const v3PoolAddress = await publicClient.readContract({
-          address: getAddress(v3FactoryAddress),
-          abi: V3_FACTORY_ABI,
-          functionName: "getPool",
-          args: [getAddress(pool.token0Address), getAddress(pool.token1Address), pool.fee],
-        })
-        if (v3PoolAddress === zeroAddress) throw new Error("V3 pool is not deployed for this pair")
-        const blockNumber = await publicClient.getBlockNumber()
-        const [slot0, v3Liquidity] = await Promise.all([
-          publicClient.readContract({
-            address: v3PoolAddress,
-            abi: V3_POOL_STATE_ABI,
-            functionName: "slot0",
-            blockNumber,
-          }),
-          publicClient.readContract({
-            address: v3PoolAddress,
-            abi: V3_POOL_STATE_ABI,
-            functionName: "liquidity",
-            blockNumber,
-          }),
-        ])
-        const [sqrtPriceX96, currentTick] = slot0
-        if (sqrtPriceX96 === 0n || v3Liquidity === 0n) throw new Error("V3 pool has no active liquidity")
-        const v3Pool = buildV3PoolContext({
-          chainId: CHAIN_ID,
-          token0: getAddress(pool.token0Address),
-          token1: getAddress(pool.token1Address),
-          token0Decimals: token0.decimals,
-          token1Decimals: token1.decimals,
-          fee: pool.fee as 100 | 500 | 3_000 | 10_000,
-          sqrtPriceX96,
-          liquidity: v3Liquidity,
-          currentTick,
-        })
-        const search = await findV3SwapAmount({
-          pool: v3Pool,
-          tickLower: Number(values.lowerTick),
-          tickUpper: Number(values.upperTick),
-          amountIn,
-          tokenInIsToken0,
-          quote,
-        })
-        const remainingInput = amountIn - search.swapAmountIn
-        const minRemainingInput = (remainingInput * BigInt(10_000 - nextRequest.slippageBps)) / 10_000n
-        const call = buildV3SingleSidedZapCall({
-          executor: getAddress(executorAddress),
-          pool: v3Pool,
-          tokenIn: getAddress(selectedToken.address),
-          amountIn,
-          swapAmountIn: search.swapAmountIn,
-          minSwapAmountOut: search.quote.minAmountOut,
-          amount0Min: tokenInIsToken0 ? minRemainingInput : search.quote.minAmountOut,
-          amount1Min: tokenInIsToken0 ? search.quote.minAmountOut : minRemainingInput,
-          tickLower: Number(values.lowerTick),
-          tickUpper: Number(values.upperTick),
-          slippageBps: nextRequest.slippageBps,
-          deadline: BigInt(Math.floor(Date.now() / 1000) + nextRequest.deadlineSeconds),
-        })
-        const tokenAddress = getAddress(selectedToken.address)
-        const executor = getAddress(executorAddress)
-        const allowance = await publicClient.readContract({
-          address: tokenAddress,
-          abi: ERC20_ABI,
-          functionName: "allowance",
-          args: [address, executor],
-        })
-        if (allowance < amountIn) {
-          const approvalPrepared = await walletClient.prepareTransactionRequest({
-            account: address,
-            to: tokenAddress,
-            data: encodeFunctionData({ abi: ERC20_ABI, functionName: "approve", args: [executor, amountIn] }),
-            value: 0n,
-          })
-          const approvalSigned = await walletClient.signTransaction(approvalPrepared)
-          const approvalHash = await submitProtectedRawTransaction({
-            rpcUrl: privateRpcUrl,
-            signedTransaction: approvalSigned,
-          })
-          await publicClient.waitForTransactionReceipt({ hash: approvalHash })
-        }
-        const prepared = await walletClient.prepareTransactionRequest({
-          account: address,
-          to: executor,
-          data: call.method.calldata as Hex,
-          value: 0n,
-        })
-        const signedTransaction = await walletClient.signTransaction(prepared)
-        const txHash = await submitProtectedRawTransaction({ rpcUrl: privateRpcUrl, signedTransaction })
-        setRequest({ ...nextRequest, execution: { status: "submitted", txHash } })
+        setRequest(nextRequest)
         return
       }
       if (!address || !walletClient || !publicClient) throw new Error("Wallet client is not ready")
-      const walletChainId = walletClient.chain?.id ?? publicClient.chain?.id
-      if (publicClient.chain?.id !== CHAIN_ID || walletChainId !== CHAIN_ID) {
-        throw new Error(`Switch wallet to chain ${CHAIN_ID} before adding liquidity`)
-      }
-      const positionManagerAddress = import.meta.env.VITE_POSITION_MANAGER_ADDRESS
-      const privateRpcUrl = import.meta.env.VITE_PRIVATE_RPC_URL
-      if (!positionManagerAddress || !isAddress(positionManagerAddress)) {
-        throw new Error("V4 position manager is not configured")
-      }
-      if (!privateRpcUrl) throw new Error("Protected submission is not configured")
+      const routerAddress = import.meta.env.VITE_ROUTER_ADDRESS
+      if (!routerAddress || !isAddress(routerAddress)) throw new Error("V4 router address is not configured")
       if (!selectedToken || !otherToken || !token0 || !token1 || !pool.hookAddress || !isAddress(pool.hookAddress)) {
         throw new Error("Pool token metadata is incomplete")
       }
@@ -448,7 +260,7 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
         const data = parseSwapQuote(await response.json())
         return { amountOut: BigInt(data.amountOut), minAmountOut: BigInt(data.minAmountOut) }
       }
-      const poolKey = {
+      const poolInput = {
         chainId: CHAIN_ID,
         token0: getAddress(pool.token0Address),
         token1: getAddress(pool.token1Address),
@@ -457,34 +269,9 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
         fee: pool.fee,
         tickSpacing: pool.tickSpacing,
         hooks: getAddress(pool.hookAddress),
-      } as const
-      const stateViewAddress = import.meta.env.VITE_STATE_VIEW_ADDRESS
-      if (!stateViewAddress || !isAddress(stateViewAddress)) throw new Error("V4 StateView is not configured")
-      const blockNumber = await publicClient.getBlockNumber()
-      const poolId = getV4PoolId(poolKey)
-      const [slot0, v4Liquidity] = await Promise.all([
-        publicClient.readContract({
-          address: getAddress(stateViewAddress),
-          abi: V4_STATE_VIEW_ABI,
-          functionName: "getSlot0",
-          args: [poolId],
-          blockNumber,
-        }),
-        publicClient.readContract({
-          address: getAddress(stateViewAddress),
-          abi: V4_STATE_VIEW_ABI,
-          functionName: "getLiquidity",
-          args: [poolId],
-          blockNumber,
-        }),
-      ])
-      const [sqrtPriceX96, currentTick] = slot0
-      if (sqrtPriceX96 === 0n || v4Liquidity === 0n) throw new Error("V4 pool has no active liquidity")
-      const poolInput = {
-        ...poolKey,
-        sqrtPriceX96,
-        liquidity: v4Liquidity,
-        currentTick: Number(currentTick),
+        sqrtPriceX96: BigInt(pool.sqrtPriceX96),
+        liquidity: BigInt(pool.liquidity),
+        currentTick: pool.currentTick,
       } as const
       const search = await findV4SwapAmount({
         pool: poolInput,
@@ -505,82 +292,30 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
         minSwapAmountOut: search.quote.minAmountOut,
         slippageBps: nextRequest.slippageBps,
         deadline: BigInt(Math.floor(Date.now() / 1000) + nextRequest.deadlineSeconds),
-        recipient: getAddress(address),
       })
       const tokenAddress = getAddress(selectedToken.address)
-      const positionManager = getAddress(positionManagerAddress)
+      const router = getAddress(routerAddress)
       const allowance = await publicClient.readContract({
         address: tokenAddress,
         abi: ERC20_ABI,
         functionName: "allowance",
-        args: [address, positionManager],
+        args: [address, router],
       })
       if (allowance < amountIn) {
-        const approvalPrepared = await walletClient.prepareTransactionRequest({
+        const approvalHash = await walletClient.sendTransaction({
           account: address,
           to: tokenAddress,
-          data: encodeFunctionData({
-            abi: ERC20_ABI,
-            functionName: "approve",
-            args: [positionManager, amountIn],
-          }),
+          data: encodeFunctionData({ abi: ERC20_ABI, functionName: "approve", args: [router, amountIn] }),
           value: 0n,
-        })
-        const approvalSigned = await walletClient.signTransaction(approvalPrepared)
-        const approvalHash = await submitProtectedRawTransaction({
-          rpcUrl: privateRpcUrl,
-          signedTransaction: approvalSigned,
         })
         await publicClient.waitForTransactionReceipt({ hash: approvalHash })
       }
-      const prepared = await walletClient.prepareTransactionRequest({
+      const txHash = await walletClient.sendTransaction({
         account: address,
-        to: positionManager,
+        to: router,
         data: call.calldata,
         value: 0n,
       })
-      const signedTransaction = await walletClient.signTransaction(prepared)
-      const txHash = await submitProtectedRawTransaction({ rpcUrl: privateRpcUrl, signedTransaction })
-      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash })
-      const transfers = parseEventLogs({
-        abi: POSITION_MANAGER_EVENTS_ABI,
-        eventName: "Transfer",
-        logs: receipt.logs,
-        strict: false,
-      })
-      const positionTransfer = transfers.find(
-        (log) =>
-          log.address.toLowerCase() === positionManager.toLowerCase() &&
-          typeof log.args.to === "string" &&
-          log.args.to.toLowerCase() === address.toLowerCase(),
-      )
-      if (!positionTransfer) throw new Error("Confirmed V4 transaction did not emit a position NFT transfer")
-      const tokenId = positionTransfer.args.tokenId
-      if (typeof tokenId !== "bigint") throw new Error("Confirmed V4 position transfer did not include a tokenId")
-      let authToken = localStorage.getItem("aetherdex-auth-token")
-      if (!authToken) {
-        await signIn()
-        authToken = localStorage.getItem("aetherdex-auth-token")
-      }
-      if (!authToken) throw new Error("Sign-in is required to index the new position")
-      const indexResponse = await fetch(`${API_URL}/positions`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          protocol: "v4",
-          tokenId: tokenId.toString(),
-          poolId: pool.poolId,
-          tickLower: Number(values.lowerTick),
-          tickUpper: Number(values.upperTick),
-          liquidity: call.liquidityDelta.toString(),
-          amount0: call.expectedAmount0.toString(),
-          amount1: call.expectedAmount1.toString(),
-        }),
-      })
-      if (!indexResponse.ok) throw new Error(`Position indexing failed with HTTP ${indexResponse.status}`)
       setRequest({ ...nextRequest, execution: { status: "submitted", txHash } })
     } catch (error: unknown) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to prepare liquidity transaction")
@@ -632,8 +367,8 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
               ))}
             </div>
             <p className="mb-4 text-xs text-base-content/60">
-              V3 uses QuoterV2 plus the Aether zap executor; V4 uses the Aether position manager. Both remain
-              execution-gated until their deployed addresses and protected submission route are configured.
+              V3 uses the position NFT manager; V4 uses the Aether position manager. Both remain execution-gated until
+              their deployed addresses and protected submission route are configured.
             </p>
           </fieldset>
 
@@ -744,12 +479,29 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
             </div>
           </div>
 
+          {isWrongChain ? (
+            <div role="alert" className="alert alert-warning text-sm">
+              <span>
+                Your wallet is connected to chain {chainId}, but this pool is on chain {CHAIN_ID}. Switch networks to
+                continue.
+              </span>
+              <button
+                type="button"
+                className="btn btn-warning btn-xs"
+                disabled={isSwitchingChain}
+                onClick={() => switchChain({ chainId: CHAIN_ID })}
+              >
+                {isSwitchingChain ? "Switching…" : "Switch network"}
+              </button>
+            </div>
+          ) : null}
+
           {request ? (
             <div role="status" className="alert alert-warning text-sm">
               <span>
                 {request.execution.status === "submitted"
-                  ? `Protected transaction submitted: ${request.execution.txHash}`
-                  : "V3 execution requires QuoterV2, zap executor, and protected RPC configuration."}
+                  ? `Transaction submitted: ${request.execution.txHash}`
+                  : "V3 execution remains gated until its position manager and protected batch route are configured."}
               </span>
             </div>
           ) : null}
@@ -763,10 +515,10 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
             type="submit"
             variant="primary"
             fullWidth
-            disabled={isConnected && (!validation.valid || request !== null)}
+            disabled={isConnected && (!validation.valid || request !== null || preparing || isWrongChain)}
           >
             {preparing
-              ? "Preparing protected transaction…"
+              ? "Preparing transaction…"
               : request
                 ? "Transaction submitted"
                 : isConnected
@@ -803,10 +555,6 @@ function parseSwapQuote(value: unknown): { readonly amountOut: string; readonly 
     throw new Error("Quote response is missing amount bounds")
   }
   return { amountOut: quote.amountOut, minAmountOut: quote.minAmountOut }
-}
-
-function parseV3SwapQuote(value: unknown): { readonly amountOut: string; readonly minAmountOut: string } {
-  return parseSwapQuote(value)
 }
 
 function formatUsd(value: number): string {

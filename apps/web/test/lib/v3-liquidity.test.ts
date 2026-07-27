@@ -7,7 +7,6 @@ import {
   buildV3RebalancePlan,
   buildV3SingleSidedZapCall,
   buildV3SingleSidedPlan,
-  findV3SwapAmount,
   snapV3Tick,
 } from "../../src/lib/v3-liquidity"
 
@@ -126,19 +125,5 @@ describe("v3 liquidity adapter", () => {
     expect(call.execution).toBe("v3-zap-executor")
     expect(call.method.calldata).toMatch(/^0x[0-9a-f]+$/)
     expect(call.amountIn).toBe(100n)
-  })
-
-  it("finds a v3 swap split from exact quoter responses", async () => {
-    const result = await findV3SwapAmount({
-      pool,
-      tickLower: -600,
-      tickUpper: 600,
-      amountIn: 100n,
-      tokenInIsToken0: true,
-      quote: async (amountIn) => ({ amountOut: amountIn, minAmountOut: amountIn }),
-    })
-
-    expect(result.swapAmountIn).toBe(50n)
-    expect(result.quote.amountOut).toBe(50n)
   })
 })

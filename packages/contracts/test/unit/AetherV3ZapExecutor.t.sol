@@ -131,16 +131,39 @@ contract AetherV3ZapExecutorTest is Test {
         executor.zap(params);
     }
 
-    function test_zapRefundsPreExistingDustWithoutGriefing() public {
+    function test_zapToleratesPreExistingDust() public {
+        // A 1-wei donation must not brick the executor: pre-existing balances are
+        // snapshotted and left untouched; only the zap's own leftover is refunded.
         token0.mint(address(executor), 1);
-
         swapRouter.setAmountOut(35 ether);
-        vm.prank(user);
-        executor.zap(_params(address(token0)));
 
-        assertEq(token0.balanceOf(user), 1);
-        assertEq(token0.balanceOf(address(executor)), 0);
+        vm.prank(user);
+        (,, uint256 amount0, uint256 amount1, uint256 amountOut) = executor.zap(_params(address(token0)));
+
+        assertEq(amountOut, 35 ether);
+        assertEq(amount0, 60 ether);
+        assertEq(amount1, 35 ether);
+        // Dust stays exactly where it was — not swept into the caller's refund.
+        assertEq(token0.balanceOf(address(executor)), 1);
         assertEq(token1.balanceOf(address(executor)), 0);
+    }
+
+    function test_rescueTokensSweepsStrandedBalance() public {
+        token0.mint(address(executor), 5);
+
+        // The executor is deployed by this test contract, so this contract is the owner.
+        executor.rescueTokens(address(token0), user, 5);
+
+        assertEq(token0.balanceOf(address(executor)), 0);
+        assertEq(token0.balanceOf(user), 100 ether + 5);
+    }
+
+    function test_rescueTokensRevertsForNonOwner() public {
+        token0.mint(address(executor), 5);
+
+        vm.prank(user);
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", user));
+        executor.rescueTokens(address(token0), user, 5);
     }
 
     function test_zapRevertsForExpiredDeadline() public {
