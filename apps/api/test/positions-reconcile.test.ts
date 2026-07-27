@@ -105,3 +105,16 @@ describe("POST /api/v1/positions/v4/:tokenId/reconcile", () => {
     await expect(response.json()).resolves.toEqual({ error: "Authentication required" })
   })
 })
+
+describe("POST /api/v1/positions", () => {
+  it("routes position creation through the authenticated endpoint", async () => {
+    const response = await SELF.fetch("http://fake-host/api/v1/positions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    })
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toEqual({ error: "Authentication required" })
+  })
+})

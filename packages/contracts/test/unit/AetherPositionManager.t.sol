@@ -226,8 +226,18 @@ contract AetherPositionManagerTest is Test {
     function test_rebalancePosition_revertsForUnapprovedCaller() public {
         uint256 tokenId = _mintForUser();
 
-        vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721InsufficientApproval.selector, attacker, tokenId));
+        vm.expectRevert(IAetherPositionManager.RebalanceOwnerOnly.selector);
         vm.prank(attacker);
+        positionManager.rebalancePosition(_rebalanceParams(tokenId));
+    }
+
+    function test_rebalancePosition_revertsForApprovedOperator() public {
+        uint256 tokenId = _mintForUser();
+        vm.prank(user);
+        positionManager.approve(operator, tokenId);
+
+        vm.expectRevert(IAetherPositionManager.RebalanceOwnerOnly.selector);
+        vm.prank(operator);
         positionManager.rebalancePosition(_rebalanceParams(tokenId));
     }
 

@@ -14,6 +14,7 @@ interface IAetherPositionManager {
     error NativeTransferFailed();
     error UnexpectedNativeValue();
     error InsufficientCallBalance();
+    error RebalanceOwnerOnly();
 
     struct MintPositionParams {
         PoolKey poolKey;

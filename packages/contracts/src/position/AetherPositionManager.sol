@@ -153,9 +153,7 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
         if (params.liquidity == 0) revert InvalidLiquidity();
         if (params.tickLower >= params.tickUpper) revert InvalidLiquidity();
         address positionOwner = _ownerOf(params.tokenId);
-        if (!_isAuthorized(positionOwner, msg.sender, params.tokenId)) {
-            _checkAuthorized(positionOwner, msg.sender, params.tokenId);
-        }
+        if (msg.sender != positionOwner) revert RebalanceOwnerOnly();
         Position memory position = _positions[params.tokenId];
         if (
             !position.poolKey.currency0.isAddressZero() && !position.poolKey.currency1.isAddressZero() && msg.value != 0

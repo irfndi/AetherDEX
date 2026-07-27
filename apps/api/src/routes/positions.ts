@@ -66,7 +66,7 @@ positions.get("/users/:address/positions", async (c) => {
  * POST /api/v1/positions
  * Record a new LP position (requires auth — user records their own position)
  */
-positions.post("/", requireAuth, async (c) => {
+positions.post("/positions", requireAuth, async (c) => {
   const session = c.get("session")
   if (!session) return c.json({ error: "Unauthorized" }, 401)
 
