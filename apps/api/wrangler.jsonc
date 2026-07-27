@@ -116,6 +116,16 @@
     "QUOTE_ENGINE_MODE": "auto",
     // Canonical Uniswap default token list (Phase-0 G4) — the only token list AetherDEX serves.
     "TOKEN_LIST_URL": "https://tokens.uniswap.org",
+    // Phase-3 API safety suite (src/middleware/*) — parsed with safe fallbacks in src/lib/safety-config.ts.
+    "RATE_LIMIT_MAX": "60",
+    "RATE_LIMIT_WINDOW_SECONDS": "60",
+    "CIRCUIT_FAILURE_THRESHOLD": "5",
+    "CIRCUIT_COOLDOWN_SECONDS": "30",
+    "HIGH_VALUE_USD_THRESHOLD": "10000",
+    // MEV protection: off | client | private. "private" degrades to "client" until PRIVATE_TX_RELAY_URL is set.
+    "MEV_PROTECTION_MODE": "client",
+    "MEV_MAX_SLIPPAGE_BPS": "500",
+    "PRIVATE_TX_RELAY_URL": "",
     "ENVIRONMENT": "development"
   },
 
@@ -139,6 +149,14 @@
         "RPC_URL": "",
         "QUOTE_ENGINE_MODE": "auto",
         "TOKEN_LIST_URL": "https://tokens.uniswap.org",
+        "RATE_LIMIT_MAX": "60",
+        "RATE_LIMIT_WINDOW_SECONDS": "60",
+        "CIRCUIT_FAILURE_THRESHOLD": "5",
+        "CIRCUIT_COOLDOWN_SECONDS": "30",
+        "HIGH_VALUE_USD_THRESHOLD": "10000",
+        "MEV_PROTECTION_MODE": "client",
+        "MEV_MAX_SLIPPAGE_BPS": "500",
+        "PRIVATE_TX_RELAY_URL": "",
         "ENVIRONMENT": "staging"
       },
       "d1_databases": [
@@ -207,6 +225,14 @@
         "RPC_URL": "",
         "QUOTE_ENGINE_MODE": "auto",
         "TOKEN_LIST_URL": "https://tokens.uniswap.org",
+        "RATE_LIMIT_MAX": "60",
+        "RATE_LIMIT_WINDOW_SECONDS": "60",
+        "CIRCUIT_FAILURE_THRESHOLD": "5",
+        "CIRCUIT_COOLDOWN_SECONDS": "30",
+        "HIGH_VALUE_USD_THRESHOLD": "10000",
+        "MEV_PROTECTION_MODE": "client",
+        "MEV_MAX_SLIPPAGE_BPS": "500",
+        "PRIVATE_TX_RELAY_URL": "",
         "ENVIRONMENT": "production"
       },
       "d1_databases": [

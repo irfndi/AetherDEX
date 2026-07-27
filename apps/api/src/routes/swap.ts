@@ -13,6 +13,10 @@ import { makeDbLayer } from "../db/client"
 import { recordSwap } from "../db/queries"
 import { parseChainId } from "../lib/chain-id"
 import { runEffect } from "../lib/effect-bridge"
+import { readCircuitBreakerConfig, type SafetyEnv } from "../lib/safety-config"
+import { circuitBreaker } from "../middleware/circuit-breaker"
+import { mevProtection } from "../middleware/mev-protection"
+import { rateLimit } from "../middleware/rate-limit"
 import {
   type ChainStateReader,
   makeStateViewReaderLayer,
@@ -33,6 +37,47 @@ const swap = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
 const ETH_ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/
 const HEX_ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/
+
+// ─── Phase-3 safety helpers (rate limit / circuit breaker / MEV) ─────────────
+// Body reads here share Hono's per-request body cache, so handlers still parse
+// the exact same payload exactly once.
+
+interface BuildRequestBody {
+  quote?: SwapQuote & { amountUsd?: number }
+  recipient?: string
+  slippageTolerance?: number
+  amountUsd?: number
+}
+
+type BodyReader = (c: { req: { json: <T>() => Promise<T> } }) => Promise<number | null>
+
+const toFiniteNumber = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) ? value : null
+
+const readBuildSlippageBps: BodyReader = async (c) => {
+  const body = await c.req.json<BuildRequestBody>().catch(() => null)
+  const tolerance = body?.slippageTolerance
+  return typeof tolerance === "number" && Number.isFinite(tolerance) ? Math.round(Math.abs(tolerance) * 10_000) : null
+}
+
+const readBuildAmountUsd: BodyReader = async (c) => {
+  const body = await c.req.json<BuildRequestBody>().catch(() => null)
+  return toFiniteNumber(body?.amountUsd) ?? toFiniteNumber(body?.quote?.amountUsd)
+}
+
+const readRecordAmountUsd: BodyReader = async (c) => {
+  const body = await c.req.json<{ amountUsd?: unknown }>().catch(() => null)
+  return toFiniteNumber(body?.amountUsd)
+}
+
+const highValueRequest =
+  (readUsd: BodyReader) =>
+  async (c: { env: unknown; req: { json: <T>() => Promise<T> } }): Promise<boolean> => {
+    const { highValueUsdThreshold } = readCircuitBreakerConfig(c.env as SafetyEnv)
+    if (highValueUsdThreshold === undefined) return false
+    const usd = await readUsd(c)
+    return usd !== null && usd >= highValueUsdThreshold
+  }
 
 interface QuoteEnv {
   DB?: D1Database
@@ -132,36 +177,42 @@ swap.get("/quote", async (c) => {
  * Body: { quote: SwapQuote, recipient: "0x...", slippageTolerance?: number }
  * Returns: { to, data, value }
  */
-swap.post("/build", async (c) => {
-  const body = await c.req.json<{
-    quote?: SwapQuote
-    recipient?: string
-  }>()
+swap.post(
+  "/build",
+  rateLimit(),
+  circuitBreaker({ name: "swap", isHighValueRequest: highValueRequest(readBuildAmountUsd) }),
+  mevProtection({ readSlippageBps: readBuildSlippageBps, readAmountUsd: readBuildAmountUsd }),
+  async (c) => {
+    const body = await c.req.json<{
+      quote?: SwapQuote
+      recipient?: string
+    }>()
 
-  if (!body.quote || !body.recipient) {
-    return c.json({ error: "quote and recipient required" }, 400)
-  }
-
-  if (!ETH_ADDRESS_RE.test(body.recipient)) {
-    return c.json({ error: "Invalid recipient address" }, 400)
-  }
-
-  const { quote, recipient } = body
-
-  try {
-    if (!c.env.ROUTER_ADDRESS || !c.env.FACTORY_ADDRESS) {
-      return c.json({ error: "Server misconfigured: missing ROUTER_ADDRESS or FACTORY_ADDRESS" }, 500)
+    if (!body.quote || !body.recipient) {
+      return c.json({ error: "quote and recipient required" }, 400)
     }
-    const program = Effect.gen(function* () {
-      const swapService = yield* SwapService
-      return yield* swapService.buildCalldata(quote, recipient)
-    })
-    const calldata = await Effect.runPromise(program.pipe(Effect.provide(swapServiceLayer(c.env))))
-    return c.json(calldata)
-  } catch (err) {
-    return c.json({ error: String(err) }, 500)
-  }
-})
+
+    if (!ETH_ADDRESS_RE.test(body.recipient)) {
+      return c.json({ error: "Invalid recipient address" }, 400)
+    }
+
+    const { quote, recipient } = body
+
+    try {
+      if (!c.env.ROUTER_ADDRESS || !c.env.FACTORY_ADDRESS) {
+        return c.json({ error: "Server misconfigured: missing ROUTER_ADDRESS or FACTORY_ADDRESS" }, 500)
+      }
+      const program = Effect.gen(function* () {
+        const swapService = yield* SwapService
+        return yield* swapService.buildCalldata(quote, recipient)
+      })
+      const calldata = await Effect.runPromise(program.pipe(Effect.provide(swapServiceLayer(c.env))))
+      return c.json(calldata)
+    } catch (err) {
+      return c.json({ error: String(err) }, 500)
+    }
+  },
+)
 
 // ─── POST /swap/record ───────────────────────────────────────────────────────
 
@@ -170,52 +221,58 @@ swap.post("/build", async (c) => {
  * Record a confirmed swap transaction for indexing
  * Requires auth (only the user's own transactions)
  */
-swap.post("/record", requireAuth, async (c) => {
-  const session = c.get("session")
-  if (!session) return c.json({ error: "Unauthorized" }, 401)
+swap.post(
+  "/record",
+  rateLimit(),
+  circuitBreaker({ name: "swap", isHighValueRequest: highValueRequest(readRecordAmountUsd) }),
+  requireAuth,
+  async (c) => {
+    const session = c.get("session")
+    if (!session) return c.json({ error: "Unauthorized" }, 401)
 
-  const body = await c.req.json<{
-    txHash?: string
-    poolId?: string
-    tokenIn?: string
-    tokenOut?: string
-    amountIn?: string
-    amountOut?: string
-    amountUsd?: number
-    blockNumber?: number
-    blockTimestamp?: number
-  }>()
+    const body = await c.req.json<{
+      txHash?: string
+      poolId?: string
+      tokenIn?: string
+      tokenOut?: string
+      amountIn?: string
+      amountOut?: string
+      amountUsd?: number
+      blockNumber?: number
+      blockTimestamp?: number
+    }>()
 
-  if (!body.txHash || !body.blockNumber || !body.blockTimestamp) {
-    return c.json({ error: "txHash, blockNumber, blockTimestamp required" }, 400)
-  }
+    if (!body.txHash || !body.blockNumber || !body.blockTimestamp) {
+      return c.json({ error: "txHash, blockNumber, blockTimestamp required" }, 400)
+    }
 
-  const chainId = parseChainId(c.env.CHAIN_ID)
-  if (chainId === null) {
-    return c.json({ error: "Invalid chain configuration" }, 500)
-  }
+    const chainId = parseChainId(c.env.CHAIN_ID)
+    if (chainId === null) {
+      return c.json({ error: "Invalid chain configuration" }, 500)
+    }
 
-  try {
-    await runEffect(
-      recordSwap({
-        chainId,
-        txHash: body.txHash,
-        userAddress: session.userAddress,
-        poolId: body.poolId ?? null,
-        tokenIn: body.tokenIn ?? null,
-        tokenOut: body.tokenOut ?? null,
-        amountIn: body.amountIn ?? null,
-        amountOut: body.amountOut ?? null,
-        amountUsd: body.amountUsd ?? null,
-        blockNumber: body.blockNumber,
-        blockTimestamp: body.blockTimestamp,
-      }).pipe(Effect.provide(makeDbLayer(c.env.DB as D1Database))),
-    )
+    try {
+      await runEffect(
+        recordSwap({
+          chainId,
+          txHash: body.txHash,
+          userAddress: session.userAddress,
+          poolId: body.poolId ?? null,
+          tokenIn: body.tokenIn ?? null,
+          tokenOut: body.tokenOut ?? null,
+          amountIn: body.amountIn ?? null,
+          amountOut: body.amountOut ?? null,
+          amountUsd: body.amountUsd ?? null,
+          blockNumber: body.blockNumber,
+          blockTimestamp: body.blockTimestamp,
+        }).pipe(Effect.provide(makeDbLayer(c.env.DB as D1Database))),
+      )
 
-    return c.json({ ok: true, txHash: body.txHash })
-  } catch (err) {
-    return c.json({ error: String(err) }, 500)
-  }
-})
+      return c.json({ ok: true, txHash: body.txHash })
+    } catch (err) {
+      return c.json({ error: String(err) }, 500)
+    }
+  },
+)
 
 export { swap }

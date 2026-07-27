@@ -31,6 +31,15 @@ type Bindings = {
   SETTLE_QUEUE: Queue
   CHAIN_ID: string
   ENVIRONMENT: string
+  // Phase-3 API safety knobs — optional; safe defaults live in src/lib/safety-config.ts.
+  RATE_LIMIT_MAX?: string
+  RATE_LIMIT_WINDOW_SECONDS?: string
+  CIRCUIT_FAILURE_THRESHOLD?: string
+  CIRCUIT_COOLDOWN_SECONDS?: string
+  HIGH_VALUE_USD_THRESHOLD?: string
+  MEV_PROTECTION_MODE?: string
+  MEV_MAX_SLIPPAGE_BPS?: string
+  PRIVATE_TX_RELAY_URL?: string
 }
 
 const app = new Hono<{ Bindings: Bindings; Variables: AuthVariables }>()
