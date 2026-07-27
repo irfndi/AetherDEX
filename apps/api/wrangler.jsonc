@@ -119,6 +119,12 @@
     "V3_POSITION_MANAGER_ADDRESS": "",
     "V3_POSITION_MANAGER_DEPLOYMENT_BLOCK": "0",
     "RPC_URL": "",
+    // Phase 3 indexer — disabled until explicitly enabled with INDEXER_ENABLED=true
+    // and at least one source contract address below. Comma list for V3 pools.
+    "INDEXER_ENABLED": "false",
+    "INDEXER_BATCH_SIZE": "2000",
+    "V4_POOL_MANAGER_ADDRESS": "",
+    "V3_INDEXED_POOL_ADDRESSES": "",
     // "auto" = V4 tick-math when STATE_VIEW_ADDRESS+RPC_URL are set, else legacy D1 approximation.
     "QUOTE_ENGINE_MODE": "auto",
     // Canonical Uniswap default token list (Phase-0 G4) — the only token list AetherDEX serves.
@@ -158,6 +164,10 @@
         "V3_POSITION_MANAGER_ADDRESS": "",
         "V3_POSITION_MANAGER_DEPLOYMENT_BLOCK": "0",
         "RPC_URL": "",
+        "INDEXER_ENABLED": "false",
+        "INDEXER_BATCH_SIZE": "2000",
+        "V4_POOL_MANAGER_ADDRESS": "",
+        "V3_INDEXED_POOL_ADDRESSES": "",
         "QUOTE_ENGINE_MODE": "auto",
         "TOKEN_LIST_URL": "https://tokens.uniswap.org",
         "RATE_LIMIT_MAX": "60",
@@ -243,6 +253,10 @@
         "V3_POSITION_MANAGER_ADDRESS": "",
         "V3_POSITION_MANAGER_DEPLOYMENT_BLOCK": "0",
         "RPC_URL": "",
+        "INDEXER_ENABLED": "false",
+        "INDEXER_BATCH_SIZE": "2000",
+        "V4_POOL_MANAGER_ADDRESS": "",
+        "V3_INDEXED_POOL_ADDRESSES": "",
         "QUOTE_ENGINE_MODE": "auto",
         "TOKEN_LIST_URL": "https://tokens.uniswap.org",
         "RATE_LIMIT_MAX": "60",

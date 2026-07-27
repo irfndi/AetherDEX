@@ -32,6 +32,14 @@ type Bindings = {
   KEEPER_QUEUE: Queue
   CHAIN_ID: string
   ENVIRONMENT: string
+  // Cron/indexer chain config — optional; absent values keep ticks as no-ops.
+  RPC_URL?: string
+  V3_POSITION_MANAGER_ADDRESS?: string
+  V3_POSITION_MANAGER_DEPLOYMENT_BLOCK?: string
+  V3_INDEXED_POOL_ADDRESSES?: string
+  V4_POOL_MANAGER_ADDRESS?: string
+  INDEXER_ENABLED?: string
+  INDEXER_BATCH_SIZE?: string
   // Phase-3 API safety knobs — optional; safe defaults live in src/lib/safety-config.ts.
   RATE_LIMIT_MAX?: string
   RATE_LIMIT_WINDOW_SECONDS?: string
@@ -195,6 +203,12 @@ const worker = {
       STORAGE: env.STORAGE,
       WEBSOCKET_HUB: env.WEBSOCKET_HUB,
       CHAIN_ID: env.CHAIN_ID,
+      RPC_URL: env.RPC_URL,
+      INDEXER_ENABLED: env.INDEXER_ENABLED,
+      INDEXER_BATCH_SIZE: env.INDEXER_BATCH_SIZE,
+      V3_POSITION_MANAGER_ADDRESS: env.V3_POSITION_MANAGER_ADDRESS,
+      V3_INDEXED_POOL_ADDRESSES: env.V3_INDEXED_POOL_ADDRESSES,
+      V4_POOL_MANAGER_ADDRESS: env.V4_POOL_MANAGER_ADDRESS,
     })
   },
 

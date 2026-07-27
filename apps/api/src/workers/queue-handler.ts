@@ -7,7 +7,12 @@
  * - **NEW: auto-recenter-check: check and queue position rebalances**
  */
 
-import { createPublicClient, http } from "viem"
+import { Effect, Layer } from "effect"
+import { createPublicClient, http, type PublicClient } from "viem"
+import { makeDbLayer } from "../db/client"
+import { runEffect } from "../lib/effect-bridge"
+import { IndexerService, IndexerServiceLive, type IndexerSource } from "../services/indexer.service"
+import { buildIndexerChainConfig, isIndexerEnabled } from "./indexer-config"
 
 const AETHER_HOOK_ABI = [
   {
@@ -66,14 +71,23 @@ export interface AutoRecenterCheckMessage {
   chainId: number
 }
 
+export interface IndexerBackfillMessage {
+  type: "indexer-backfill"
+  chainId: number
+  source: "v3_position_manager" | "v3_pool" | "v4_pool_manager"
+  fromBlock: string
+  toBlock: string
+}
+
 export type QueueMessage =
   | PriceRefreshMessage
   | TradeSettlementMessage
   | TradeArchiveMessage
   | TpSlEvaluateMessage
   | AutoRecenterCheckMessage
+  | IndexerBackfillMessage
 
-interface QueueEnv {
+export interface QueueEnv {
   DB: D1Database
   CACHE: KVNamespace
   STORAGE: R2Bucket
@@ -81,7 +95,14 @@ interface QueueEnv {
   CHAIN_ID: string
   RPC_URL?: string
   AETHER_HOOK_ADDRESS?: string
+  INDEXER_ENABLED?: string
+  INDEXER_BATCH_SIZE?: string
+  V3_POSITION_MANAGER_ADDRESS?: string
+  V3_INDEXED_POOL_ADDRESSES?: string
+  V4_POOL_MANAGER_ADDRESS?: string
 }
+
+const INDEXER_SOURCES: readonly IndexerSource[] = ["v3_position_manager", "v3_pool", "v4_pool_manager"]
 
 const readIntegerCacheValue = (payload: string, field: string): string | null => {
   try {
@@ -133,9 +154,14 @@ async function readTwapFromChain(
 }
 
 /**
- * Process a batch of queue messages
+ * Process a batch of queue messages. `clientFactory` is a test seam forwarded
+ * to the indexer backfill handler; production omits it for the default viem client.
  */
-export const processQueueBatch = async (batch: MessageBatch<unknown>, env: QueueEnv): Promise<void> => {
+export const processQueueBatch = async (
+  batch: MessageBatch<unknown>,
+  env: QueueEnv,
+  clientFactory?: (rpcUrl: string) => PublicClient,
+): Promise<void> => {
   console.log(`Processing ${batch.messages.length} queue messages`)
 
   for (const message of batch.messages) {
@@ -157,6 +183,9 @@ export const processQueueBatch = async (batch: MessageBatch<unknown>, env: Queue
         case "auto-recenter-check":
           await handleAutoRecenterCheck(msg, env)
           break
+        case "indexer-backfill":
+          await handleIndexerBackfill(msg, env, clientFactory)
+          break
         default: {
           const _never: never = msg
           console.warn(`Unknown queue message type: ${JSON.stringify(_never)}`)
@@ -168,6 +197,61 @@ export const processQueueBatch = async (batch: MessageBatch<unknown>, env: Queue
       message.retry()
     }
   }
+}
+
+// ─── Indexer Backfill Handler ───────────────────────────────────────────────
+
+async function handleIndexerBackfill(
+  msg: IndexerBackfillMessage,
+  env: QueueEnv,
+  clientFactory?: (rpcUrl: string) => PublicClient,
+): Promise<void> {
+  if (!isIndexerEnabled(env)) {
+    console.log("[Indexer] Backfill skipped: INDEXER_ENABLED != true")
+    return
+  }
+
+  const source = INDEXER_SOURCES.find((candidate) => candidate === msg.source)
+  const isDecimalString = (value: string): boolean => /^\d+$/.test(value)
+  if (
+    source === undefined ||
+    !Number.isSafeInteger(msg.chainId) ||
+    msg.chainId <= 0 ||
+    !isDecimalString(msg.fromBlock) ||
+    !isDecimalString(msg.toBlock) ||
+    BigInt(msg.toBlock) < BigInt(msg.fromBlock)
+  ) {
+    console.warn(`[Indexer] Invalid backfill message — acking without retry: ${JSON.stringify(msg)}`)
+    return
+  }
+
+  const chainConfig = buildIndexerChainConfig(env, clientFactory)
+  if (chainConfig === null) {
+    console.log("[Indexer] Backfill skipped: RPC/contract addresses not configured")
+    return
+  }
+  if (msg.chainId !== chainConfig.chainId) {
+    console.warn(
+      `[Indexer] Backfill chain ${msg.chainId} does not match configured chain ${chainConfig.chainId} — acking`,
+    )
+    return
+  }
+
+  const fromBlock = BigInt(msg.fromBlock)
+  const toBlock = BigInt(msg.toBlock)
+
+  await runEffect(
+    Effect.gen(function* () {
+      const indexer = yield* IndexerService
+      const result = yield* indexer.indexRange(msg.chainId, source, fromBlock, toBlock)
+      console.log(
+        `[Indexer] Backfill ${result.source} ${result.fromBlock}..${result.toBlock} events=${result.eventsProcessed} (cursor untouched)`,
+      )
+    }).pipe(
+      Effect.provide(IndexerServiceLive([chainConfig]).pipe(Layer.provide(makeDbLayer(env.DB)))),
+      Effect.catch((error) => Effect.sync(() => console.error(`[Indexer] Backfill failed (acked): ${String(error)}`))),
+    ),
+  )
 }
 
 // ─── TP/SL Evaluation Handler ───────────────────────────────────────────────

@@ -1,9 +1,12 @@
-import { Effect } from "effect"
+import { Effect, Layer } from "effect"
+import type { PublicClient } from "viem"
 import { makeDbLayer } from "../db/client"
 import { getIndexerCursor, setIndexerCursor } from "../db/queries"
 import { parseChainId } from "../lib/chain-id"
 import { runEffect } from "../lib/effect-bridge"
+import { IndexerService, IndexerServiceLive } from "../services/indexer.service"
 import { V3LiquidityIndexer, V3LiquidityIndexerLive } from "../services/v3-liquidity-indexer.service"
+import { buildIndexerChainConfig, isIndexerEnabled } from "./indexer-config"
 import { finalizedV3Head, nextV3IndexerRange, V3_INDEXER_NAME } from "./v3-indexer-cursor"
 
 function toScaledBigInt(value: number, decimals: number): bigint {
@@ -16,7 +19,7 @@ function toScaledBigInt(value: number, decimals: number): bigint {
   return negative ? -result : result
 }
 
-interface CronEnv {
+export interface CronEnv {
   DB: D1Database
   CACHE: KVNamespace
   STORAGE: R2Bucket
@@ -27,6 +30,10 @@ interface CronEnv {
   RPC_URL?: string
   V3_POSITION_MANAGER_ADDRESS?: string
   V3_POSITION_MANAGER_DEPLOYMENT_BLOCK?: string
+  INDEXER_ENABLED?: string
+  INDEXER_BATCH_SIZE?: string
+  V3_INDEXED_POOL_ADDRESSES?: string
+  V4_POOL_MANAGER_ADDRESS?: string
 }
 
 export const handleScheduled = async (event: ScheduledEvent, env: CronEnv, ctx: ExecutionContext): Promise<void> => {
@@ -56,6 +63,8 @@ export const handleScheduled = async (event: ScheduledEvent, env: CronEnv, ctx: 
   )
 
   ctx.waitUntil(runV3LiquidityIndexer(env).catch((err) => console.error("Cron v3 indexer error:", err)))
+
+  ctx.waitUntil(runPhase3Indexer(env).catch((err) => console.error("Cron Phase 3 indexer error:", err)))
 
   ctx.waitUntil(
     Effect.runPromise(
@@ -91,6 +100,39 @@ async function runV3LiquidityIndexer(env: CronEnv): Promise<void> {
       yield* indexer.indexRange(range.fromBlock, range.toBlock)
       yield* setIndexerCursor(chainId, V3_INDEXER_NAME, range.toBlock + 1n)
     }).pipe(Effect.provide(indexerLayer), Effect.provide(makeDbLayer(env.DB))),
+  )
+}
+
+/**
+ * Phase 3 indexer tick: advances every configured source from its persisted
+ * cursor toward the chain head. No-ops unless INDEXER_ENABLED=true and the
+ * chain config (RPC + at least one contract address) is complete. `clientFactory`
+ * is a test seam; production omits it for the default viem HTTP client.
+ */
+export async function runPhase3Indexer(env: CronEnv, clientFactory?: (rpcUrl: string) => PublicClient): Promise<void> {
+  if (!isIndexerEnabled(env)) {
+    console.log("[Indexer] INDEXER_ENABLED != true — skipping Phase 3 indexer tick")
+    return
+  }
+  const chainConfig = buildIndexerChainConfig(env, clientFactory)
+  if (chainConfig === null) {
+    console.log("[Indexer] RPC/contract addresses not configured — skipping Phase 3 indexer tick")
+    return
+  }
+
+  await runEffect(
+    Effect.gen(function* () {
+      const indexer = yield* IndexerService
+      const results = yield* indexer.indexChain(chainConfig.chainId)
+      for (const result of results) {
+        console.log(
+          `[Indexer] ${result.source} ${result.fromBlock}..${result.toBlock} events=${result.eventsProcessed} cursorAdvanced=${result.cursorAdvanced}`,
+        )
+      }
+    }).pipe(
+      Effect.provide(IndexerServiceLive([chainConfig]).pipe(Layer.provide(makeDbLayer(env.DB)))),
+      Effect.catch((error) => Effect.sync(() => console.error(`[Indexer] tick failed: ${String(error)}`))),
+    ),
   )
 }
 

@@ -49,6 +49,13 @@ export interface IndexResult {
 export interface IndexerService {
   readonly indexBatch: (chainId: number, source: IndexerSource) => Effect.Effect<IndexResult, IndexerError>
   readonly indexChain: (chainId: number) => Effect.Effect<readonly IndexResult[], IndexerError>
+  /** Backfill a fixed [fromBlock, toBlock] range; never advances the global cursor. */
+  readonly indexRange: (
+    chainId: number,
+    source: IndexerSource,
+    fromBlock: bigint,
+    toBlock: bigint,
+  ) => Effect.Effect<IndexResult, IndexerError>
   readonly getCursor: (chainId: number, source: IndexerSource) => Effect.Effect<IndexerCursor | null, IndexerError>
 }
 
@@ -325,6 +332,34 @@ const makeIndexerService = (chains: readonly IndexerChainConfig[]) =>
         Effect.mapError((e) => new IndexerError({ reason: `Persist failed: ${String(e)}`, chainId })),
       )
 
+    /** Fetch + decode + idempotently persist one block range; no cursor writes. */
+    const indexWindow = (
+      chainId: number,
+      source: IndexerSource,
+      config: IndexerChainConfig,
+      fromBlock: bigint,
+      toBlock: bigint,
+    ) =>
+      Effect.gen(function* () {
+        const client = yield* getClient(chainId)
+        const addresses = sourceAddresses(config, source)
+        const fetched =
+          addresses.length > 0
+            ? yield* Effect.tryPromise({
+                try: () => client.getLogs({ address: addresses, fromBlock, toBlock }),
+                catch: (e) => new IndexerError({ reason: `RPC getLogs: ${String(e)}`, chainId }),
+              })
+            : []
+
+        const logs: RawLog[] = []
+        for (const log of fetched) {
+          const raw = toRawLog(log)
+          if (raw) logs.push(raw)
+        }
+
+        return yield* persistBatch(chainId, source, config, logs)
+      })
+
     const indexBatch = (chainId: number, source: IndexerSource): Effect.Effect<IndexResult, IndexerError> =>
       Effect.gen(function* () {
         const config = configByChain.get(chainId)
@@ -346,27 +381,35 @@ const makeIndexerService = (chains: readonly IndexerChainConfig[]) =>
           return { source, fromBlock, toBlock: head, eventsProcessed: 0, cursorAdvanced: false }
         }
 
-        const addresses = sourceAddresses(config, source)
-        const fetched =
-          addresses.length > 0
-            ? yield* Effect.tryPromise({
-                try: () => client.getLogs({ address: addresses, fromBlock, toBlock }),
-                catch: (e) => new IndexerError({ reason: `RPC getLogs: ${String(e)}`, chainId }),
-              })
-            : []
-
-        const logs: RawLog[] = []
-        for (const log of fetched) {
-          const raw = toRawLog(log)
-          if (raw) logs.push(raw)
-        }
-
         // Persist BEFORE advancing the cursor so a persist failure leaves the
         // range to be retried instead of silently skipped.
-        const eventsProcessed = yield* persistBatch(chainId, source, config, logs)
+        const eventsProcessed = yield* indexWindow(chainId, source, config, fromBlock, toBlock)
         yield* saveCursor(chainId, source, toBlock + 1n)
 
         return { source, fromBlock, toBlock, eventsProcessed, cursorAdvanced: true }
+      })
+
+    const indexRange = (
+      chainId: number,
+      source: IndexerSource,
+      fromBlock: bigint,
+      toBlock: bigint,
+    ): Effect.Effect<IndexResult, IndexerError> =>
+      Effect.gen(function* () {
+        if (toBlock < fromBlock) {
+          return yield* Effect.fail(
+            new IndexerError({ reason: `Invalid range ${fromBlock}..${toBlock} (toBlock < fromBlock)`, chainId }),
+          )
+        }
+        const config = configByChain.get(chainId)
+        if (!config) {
+          return yield* Effect.fail(new IndexerError({ reason: `No config for chain ${chainId}`, chainId }))
+        }
+
+        const eventsProcessed = yield* indexWindow(chainId, source, config, fromBlock, toBlock)
+        // Backfill deliberately leaves the global cursor untouched: the live
+        // tick (indexBatch) owns cursor advancement.
+        return { source, fromBlock, toBlock, eventsProcessed, cursorAdvanced: false }
       })
 
     const indexChain = (chainId: number) =>
@@ -379,7 +422,7 @@ const makeIndexerService = (chains: readonly IndexerChainConfig[]) =>
         return results as readonly IndexResult[]
       })
 
-    return { indexBatch, indexChain, getCursor }
+    return { indexBatch, indexChain, indexRange, getCursor }
   })
 
 export const IndexerServiceLive = (chains: readonly IndexerChainConfig[]) =>
