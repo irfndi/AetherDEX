@@ -6,6 +6,7 @@ import { parseChainId } from "../lib/chain-id"
 import { runEffect } from "../lib/effect-bridge"
 import { IndexerService, IndexerServiceLive } from "../services/indexer.service"
 import { V3LiquidityIndexer, V3LiquidityIndexerLive } from "../services/v3-liquidity-indexer.service"
+import { readVolumeAlertConfig, runVolumeAlertsTick, type VolumeAlertSink } from "../services/volume-alerts.service"
 import { buildIndexerChainConfig, isIndexerEnabled } from "./indexer-config"
 import { finalizedV3Head, nextV3IndexerRange, V3_INDEXER_NAME } from "./v3-indexer-cursor"
 
@@ -34,6 +35,14 @@ export interface CronEnv {
   INDEXER_BATCH_SIZE?: string
   V3_INDEXED_POOL_ADDRESSES?: string
   V4_POOL_MANAGER_ADDRESS?: string
+  // Phase 3 volume-spike alerts — optional; absent hub keeps detection-only,
+  // absent Telegram credentials keep notifications off (safe defaults).
+  VOLUME_ALERT_HUB?: DurableObjectNamespace
+  VOLUME_ALERT_WINDOW_SECONDS?: string
+  VOLUME_ALERT_THRESHOLD_USD?: string
+  VOLUME_ALERT_COOLDOWN_SECONDS?: string
+  TELEGRAM_BOT_TOKEN?: string
+  TELEGRAM_CHAT_ID?: string
 }
 
 export const handleScheduled = async (event: ScheduledEvent, env: CronEnv, ctx: ExecutionContext): Promise<void> => {
@@ -76,6 +85,34 @@ export const handleScheduled = async (event: ScheduledEvent, env: CronEnv, ctx: 
       }),
     ).catch((err) => console.error("Cron keeper tick error:", err)),
   )
+
+  ctx.waitUntil(runVolumeAlerts(env).catch((err) => console.error("Cron volume alerts error:", err)))
+}
+
+/**
+ * Phase 3 volume-spike alert tick. No-ops (never throws) unless the chain id is
+ * valid; broadcasts only when the VOLUME_ALERT_HUB binding is present and only
+ * notifies Telegram when its credentials are configured.
+ */
+export async function runVolumeAlerts(env: CronEnv): Promise<void> {
+  const config = readVolumeAlertConfig(env)
+  if (config === null) {
+    console.log("[VolumeAlerts] invalid CHAIN_ID — skipping volume alert tick")
+    return
+  }
+
+  const sink: VolumeAlertSink = {
+    ...(env.VOLUME_ALERT_HUB !== undefined ? { hub: env.VOLUME_ALERT_HUB } : {}),
+    telegram: { TELEGRAM_BOT_TOKEN: env.TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID: env.TELEGRAM_CHAT_ID },
+  }
+  if (env.VOLUME_ALERT_HUB === undefined) {
+    console.log("[VolumeAlerts] VOLUME_ALERT_HUB binding missing — detection only, no broadcast")
+  }
+
+  const emitted = await runVolumeAlertsTick(env.DB, env.CACHE, config, sink)
+  if (emitted.length > 0) {
+    console.log(`[VolumeAlerts] emitted ${emitted.length} volume alert(s) on chain ${config.chainId}`)
+  }
 }
 
 async function runV3LiquidityIndexer(env: CronEnv): Promise<void> {

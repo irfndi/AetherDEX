@@ -10,7 +10,7 @@ import { cors } from "hono/cors"
 import { logger } from "hono/logger"
 import { type AuthVariables, authMiddleware } from "./auth/middleware"
 import { auth } from "./auth/routes"
-import { OrderBookDO, SiweNonceDO, WebSocketHubDO } from "./durable-objects"
+import { OrderBookDO, SiweNonceDO, VolumeAlertHubDO, WebSocketHubDO } from "./durable-objects"
 import { pools } from "./routes/pools"
 import { positions } from "./routes/positions"
 import { priceGuard } from "./routes/price-guard"
@@ -27,6 +27,7 @@ type Bindings = {
   ORDER_BOOK: DurableObjectNamespace
   WEBSOCKET_HUB: DurableObjectNamespace
   SIWE_NONCE: DurableObjectNamespace
+  VOLUME_ALERT_HUB: DurableObjectNamespace
   PRICE_QUEUE: Queue
   SETTLE_QUEUE: Queue
   KEEPER_QUEUE: Queue
@@ -49,6 +50,13 @@ type Bindings = {
   MEV_PROTECTION_MODE?: string
   MEV_MAX_SLIPPAGE_BPS?: string
   PRIVATE_TX_RELAY_URL?: string
+  // Phase-3 volume-spike alerts — optional; safe defaults live in src/services/volume-alerts.service.ts.
+  // Telegram stays off until TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID secrets are set.
+  VOLUME_ALERT_WINDOW_SECONDS?: string
+  VOLUME_ALERT_THRESHOLD_USD?: string
+  VOLUME_ALERT_COOLDOWN_SECONDS?: string
+  TELEGRAM_BOT_TOKEN?: string
+  TELEGRAM_CHAT_ID?: string
 }
 
 const app = new Hono<{ Bindings: Bindings; Variables: AuthVariables }>()
@@ -168,6 +176,30 @@ app.get("/ws/orderbook/:poolId", async (c) => {
   )
 })
 
+//   /ws/alerts               → VolumeAlertHubDO  (all volume-spike alerts)
+//   /ws/alerts/:poolId       → VolumeAlertHubDO  (one pool; filter carried as ?poolId=)
+// A single hub instance ("volume-alerts") fans cron-emitted alerts out to every
+// subscriber; the per-pool route forwards a canonical lower-cased pool filter.
+
+app.get("/ws/alerts", async (c) => {
+  const id = c.env.VOLUME_ALERT_HUB.idFromName("volume-alerts")
+  return c.env.VOLUME_ALERT_HUB.get(id).fetch(c.req.raw)
+})
+
+app.get("/ws/alerts/:poolId", async (c) => {
+  const poolId = c.req.param("poolId")
+  if (!/^0x[a-fA-F0-9]{64}$/.test(poolId)) {
+    return c.json({ error: "Invalid poolId (must be 0x + 64 hex chars)" }, 400)
+  }
+  const canonicalPoolId = poolId.toLowerCase()
+  const url = new URL(c.req.url)
+  url.searchParams.set("poolId", canonicalPoolId)
+  const id = c.env.VOLUME_ALERT_HUB.idFromName("volume-alerts")
+  return c.env.VOLUME_ALERT_HUB.get(id).fetch(
+    new Request(url.toString(), { method: c.req.method, headers: c.req.raw.headers }),
+  )
+})
+
 app.route("/api/v1/auth", auth)
 
 app.route("/api/v1", swap)
@@ -189,7 +221,7 @@ app.onError((err, c) => {
 
 // ─── Durable Object classes — imported from dedicated modules ─────────────────
 
-export { OrderBookDO, SiweNonceDO, WebSocketHubDO }
+export { OrderBookDO, SiweNonceDO, VolumeAlertHubDO, WebSocketHubDO }
 
 // ─── Worker entry — combined Hono + DOs + Queue + Cron ────────────────────────
 
