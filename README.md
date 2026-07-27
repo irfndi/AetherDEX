@@ -48,6 +48,11 @@ bun run test
 bun run test:coverage
 ```
 
+> **Deployment (Phase 4, #314):** contract deployment is env-driven (`Deploy.s.sol`:
+> `AETHERDEX_TREASURY` + target-network `POOL_MANAGER`, with optional existing-address overrides)
+> and its summary feeds the `apps/api` `wrangler.jsonc` contract bindings. `Verify.s.sol` gates
+> the immutable 0.1% fee + treasury shape. See `packages/contracts/README.md`.
+
 ## Dependency Automation (Renovate)
 
 Renovate (`.github/workflows/renovate.yml` + `renovate.json`) owns dependency updates for

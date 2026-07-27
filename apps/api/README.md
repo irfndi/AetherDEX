@@ -47,6 +47,18 @@ bun run deploy:staging
 bun run deploy:production
 ```
 
+## Contract bindings (Phase 4 — issue #314)
+
+The non-secret contract addresses in `wrangler.jsonc` `vars` are filled from the
+`packages/contracts` `Deploy.s.sol` deployment summary: `ROUTER_ADDRESS`, `FACTORY_ADDRESS`,
+`POSITION_MANAGER_ADDRESS`, `V3_POSITION_MANAGER_ADDRESS`, `V3_EXECUTOR_ADDRESS`,
+`POOL_MANAGER_ADDRESS`, `AETHER_HOOK_ADDRESS`, and the `TREASURY_ADDRESS` record. The treasury
+multisig is **config, not a secret** — the fee accrues on-chain and the Worker never spends from it.
+
+`AETHER_HOOK_ADDRESS` + `RPC_URL` are passed into the keeper queue env (`src/index.ts`); the
+TP/SL worker (`src/workers/queue-handler.ts`) reads the on-chain AetherHook TWAP for trigger
+gating and falls back to KV-cached prices when either is unset.
+
 ## Dependency notes (explicit exceptions)
 
 The repo policy is "latest, always"; these pins are deliberate exceptions:

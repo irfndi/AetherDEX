@@ -26,6 +26,42 @@ forge fmt            # Format
 forge script script/Deploy.s.sol --rpc-url sepolia --broadcast  # Deploy to Sepolia
 ```
 
+## Deployment (Phase 4 — issue #314)
+
+`script/Deploy.s.sol` is env-driven so the same script deploys to Sepolia (default) or
+Robinhood Chain (and any future Uniswap-v4 network). `script/Verify.s.sol` is a read-only
+post-deploy gate for the immutable Phase-4 shape.
+
+| Env var | Required | Notes |
+| --- | --- | --- |
+| `DEPLOYER_PRIVATE_KEY` | yes | broadcast EOA; also the CREATE2 hook deployer |
+| `AETHERDEX_TREASURY` | yes | fee treasury multisig — **config, not a secret** |
+| `POOL_MANAGER` | no | target network's V4 PoolManager (defaults to canonical Sepolia) |
+| `NETWORK_NAME` | no | label echoed in the summary (default `Sepolia`) |
+| `AETHERDEX_PROTOCOL_FEE_BPS` | no | entry fee in bps (default `10` = locked 0.1%) |
+| `AETHERDEX_HOOK` / `AETHERDEX_FACTORY` / `AETHERDEX_ROUTER` / `AETHERDEX_POSITION_MANAGER` | no | reuse an already-deployed contract instead of redeploying |
+
+```bash
+# Deploy (Sepolia)
+DEPLOYER_PRIVATE_KEY=0x.. AETHERDEX_TREASURY=0x.. \
+  forge script script/Deploy.s.sol --rpc-url sepolia --broadcast --verify
+
+# Deploy (Robinhood Chain) — TODO(#314): supply the network's POOL_MANAGER + RPC alias
+DEPLOYER_PRIVATE_KEY=0x.. AETHERDEX_TREASURY=0x.. POOL_MANAGER=0x.. NETWORK_NAME=RobinhoodChain \
+  forge script script/Deploy.s.sol --rpc-url <robinhood-rpc> --broadcast --verify
+
+# Verify the deployed immutable shape (read-only): asserts router PROTOCOL_FEE_BPS()==10,
+# router treasury()!=0, and that the hook bytecode exposes no setProtocolFee(uint24) selector.
+AETHERDEX_ROUTER=0x.. AETHERDEX_HOOK=0x.. \
+  forge script script/Verify.s.sol --rpc-url <target>
+```
+
+The Deployment Summary logged by `Deploy.s.sol` is the source for the `apps/api` contract
+bindings (`ROUTER_ADDRESS`, `FACTORY_ADDRESS`, `AETHER_HOOK_ADDRESS`, `POSITION_MANAGER_ADDRESS`,
+`POOL_MANAGER_ADDRESS`, `TREASURY_ADDRESS`). Post-#315 the protocol fee is an **immutable 0.1%
+router entry fee** (`AetherRouter.PROTOCOL_FEE_BPS == 10`, immutable treasury) and `AetherHook`
+is oracle-only — the exact shape `Deploy.s.sol` constructs and `Verify.s.sol` gates.
+
 ## Layout
 
 ```
