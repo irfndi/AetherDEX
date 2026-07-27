@@ -3,6 +3,7 @@ import { useState } from "react"
 import { getAddress, isAddress } from "viem"
 import { useAccount } from "wagmi"
 import { Button, Card, CardBody, CardTitle, Input } from "../components/ui"
+import { PROTOCOL_FEE_PERCENT_LABEL } from "../lib/protocol-fee"
 
 const Q96 = 2n ** 96n
 const MAX_UINT160 = 2n ** 160n - 1n
@@ -285,6 +286,18 @@ function NewPoolPage() {
                 setValues((current) => ({ ...current, priceInput: { ...current.priceInput, value: e.target.value } }))
               }
             />
+          </section>
+
+          <section className="rounded-box border border-base-300 bg-base-100 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm font-medium">Protocol fee on this transaction</span>
+              <span className="badge badge-success badge-outline badge-sm">Free</span>
+            </div>
+            <p className="mt-2 text-xs text-base-content/60">
+              Pool creation pulls no tokens, so the immutable {PROTOCOL_FEE_PERCENT_LABEL} entry fee does not apply
+              here. That fee is charged on the opening liquidity deposit when it is routed through the AetherDEX router.
+              Swaps, rebalance, and TP/SL execution remain protocol-fee-free.
+            </p>
           </section>
 
           <Input

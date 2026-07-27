@@ -17,6 +17,12 @@ import {
   type LiquidityTransactionRequest,
   validateLiquidityForm,
 } from "../lib/liquidity"
+import {
+  computeProtocolFee,
+  computeProtocolFeeDisplay,
+  formatProtocolFeeAmount,
+  PROTOCOL_FEE_PERCENT_LABEL,
+} from "../lib/protocol-fee"
 import { buildV4SingleSidedCall, findV4SwapAmount } from "../lib/v4-liquidity"
 
 interface Pool {
@@ -213,6 +219,8 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
   const selectedToken = values.tokenSide === "token0" ? token0 : token1
   const otherToken = values.tokenSide === "token0" ? token1 : token0
   const walletName = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "Wallet not connected"
+  const depositFee = deriveDepositFeeEstimate(values.amount, selectedToken?.decimals ?? null)
+  const feeSymbolSuffix = selectedToken ? ` ${selectedToken.symbol}` : ""
 
   const updateValue = (field: keyof LiquidityFormValues, value: string) => {
     setValues((current) => ({ ...current, [field]: value }))
@@ -477,6 +485,24 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
               <span>Other side</span>
               <span>{otherToken?.symbol ?? "Token unavailable"} calculated at execution</span>
             </div>
+            <div className="my-3 border-t border-base-300" aria-hidden="true" />
+            <div className="flex justify-between gap-3">
+              <span>Protocol fee ({PROTOCOL_FEE_PERCENT_LABEL})</span>
+              <span className="font-mono text-base-content">
+                {depositFee ? `${depositFee.fee}${feeSymbolSuffix}` : `${PROTOCOL_FEE_PERCENT_LABEL} of deposit`}
+              </span>
+            </div>
+            <div className="mt-2 flex justify-between gap-3">
+              <span>Deposit after fee (estimated)</span>
+              <span className="font-mono text-base-content">
+                {depositFee ? `${depositFee.net}${feeSymbolSuffix}` : "Sized from your input"}
+              </span>
+            </div>
+            <p className="mt-3">
+              The immutable {PROTOCOL_FEE_PERCENT_LABEL} entry fee is taken from the deposit before the position is
+              minted and sent to the treasury. Pool LP swap fees still accrue to LPs; swaps, rebalance, and TP/SL are
+              protocol-fee-free.
+            </p>
           </div>
 
           {isWrongChain ? (
@@ -546,6 +572,35 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
 function parseTick(value: string, fallback: number): number {
   const parsed = Number(value)
   return Number.isSafeInteger(parsed) ? parsed : fallback
+}
+
+interface DepositFeeEstimate {
+  readonly fee: string
+  readonly net: string
+}
+
+/**
+ * Protocol entry fee estimate for the entered amount. Mirrors AetherRouter:
+ * the fee is split from the GROSS input (calldata keeps the gross amount);
+ * the NET remainder is what actually gets deposited. Bigint-exact when
+ * decimals are known, decimal display estimate otherwise (mid-keystroke).
+ */
+function deriveDepositFeeEstimate(amount: string, decimals: number | null): DepositFeeEstimate | null {
+  const numeric = Number(amount)
+  if (!Number.isFinite(numeric) || numeric <= 0) return null
+  if (decimals !== null) {
+    try {
+      const { fee, amountAfterFee } = computeProtocolFee(parseUnits(amount.trim(), decimals))
+      return {
+        fee: formatProtocolFeeAmount(fee, decimals),
+        net: formatProtocolFeeAmount(amountAfterFee, decimals),
+      }
+    } catch {
+      // Partial input like "12." fails base-unit parsing; fall through to display math.
+    }
+  }
+  const display = computeProtocolFeeDisplay(numeric)
+  return { fee: String(display.fee), net: String(display.amountAfterFee) }
 }
 
 function parseSwapQuote(value: unknown): { readonly amountOut: string; readonly minAmountOut: string } {

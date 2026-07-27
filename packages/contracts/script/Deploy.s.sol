@@ -21,13 +21,17 @@ import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 ///   DEPLOYER_PRIVATE_KEY        (required) broadcast EOA key — also the CREATE2 deployer
 ///   AETHERDEX_TREASURY          (required) fee treasury multisig. Phase 4 (#314): this is
 ///                                         config, NOT a secret — set it in the deploy env.
+///                                         Baked into AetherRouter as an IMMUTABLE recipient.
 ///   POOL_MANAGER                (optional) Uniswap V4 PoolManager for the target network.
 ///                                         Defaults to the canonical Sepolia PoolManager.
 ///                                         TODO(#314): for Robinhood Chain set this to the
 ///                                         Robinhood-Chain V4 PoolManager before broadcasting.
 ///   NETWORK_NAME                (optional) label echoed in the deployment summary (default "Sepolia").
-///   AETHERDEX_PROTOCOL_FEE_BPS  (optional) protocol entry fee in bps (default 10 = 0.1%,
-///                                         the locked Phase-4 rate; the hook caps at 1000).
+///   AETHERDEX_PROTOCOL_FEE_BPS  (optional) expected protocol entry fee in bps (default 10 = 0.1%).
+///                                         Since #315 the fee is an IMMUTABLE router constant
+///                                         (AetherRouter.PROTOCOL_FEE_BPS == 10); this var is NOT
+///                                         wired into any constructor — it is a consistency guard
+///                                         that asserts the deployed router matches the locked rate.
 ///
 ///   Optional existing-address overrides — when set, the contract is ATTACHED (not redeployed),
 ///   which lets a partial re-deploy reuse an already-deployed, address-locked hook/factory:
@@ -44,16 +48,16 @@ import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 ///   DEPLOYER_PRIVATE_KEY=0x.. AETHERDEX_TREASURY=0x.. POOL_MANAGER=0x.. NETWORK_NAME=RobinhoodChain \
 ///     forge script script/Deploy.s.sol --rpc-url <robinhood-rpc> --broadcast --verify
 ///
-/// @dev The treasury/fee are wired at construction time here. On the pre-#315 contract
-///      surface (this branch, cut from `origin/main`) the protocol fee lives in AetherHook
-///      and is owner-adjustable; PR #315 moves it to an IMMUTABLE 0.1% entry fee on
-///      AetherRouter and strips the hook's fee admin. This script targets the CURRENT
-///      constructor signatures — re-sync the constructor calls if/when #315 lands.
+/// @dev Phase 4 contract surface (post-#315, now on `origin/main`): the protocol fee is an
+///      IMMUTABLE 0.1% ENTRY fee on AetherRouter (PROTOCOL_FEE_BPS == 10, immutable treasury);
+///      AetherHook is oracle-only and carries NO fee/treasury args or admin. This script targets
+///      those constructor signatures directly. Verify.s.sol gates the immutable shape post-deploy.
 contract Deploy is Script {
     /// @notice Canonical Sepolia Uniswap V4 PoolManager — the Phase-0/Phase-4 default target.
     address constant DEFAULT_POOL_MANAGER = 0xE03A1074c86CFeDd5C142C4F04F1a1536e203543;
 
-    /// @notice Locked Phase-4 flat protocol entry fee (0.1% = 10 bps).
+    /// @notice Locked Phase-4 flat protocol entry fee (0.1% = 10 bps) — mirrors the immutable
+    ///         AetherRouter.PROTOCOL_FEE_BPS constant; used only as a deploy-time consistency guard.
     uint24 constant DEFAULT_PROTOCOL_FEE_BPS = 10;
 
     /// @dev Upper bound for the CREATE2 salt search. The hook needs a 2-bit address suffix
@@ -88,8 +92,9 @@ contract Deploy is Script {
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
 
-        // treasury multisig — config, not a secret (Phase 4 #314). On the current contract
-        // surface it is stored on AetherHook; #315 also bakes it into AetherRouter.
+        // treasury multisig — config, not a secret (Phase 4 #314). Post-#315 it is baked into
+        // AetherRouter as the IMMUTABLE recipient of the flat 0.1% entry fee; the oracle-only
+        // hook holds no funds.
         // TODO(#314): set AETHERDEX_TREASURY to the production multisig for the target network.
         address treasury = vm.envAddress("AETHERDEX_TREASURY");
         require(treasury != address(0), "Deploy: AETHERDEX_TREASURY must be a non-zero multisig");
@@ -110,15 +115,16 @@ contract Deploy is Script {
 
         // 1. AetherHook — deployed via CREATE2 with a mined salt (V4 reads hook permissions
         //    from the hook ADDRESS itself). Reused as-is when AETHERDEX_HOOK is provided.
+        //    Phase 4: the hook is oracle-only — constructor takes ONLY the PoolManager (no
+        //    treasury/fee args).
         address hookAddr = existingHook;
         if (hookAddr == address(0)) {
-            bytes memory hookCtorArgs = abi.encode(IPoolManager(poolManager), treasury, protocolFeeBps, deployer);
+            bytes memory hookCtorArgs = abi.encode(IPoolManager(poolManager));
             bytes32 hookInitCodeHash = keccak256(abi.encodePacked(type(AetherHook).creationCode, hookCtorArgs));
             (bool saltFound, bytes32 hookSalt,) =
                 AetherHookAddressMiner.findSalt(deployer, hookInitCodeHash, HOOK_SALT_MAX_ITERATIONS);
             require(saltFound, "Deploy: no CREATE2 salt satisfies BEFORE_SWAP|AFTER_SWAP flags");
-            hookAddr =
-                address(new AetherHook{salt: hookSalt}(IPoolManager(poolManager), treasury, protocolFeeBps, deployer));
+            hookAddr = address(new AetherHook{salt: hookSalt}(IPoolManager(poolManager)));
             // Fail loudly if the deployed address does not encode exactly the implemented permissions.
             Hooks.validateHookPermissions(IHooks(hookAddr), _hookPermissions());
         }
@@ -133,13 +139,15 @@ contract Deploy is Script {
         AetherFactory factory = AetherFactory(factoryAddr);
         console.log("AetherFactory deployed at:", factoryAddr);
 
-        // 3. AetherRouter (reused when AETHERDEX_ROUTER is set)
-        // Router has a payable fallback (it forwards ETH for zaps), so it is tracked as a
-        // plain address here; the deploy summary logs the address directly.
+        // 3. AetherRouter (reused when AETHERDEX_ROUTER is set). Phase 4: the router takes the
+        //    IMMUTABLE treasury for the flat 0.1% entry fee — `new AetherRouter(pm, factory,
+        //    treasury, deployer)`. It has a payable fallback (forwards ETH for zaps), so the
+        //    reused-address variant casts through `payable`.
         address routerAddr = existingRouter;
         if (routerAddr == address(0)) {
-            routerAddr = address(new AetherRouter(IPoolManager(poolManager), factory, deployer));
+            routerAddr = address(new AetherRouter(IPoolManager(poolManager), factory, treasury, deployer));
         }
+        AetherRouter router = AetherRouter(payable(routerAddr));
         console.log("AetherRouter deployed at:", routerAddr);
 
         // 4. AetherPositionManager — canonical transferable receipt-position manager
@@ -154,11 +162,17 @@ contract Deploy is Script {
         vm.stopBroadcast();
 
         // 5. Deploy-time invariant checks (read-only; safe after stopBroadcast).
-        //    TODO(#314): immutability of the fee/treasury is enforced on-chain ONLY by PR #315
-        //    (router entry fee + removal of the hook's setProtocolFee). Until then we assert the
-        //    values are WIRED correctly; Verify.s.sol gates the final immutable shape post-#315.
-        require(hook.treasury() == treasury, "Deploy: hook treasury mismatch");
-        require(hook.protocolFeeBps() == protocolFeeBps, "Deploy: hook protocol fee mismatch");
+        //    Phase 4 (post-#315): the fee + treasury are IMMUTABLE on the router, so we assert
+        //    the deployed router exposes the locked shape via its typed getters. Verify.s.sol
+        //    re-checks these (plus the hook's fee-admin absence) against a live deployment.
+        //    TODO(#314): the treasury is baked in at construction; a reused router (AETHERDEX_ROUTER)
+        //    must already carry the same treasury for these assertions to hold.
+        require(router.treasury() == treasury, "Deploy: router treasury mismatch");
+        require(router.PROTOCOL_FEE_BPS() == 10, "Deploy: router PROTOCOL_FEE_BPS must be the immutable 10 (0.1%)");
+        require(
+            router.PROTOCOL_FEE_BPS() == protocolFeeBps,
+            "Deploy: AETHERDEX_PROTOCOL_FEE_BPS must match the immutable router fee (10)"
+        );
 
         // 6. Deployment summary — these addresses feed apps/api wrangler.jsonc vars (Phase 4 #314):
         //    ROUTER_ADDRESS, FACTORY_ADDRESS, AETHER_HOOK_ADDRESS, POSITION_MANAGER_ADDRESS,
@@ -171,7 +185,7 @@ contract Deploy is Script {
         console.log("AetherRouter: ", routerAddr);
         console.log("PositionManager:", positionManagerAddr);
         console.log("Treasury:     ", treasury);
-        console.log("Protocol Fee: ", uint256(protocolFeeBps), "bps");
+        console.log("Protocol Entry Fee:", uint256(router.PROTOCOL_FEE_BPS()), "bps (immutable)");
         console.log("=====================================\n");
     }
 }

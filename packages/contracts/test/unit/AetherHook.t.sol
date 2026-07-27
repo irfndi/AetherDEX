@@ -17,19 +17,19 @@ import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {MockPoolManager} from "../shared/MockPoolManager.sol";
 
 /// @title AetherHook Unit Tests
-/// @notice Tests for AetherHook — protocol fee capture, v3-style TWAP oracle, access control
-/// @dev Hook address must have bits 6 and 7 set (BEFORE_SWAP_FLAG | AFTER_SWAP_FLAG).
-///      We deploy via `deployCodeTo` to a controlled address, then cast. The hook's oracle
-///      read (slot0) is served by a MockPoolManager implementing `extsload`.
+/// @notice Tests for AetherHook — oracle-only v3-style TWAP oracle, access control
+/// @dev Phase 4: protocol fee accrual + admin were REMOVED from the hook (monetization moved
+///      to the AetherRouter's immutable entry fee — see AetherRouter.t.sol). Hook address must
+///      have bits 6 and 7 set (BEFORE_SWAP_FLAG | AFTER_SWAP_FLAG). We deploy via
+///      `deployCodeTo` to a controlled address, then cast. The hook's oracle read (slot0) is
+///      served by a MockPoolManager implementing `extsload`.
 contract AetherHookTest is Test {
     AetherHook hook;
     MockPoolManager mockPoolManager;
 
     // Target address with bits 6 (0x40) and 7 (0x80) set → lowest byte must be 0xC0+
     address constant HOOK_ADDR = address(uint160(0x80C0));
-    address constant TREASURY = address(0xCAFE);
     address constant NOT_OWNER = address(0xBAD);
-    uint24 constant PROTOCOL_FEE_BPS = 30; // 0.30%
 
     // Tokens for PoolKey construction
     address constant TOKEN0 = address(0xA000);
@@ -48,12 +48,9 @@ contract AetherHookTest is Test {
         mockPoolManager = new MockPoolManager();
 
         // Deploy AetherHook at an address with correct hook permission bits
-        // deployCodeTo returns void; the contract lives at HOOK_ADDR after the call
-        deployCodeTo(
-            "AetherHook.sol:AetherHook",
-            abi.encode(IPoolManager(address(mockPoolManager)), TREASURY, PROTOCOL_FEE_BPS, address(this)),
-            HOOK_ADDR
-        );
+        // deployCodeTo returns void; the contract lives at HOOK_ADDR after the call.
+        // Phase 4: oracle-only constructor — poolManager only, no treasury/fee/owner args.
+        deployCodeTo("AetherHook.sol:AetherHook", abi.encode(IPoolManager(address(mockPoolManager))), HOOK_ADDR);
         hook = AetherHook(HOOK_ADDR);
         assertEq(address(hook), HOOK_ADDR, "Hook must be deployed at controlled address");
 
@@ -71,155 +68,46 @@ contract AetherHookTest is Test {
 
     function test_constructor_setsCorrectValues() public view {
         assertEq(address(hook.poolManager()), address(mockPoolManager));
-        assertEq(hook.treasury(), TREASURY);
-        assertEq(hook.protocolFeeBps(), PROTOCOL_FEE_BPS);
-        assertEq(hook.owner(), address(this));
     }
 
-    function test_constructor_revertsZeroTreasury() public {
+    function test_constructor_revertsZeroPoolManager() public {
         vm.expectRevert(Errors.ZeroAddress.selector);
-        deployCodeTo(
-            "AetherHook.sol:AetherHook",
-            abi.encode(IPoolManager(address(mockPoolManager)), address(0), PROTOCOL_FEE_BPS, address(this)),
-            address(uint160(0x80C1))
+        deployCodeTo("AetherHook.sol:AetherHook", abi.encode(IPoolManager(address(0))), address(uint160(0x80C1)));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  PHASE 4 — ORACLE-ONLY (NO FEE ADMIN SURFACE)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// @notice The hook exposes no fee admin selectors anymore (Phase 4): setProtocolFee /
+    ///         setTreasury / withdrawFees must not exist on the deployed bytecode.
+    function test_noFeeAdminSelectorsExist() public view {
+        assertFalse(
+            _hasSelector(abi.encodeWithSignature("setProtocolFee(uint24)", uint24(0))),
+            "setProtocolFee must be removed (oracle-only hook)"
+        );
+        assertFalse(
+            _hasSelector(abi.encodeWithSignature("setTreasury(address)", address(0))),
+            "setTreasury must be removed (oracle-only hook)"
+        );
+        assertFalse(
+            _hasSelector(abi.encodeWithSignature("withdrawFees(bytes32)", bytes32(0))),
+            "withdrawFees must be removed (oracle-only hook)"
+        );
+        // Sanity: a selector that DOES exist is detected by the same probe.
+        assertTrue(
+            _hasSelector(abi.encodeWithSignature("observationIndex(bytes32)", bytes32(0))),
+            "probe must detect real selectors"
         );
     }
 
-    function test_constructor_revertsFeeTooHigh() public {
-        vm.expectRevert(AetherHook.FeeTooHigh.selector);
-        deployCodeTo(
-            "AetherHook.sol:AetherHook",
-            abi.encode(IPoolManager(address(mockPoolManager)), TREASURY, 1001, address(this)),
-            address(uint160(0x80C2))
-        );
-    }
-
-    function test_constructor_acceptsMaxFee() public {
-        // Deploy at address with valid hook bits (lower 14 bits = 0xC0)
-        deployCodeTo(
-            "AetherHook.sol:AetherHook",
-            abi.encode(IPoolManager(address(mockPoolManager)), TREASURY, 1000, address(this)),
-            address(uint160(0x200C0))
-        );
-        assertTrue(true);
-    }
-
-    function test_constructor_acceptsZeroFee() public {
-        deployCodeTo(
-            "AetherHook.sol:AetherHook",
-            abi.encode(IPoolManager(address(mockPoolManager)), TREASURY, 0, address(this)),
-            address(uint160(0x300C0))
-        );
-        assertTrue(true);
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    //  SET PROTOCOL FEE
-    // ═══════════════════════════════════════════════════════════════════════════
-
-    function test_setProtocolFee_onlyOwner() public {
-        vm.prank(NOT_OWNER);
-        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", NOT_OWNER));
-        hook.setProtocolFee(50);
-    }
-
-    function test_setProtocolFee_revertsTooHigh() public {
-        vm.expectRevert(AetherHook.FeeTooHigh.selector);
-        hook.setProtocolFee(1001);
-    }
-
-    function test_setProtocolFee_emitsEvent() public {
-        vm.expectEmit(true, true, true, true);
-        emit AetherHook.ProtocolFeeUpdated(PROTOCOL_FEE_BPS, 50);
-        hook.setProtocolFee(50);
-    }
-
-    function test_setProtocolFee_updatesState() public {
-        hook.setProtocolFee(50);
-        assertEq(hook.protocolFeeBps(), 50);
-    }
-
-    function test_setProtocolFee_toZero() public {
-        hook.setProtocolFee(0);
-        assertEq(hook.protocolFeeBps(), 0);
-    }
-
-    function test_setProtocolFee_toMax() public {
-        hook.setProtocolFee(1000);
-        assertEq(hook.protocolFeeBps(), 1000);
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    //  SET TREASURY
-    // ═══════════════════════════════════════════════════════════════════════════
-
-    function test_setTreasury_onlyOwner() public {
-        vm.prank(NOT_OWNER);
-        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", NOT_OWNER));
-        hook.setTreasury(address(0xBEEF));
-    }
-
-    function test_setTreasury_revertsZero() public {
-        vm.expectRevert(Errors.ZeroAddress.selector);
-        hook.setTreasury(address(0));
-    }
-
-    function test_setTreasury_updates() public {
-        address newTreasury = address(0xBEEF);
-        hook.setTreasury(newTreasury);
-        assertEq(hook.treasury(), newTreasury);
-    }
-
-    function test_setTreasury_emitsEvent() public {
-        address newTreasury = address(0xBEEF);
-        vm.expectEmit(true, true, true, true);
-        emit AetherHook.TreasuryUpdated(TREASURY, newTreasury);
-        hook.setTreasury(newTreasury);
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    //  WITHDRAW FEES
-    // ═══════════════════════════════════════════════════════════════════════════
-
-    function test_withdrawFees_onlyOwner() public {
-        vm.prank(NOT_OWNER);
-        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", NOT_OWNER));
-        hook.withdrawFees(poolId);
-    }
-
-    function test_withdrawFees_zeroAmountReverts() public {
-        vm.expectRevert(Errors.ZeroAmount.selector);
-        hook.withdrawFees(poolId);
-    }
-
-    function test_withdrawFees_success() public {
-        // Accrue some fees first
-        _doSwap(true, 1000, 500); // zeroForOne, amountIn=1000, amountOut=500
-
-        uint256 feeBefore = hook.accruedFees0(poolId);
-        assertGt(feeBefore, 0, "Should have accrued fees");
-
-        vm.expectEmit(true, true, true, true);
-        emit AetherHook.FeesWithdrawn(poolId, TREASURY, feeBefore, 0);
-        hook.withdrawFees(poolId);
-
-        assertEq(hook.accruedFees0(poolId), 0, "Fees should be zero after withdrawal");
-        assertEq(hook.accruedFees1(poolId), 0, "Fees1 should remain zero");
-    }
-
-    function test_withdrawFees_bothTokens() public {
-        _doSwap(true, 1000, 500); // fee in token0
-        _doSwap(false, 1000, 500); // fee in token1
-
-        uint256 fee0 = hook.accruedFees0(poolId);
-        uint256 fee1 = hook.accruedFees1(poolId);
-        assertGt(fee0, 0, "Should have accrued fees0");
-        assertGt(fee1, 0, "Should have accrued fees1");
-
-        hook.withdrawFees(poolId);
-
-        assertEq(hook.accruedFees0(poolId), 0);
-        assertEq(hook.accruedFees1(poolId), 0);
+    /// @dev Probe the deployed bytecode for a selector via a low-level staticcall: an existing
+    ///      function returns success or a custom-error revert (non-empty returndata), while a
+    ///      nonexistent selector hits no fallback — AetherHook has none — so the call reverts
+    ///      with empty returndata.
+    function _hasSelector(bytes memory callData) internal view returns (bool exists) {
+        (bool ok, bytes memory ret) = address(hook).staticcall(callData);
+        exists = ok || ret.length > 0;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -306,48 +194,6 @@ contract AetherHookTest is Test {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    //  AFTER SWAP — FEE ACCRUAL
-    // ═══════════════════════════════════════════════════════════════════════════
-
-    function test_afterSwap_zeroForOne_accruesFeeToken0() public {
-        _doSwap(true, 1000, 500);
-        // Fee = 1000 * 30 / 10000 = 3
-        assertEq(hook.accruedFees0(poolId), 3, "Fee in token0 should be 3");
-        assertEq(hook.accruedFees1(poolId), 0, "Fee in token1 should be 0");
-    }
-
-    function test_afterSwap_oneForZero_accruesFeeToken1() public {
-        _doSwap(false, 1000, 500);
-        assertEq(hook.accruedFees0(poolId), 0, "Fee in token0 should be 0");
-        assertEq(hook.accruedFees1(poolId), 3, "Fee in token1 should be 3");
-    }
-
-    function test_afterSwap_zeroFee_noAccrual() public {
-        hook.setProtocolFee(0);
-        _doSwap(true, 1000, 500);
-        assertEq(hook.accruedFees0(poolId), 0, "No fees should accrue with zero fee");
-    }
-
-    function test_afterSwap_feesAccumulateOverMultipleSwaps() public {
-        _doSwap(true, 1000, 500); // fee = 3
-        _doSwap(true, 2000, 1000); // fee = 6
-        _doSwap(true, 1000, 500); // fee = 3
-        assertEq(hook.accruedFees0(poolId), 12, "Fees should accumulate: 3 + 6 + 3 = 12");
-    }
-
-    function test_afterSwap_returnsCorrectSelector() public {
-        PoolKey memory key = _testPoolKey();
-        SwapParams memory params = _swapParams(true, 1000);
-        BalanceDelta delta = toBalanceDelta(1000, -500);
-
-        vm.prank(address(mockPoolManager));
-        (bytes4 selector, int128 deltaAmt) = hook.afterSwap(address(0xDAD), key, params, delta, "");
-
-        assertEq(selector, hook.afterSwap.selector);
-        assertEq(deltaAmt, 0, "afterSwap should return zero delta");
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════
     //  AFTER SWAP — ORACLE OBSERVATIONS (pool-state tick sampling)
     // ═══════════════════════════════════════════════════════════════════════════
 
@@ -399,7 +245,6 @@ contract AetherHookTest is Test {
         hook.afterSwap(address(0xDAD), key, params, toBalanceDelta(0, 0), "");
 
         assertEq(hook.observationCount(poolId), 0, "No observation for zero swap");
-        assertEq(hook.accruedFees0(poolId), 0, "No fees for zero swap");
     }
 
     function test_afterSwap_noObservationWhenZeroAmountOut() public {
@@ -410,7 +255,18 @@ contract AetherHookTest is Test {
         hook.afterSwap(address(0xDAD), key, params, toBalanceDelta(1000, 0), "");
 
         assertEq(hook.observationCount(poolId), 0, "No observation when amountOut is zero");
-        assertEq(hook.accruedFees0(poolId), 3, "Fee should still accrue");
+    }
+
+    function test_afterSwap_returnsCorrectSelector() public {
+        PoolKey memory key = _testPoolKey();
+        SwapParams memory params = _swapParams(true, 1000);
+        BalanceDelta delta = toBalanceDelta(1000, -500);
+
+        vm.prank(address(mockPoolManager));
+        (bytes4 selector, int128 deltaAmt) = hook.afterSwap(address(0xDAD), key, params, delta, "");
+
+        assertEq(selector, hook.afterSwap.selector);
+        assertEq(deltaAmt, 0, "afterSwap should return zero delta, the hook never alters swap output");
     }
 
     function test_afterSwap_identicalTimestamp_foldsInPlace() public {
@@ -608,28 +464,6 @@ contract AetherHookTest is Test {
     //  FUZZ TESTS
     // ═══════════════════════════════════════════════════════════════════════════
 
-    function testFuzz_setProtocolFee_withinBounds(uint24 fee) public {
-        fee = uint24(bound(fee, 0, 1000));
-        hook.setProtocolFee(fee);
-        assertEq(hook.protocolFeeBps(), fee);
-    }
-
-    function testFuzz_setProtocolFee_outOfBoundsReverts(uint24 fee) public {
-        fee = uint24(bound(fee, 1001, type(uint24).max));
-        vm.expectRevert(AetherHook.FeeTooHigh.selector);
-        hook.setProtocolFee(fee);
-    }
-
-    function testFuzz_afterSwap_feeAccrual(uint128 amountIn, uint128 amountOut) public {
-        amountIn = uint128(bound(amountIn, 1, 1e18));
-        amountOut = uint128(bound(amountOut, 1, 1e18));
-
-        _doSwap(true, amountIn, amountOut);
-
-        uint256 expectedFee = (uint256(amountIn) * PROTOCOL_FEE_BPS) / 10_000;
-        assertEq(hook.accruedFees0(poolId), expectedFee, "Fee calculation should be exact");
-    }
-
     /// @notice Two-tick time-weighting: the average tick over [t0, t1] must weight each
     ///         terminal tick by its elapsed holding time, independent of trade size.
     function testFuzz_twoTickTimeWeighting(int24 tick0, int24 tick1, uint32 hold0, uint32 hold1) public {
@@ -676,14 +510,6 @@ contract AetherHookTest is Test {
 
         vm.prank(address(mockPoolManager));
         hook.afterSwap(address(0xDAD), key, params, delta, "");
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    //  MAX_PROTOCOL_FEE_BPS constant
-    // ═══════════════════════════════════════════════════════════════════════════
-
-    function test_maxProtocolFeeBps() public view {
-        assertEq(hook.MAX_PROTOCOL_FEE_BPS(), 1000, "Max fee should be 1000 bps");
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

@@ -4,8 +4,8 @@ A lean spot DEX built on Uniswap V4.
 
 ## Architecture
 
-- **AetherHook**: Custom V4 hook for fee override and TWAP
-- **AetherRouter**: User-facing router (swap, zap, and compatibility add/remove liquidity)
+- **AetherHook**: Oracle-only V4 hook recording a v3-style TWAP (pool-state tick) observation buffer for keeper-safe TP/SL. Phase 4: protocol fee admin/accrual removed — the hook holds no funds and has no owner
+- **AetherRouter**: User-facing router (swap, zap, and compatibility add/remove liquidity). Charges a flat, immutable 0.1% protocol ENTRY fee on liquidity deposits (addLiquidity / addLiquiditySingleSided), transferred directly to the immutable treasury; swaps, removals, rebalance, and TP/SL stay fee-free
 - **AetherPositionManager**: ERC721 receipt manager for transferable, owner-authorized V4 positions
 - **AetherFactory**: Deterministic pool deploys via CREATE2
 
@@ -58,9 +58,9 @@ AETHERDEX_ROUTER=0x.. AETHERDEX_HOOK=0x.. \
 
 The Deployment Summary logged by `Deploy.s.sol` is the source for the `apps/api` contract
 bindings (`ROUTER_ADDRESS`, `FACTORY_ADDRESS`, `AETHER_HOOK_ADDRESS`, `POSITION_MANAGER_ADDRESS`,
-`POOL_MANAGER_ADDRESS`, `TREASURY_ADDRESS`). On this branch (cut from `origin/main`, pre-#315)
-the protocol fee lives on `AetherHook`; PR #315 moves it to an immutable router entry fee, which
-is the exact shape `Verify.s.sol` gates.
+`POOL_MANAGER_ADDRESS`, `TREASURY_ADDRESS`). Post-#315 the protocol fee is an **immutable 0.1%
+router entry fee** (`AetherRouter.PROTOCOL_FEE_BPS == 10`, immutable treasury) and `AetherHook`
+is oracle-only — the exact shape `Deploy.s.sol` constructs and `Verify.s.sol` gates.
 
 ## Layout
 

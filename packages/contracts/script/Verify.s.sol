@@ -33,11 +33,12 @@ import "forge-std/Script.sol";
 ///     AETHERDEX_ROUTER=0x.. AETHERDEX_HOOK=0x.. \
 ///       forge script script/Verify.s.sol --rpc-url <target>
 ///
-///   TODO(#314): on the pre-#315 surface (this branch, cut from origin/main) the fee/treasury
-///   live on AetherHook and the router exposes neither PROTOCOL_FEE_BPS() nor treasury(); the
-///   router probes therefore revert ("deploy the Phase-4 router") and the hook scan reports the
-///   fee-admin setter as present until PR #315 lands. Re-run against the immutable contracts to
-///   get a green gate.
+///   Post-#315 (Phase 4 is now merged on origin/main) the deployed surface matches every check:
+///   the router exposes PROTOCOL_FEE_BPS()==10 + non-zero treasury(), and the oracle-only hook's
+///   bytecode carries no setProtocolFee(uint24) selector, so this gate PASSES against a Phase-4
+///   deployment. The loud reverts below only fire against a stale, pre-#315 deployment.
+///   TODO(#314): run this against the freshly deployed immutable contracts and wire the verified
+///   addresses into apps/api wrangler.jsonc before enabling keeper TP/SL reads.
 contract Verify is Script {
     // Function selectors probed via raw staticcall / bytecode scan (no typed-interface dependency).
     bytes4 constant SEL_PROTOCOL_FEE_BPS = bytes4(keccak256("PROTOCOL_FEE_BPS()"));

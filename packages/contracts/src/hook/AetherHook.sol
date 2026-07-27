@@ -13,14 +13,18 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Errors} from "../lib/Errors.sol";
 
 /// @title AetherHook
-/// @notice Custom Uniswap V4 hook for AetherDEX
-/// @dev Captures protocol fee on every swap + records a Uniswap-v3-style TWAP oracle.
-///      Hook permissions: BEFORE_SWAP_FLAG | AFTER_SWAP_FLAG
+/// @notice Oracle-only Uniswap V4 hook for AetherDEX
+/// @dev Records a Uniswap-v3-style TWAP oracle. Hook permissions: BEFORE_SWAP_FLAG | AFTER_SWAP_FLAG.
 ///      The hook address MUST have bits 6 and 7 set for these flags.
+///
+///      Phase 4 (monetization): protocol fee accrual + admin (setProtocolFee / setTreasury /
+///      withdrawFees) were REMOVED from this hook. Monetization is now a flat, immutable 0.1%
+///      ENTRY fee on liquidity deposits, charged directly by AetherRouter to the immutable
+///      treasury — the hook holds no fees and exposes no admin surface at all (oracle-only).
+///      Swaps remain fee-free at the protocol level.
 ///
 ///      TWAP design (Plan §9 G2.5): each observation stores the pool's terminal POOL
 ///      STATE (the current tick read from the PoolManager's slot0 after the swap), NOT
@@ -30,21 +34,12 @@ import {Errors} from "../lib/Errors.sol";
 ///      any window [t0, t1] is `(tickCumulative(t1) - tickCumulative(t0)) / (t1 - t0)`
 ///      and is correct regardless of trade size. This is the keeper-safe substrate the
 ///      V4-native TP/SL + auto-recenter (Phase 2) will verify triggers against.
-contract AetherHook is IHooks, Ownable {
+contract AetherHook is IHooks {
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
 
     /// @notice The Uniswap V4 PoolManager
     IPoolManager public immutable poolManager;
-
-    /// @notice The AetherDEX treasury (receives protocol fees)
-    address public treasury;
-
-    /// @notice Protocol fee in basis points (e.g. 10 = 0.10%)
-    uint24 public protocolFeeBps;
-
-    /// @notice Maximum protocol fee (1000 bps = 10%)
-    uint24 public constant MAX_PROTOCOL_FEE_BPS = 1000;
 
     /// @notice TWAP observation for a pool — the pool's terminal SPOT STATE at sample time
     /// @dev Packed into a single storage slot: 32 + 56 + 24 + 8 = 120 bits.
@@ -73,30 +68,12 @@ contract AetherHook is IHooks, Ownable {
     /// @dev internal poolId => number of initialized observations (capped at 1024)
     mapping(bytes32 => uint16) public observationCount;
 
-    // ---- Fee accrual storage ----
-    /// @dev poolId => accumulated protocol fees in token0
-    mapping(bytes32 => uint256) public accruedFees0;
-    /// @dev poolId => accumulated protocol fees in token1
-    mapping(bytes32 => uint256) public accruedFees1;
-
     // ---- Events ----
-    event ProtocolFeeUpdated(uint24 oldFee, uint24 newFee);
-    event TreasuryUpdated(address oldTreasury, address newTreasury);
-    event FeesWithdrawn(bytes32 indexed poolId, address indexed to, uint256 amount0, uint256 amount1);
     event ObservationRecorded(bytes32 indexed poolId, uint32 timestamp, int56 tickCumulative, int24 tick);
 
-    // ---- Errors ----
-    error FeeTooHigh();
-
     /// @param _poolManager The Uniswap V4 PoolManager
-    /// @param _treasury The address that receives protocol fees
-    /// @param _protocolFeeBps Initial protocol fee in basis points
-    /// @param _initialOwner The initial owner of the hook
-    constructor(IPoolManager _poolManager, address _treasury, uint24 _protocolFeeBps, address _initialOwner)
-        Ownable(_initialOwner)
-    {
-        if (_treasury == address(0)) revert Errors.ZeroAddress();
-        if (_protocolFeeBps > MAX_PROTOCOL_FEE_BPS) revert FeeTooHigh();
+    constructor(IPoolManager _poolManager) {
+        if (address(_poolManager) == address(0)) revert Errors.ZeroAddress();
         poolManager = _poolManager;
 
         // Validate hook address has correct permission flags
@@ -119,48 +96,6 @@ contract AetherHook is IHooks, Ownable {
                 afterRemoveLiquidityReturnDelta: false
             })
         );
-
-        treasury = _treasury;
-        protocolFeeBps = _protocolFeeBps;
-    }
-
-    // ---- Owner-only admin functions ----
-
-    /// @notice Set the protocol fee (only owner)
-    /// @param _newFeeBps New fee in basis points (max 1000 = 10%)
-    function setProtocolFee(uint24 _newFeeBps) external onlyOwner {
-        if (_newFeeBps > MAX_PROTOCOL_FEE_BPS) revert FeeTooHigh();
-        emit ProtocolFeeUpdated(protocolFeeBps, _newFeeBps);
-        protocolFeeBps = _newFeeBps;
-    }
-
-    /// @notice Set the treasury address (only owner)
-    /// @param _newTreasury New treasury address
-    function setTreasury(address _newTreasury) external onlyOwner {
-        if (_newTreasury == address(0)) revert Errors.ZeroAddress();
-        emit TreasuryUpdated(treasury, _newTreasury);
-        treasury = _newTreasury;
-    }
-
-    /// @notice Withdraw accrued protocol fees for a pool (only owner)
-    /// @param poolId The pool to withdraw fees from
-    /// @dev In production, this transfers tokens via poolManager.take().
-    ///      Currently emits event only — actual transfer requires unlock context.
-    function withdrawFees(bytes32 poolId) external onlyOwner {
-        uint256 amount0 = accruedFees0[poolId];
-        uint256 amount1 = accruedFees1[poolId];
-        if (amount0 == 0 && amount1 == 0) revert Errors.ZeroAmount();
-
-        // CEI: zero accounting first.
-        accruedFees0[poolId] = 0;
-        accruedFees1[poolId] = 0;
-
-        // NOTE: Actual token transfer must happen inside the poolManager.unlock() callback
-        // so the hook can call poolManager.take() to pull tokens from the pool manager's
-        // transient balance. This function only resets the accounting — the owner must
-        // call withdrawFees in a callback that transfers the actual tokens. Emit the
-        // event for off-chain indexers; the actual token movement happens in the callback.
-        emit FeesWithdrawn(poolId, treasury, amount0, amount1);
     }
 
     // ---- IHooks implementation ----
@@ -236,7 +171,9 @@ contract AetherHook is IHooks, Ownable {
     {
         bytes32 poolId = _poolId(key);
 
-        // Determine swap direction from delta
+        // Determine swap direction from delta — used ONLY to gate oracle sampling on
+        // non-degenerate swaps. The hook is oracle-only (Phase 4): it accrues no fees
+        // and never alters the swap output.
         int128 amount0 = delta.amount0();
         int128 amount1 = delta.amount1();
         uint256 amountIn;
@@ -250,16 +187,6 @@ contract AetherHook is IHooks, Ownable {
             // Swapping token1 for token0: user pays token1 (positive delta1), receives token0 (negative delta0)
             amountIn = amount1 > 0 ? uint256(int256(amount1)) : 0;
             amountOut = amount0 < 0 ? uint256(int256(-amount0)) : 0;
-        }
-
-        // Capture protocol fee
-        if (protocolFeeBps > 0 && amountIn > 0) {
-            uint256 fee = (amountIn * uint256(protocolFeeBps)) / 10_000;
-            if (params.zeroForOne) {
-                accruedFees0[poolId] += fee;
-            } else {
-                accruedFees1[poolId] += fee;
-            }
         }
 
         // Record TWAP observation: sample the pool's TERMINAL SPOT TICK (slot0) after the

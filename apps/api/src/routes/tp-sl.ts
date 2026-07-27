@@ -14,6 +14,7 @@ import { Hono } from "hono"
 import { type AuthVariables, requireAuth } from "../auth/middleware"
 import { makeDbLayer } from "../db/client"
 import { runEffect } from "../lib/effect-bridge"
+import { ZERO_PROTOCOL_FEE_BREAKDOWN } from "../lib/protocol-fee"
 import { TpSlService, TpSlServiceLive } from "../services/tp-sl.service"
 
 type Bindings = {
@@ -121,7 +122,8 @@ tpSl.post("/orders", requireAuth, async (c) => {
       })
     })
     const orderId = await runEffect(program.pipe(Effect.provide(tpSlLayer(c.env.DB))))
-    return c.json({ ok: true, orderId }, 201)
+    // Phase 4 fee invariant: TP/SL is protocol-fee-free (only deposits pay); additive metadata only.
+    return c.json({ ok: true, orderId, protocolFee: ZERO_PROTOCOL_FEE_BREAKDOWN }, 201)
   } catch (err) {
     return c.json({ error: String(err) }, 500)
   }
