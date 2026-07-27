@@ -24,9 +24,6 @@ contract AetherHookHandler is Test {
     MockPoolManager public mockPoolManager;
 
     address constant HOOK_ADDR = address(uint160(0x80C0));
-    address constant TREASURY = address(0xCAFE);
-    address constant OWNER = address(0xBEEF);
-    uint24 constant INITIAL_FEE = 30;
 
     bytes32 public poolId;
 
@@ -51,11 +48,8 @@ contract AetherHookHandler is Test {
 
     constructor() {
         mockPoolManager = new MockPoolManager();
-        deployCodeTo(
-            "AetherHook.sol:AetherHook",
-            abi.encode(IPoolManager(address(mockPoolManager)), TREASURY, INITIAL_FEE, OWNER),
-            HOOK_ADDR
-        );
+        // Phase 4: oracle-only constructor — poolManager only (no treasury/fee/owner).
+        deployCodeTo("AetherHook.sol:AetherHook", abi.encode(IPoolManager(address(mockPoolManager))), HOOK_ADDR);
         hook = AetherHook(HOOK_ADDR);
 
         // Align the EVM clock with the handler-owned clock from the very first swap.
@@ -63,27 +57,6 @@ contract AetherHookHandler is Test {
 
         PoolKey memory key = _testPoolKey();
         poolId = keccak256(abi.encode(key));
-    }
-
-    /// @notice Set protocol fee (owner-only)
-    function setProtocolFee(uint24 fee) external {
-        fee = uint24(bound(fee, 0, 1000));
-        vm.prank(OWNER);
-        hook.setProtocolFee(fee);
-    }
-
-    /// @notice Set treasury address (owner-only, must be non-zero)
-    function setTreasury(address newTreasury) external {
-        vm.assume(newTreasury != address(0));
-        vm.prank(OWNER);
-        hook.setTreasury(newTreasury);
-    }
-
-    /// @notice Withdraw accrued fees for a pool
-    function withdrawFees(bytes32 _poolId) external {
-        if (hook.accruedFees0(_poolId) == 0 && hook.accruedFees1(_poolId) == 0) return;
-        vm.prank(OWNER);
-        hook.withdrawFees(_poolId);
     }
 
     /// @notice Simulate a swap with a fuzzed terminal tick, after advancing fuzzed time.
@@ -169,28 +142,6 @@ contract AetherHookInvariantTest is Test {
     // ═══════════════════════════════════════════════════════════════════════════
     //  STATEFUL INVARIANTS (checked after every call sequence)
     // ═══════════════════════════════════════════════════════════════════════════
-
-    /// @notice Protocol fee never exceeds MAX_PROTOCOL_FEE_BPS (1000 bps = 10%)
-    function invariant_protocolFee_bounded() public view {
-        assertLe(hook.protocolFeeBps(), hook.MAX_PROTOCOL_FEE_BPS(), "fee must be <= MAX_PROTOCOL_FEE_BPS");
-    }
-
-    /// @notice Treasury is never zero address
-    function invariant_treasury_nonzero() public view {
-        assertTrue(hook.treasury() != address(0), "treasury must never be zero address");
-    }
-
-    /// @notice Accrued fees0 are non-negative (uint256, always >= 0 by type)
-    function invariant_accruedFees0_nonnegative() public view {
-        uint256 f0 = hook.accruedFees0(handler.poolId());
-        assertGe(f0, 0, "accruedFees0 must be non-negative");
-    }
-
-    /// @notice Accrued fees1 are non-negative
-    function invariant_accruedFees1_nonnegative() public view {
-        uint256 f1 = hook.accruedFees1(handler.poolId());
-        assertGe(f1, 0, "accruedFees1 must be non-negative");
-    }
 
     /// @notice Observation count never exceeds 1024 (circular buffer size)
     function invariant_observationCount_bounded() public view {

@@ -29,6 +29,7 @@ contract AetherRouterTest is Test {
     MockERC20 token1;
 
     address user = address(0xDAD);
+    address constant TREASURY = address(0x7EA5);
     address constant HOOK = address(uint160(0x100C0)); // valid hook bits (lower 14 bits = 0xC0)
     uint160 constant INITIAL_SQRT_PRICE = 79228162514264337593543950336;
 
@@ -38,7 +39,8 @@ contract AetherRouterTest is Test {
         token1 = new MockERC20("Token1", "T1");
 
         factory = new AetherFactory(IPoolManager(address(mockPM)), IHooks(HOOK), address(this));
-        router = new AetherRouter(IPoolManager(address(mockPM)), IAetherFactory(address(factory)), address(this));
+        router =
+            new AetherRouter(IPoolManager(address(mockPM)), IAetherFactory(address(factory)), TREASURY, address(this));
 
         // Fund user and approve router
         token0.mint(user, 1_000_000 ether);
@@ -62,16 +64,23 @@ contract AetherRouterTest is Test {
         assertEq(address(router.poolManager()), address(mockPM));
         assertEq(address(router.factory()), address(factory));
         assertEq(router.owner(), address(this));
+        assertEq(router.treasury(), TREASURY, "treasury must be the constructor-provided address");
+        assertEq(router.PROTOCOL_FEE_BPS(), 10, "protocol entry fee must be hard-coded at 10 bps (0.1%)");
     }
 
     function test_constructor_revertsZeroPoolManager() public {
         vm.expectRevert(Errors.ZeroAddress.selector);
-        new AetherRouter(IPoolManager(address(0)), IAetherFactory(address(factory)), address(this));
+        new AetherRouter(IPoolManager(address(0)), IAetherFactory(address(factory)), TREASURY, address(this));
     }
 
     function test_constructor_revertsZeroFactory() public {
         vm.expectRevert(Errors.ZeroAddress.selector);
-        new AetherRouter(IPoolManager(address(mockPM)), IAetherFactory(address(0)), address(this));
+        new AetherRouter(IPoolManager(address(mockPM)), IAetherFactory(address(0)), TREASURY, address(this));
+    }
+
+    function test_constructor_revertsZeroTreasury() public {
+        vm.expectRevert(Errors.ZeroAddress.selector);
+        new AetherRouter(IPoolManager(address(mockPM)), IAetherFactory(address(factory)), address(0), address(this));
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -340,8 +349,10 @@ contract AetherRouterTest is Test {
         vm.prank(user);
         router.addLiquidity(_testPoolKey(), _modifyLiqParams(), 0.6 ether, 0.6 ether, block.timestamp + 100);
 
-        assertEq(token0.balanceOf(user), 1_000_000 ether - 0.5 ether, "User should spend 0.5 token0");
-        assertEq(token1.balanceOf(user), 1_000_000 ether - 0.5 ether, "User should spend 0.5 token1");
+        // Gross pull 0.6 each − 0.1% entry fee (0.0006) − 0.5 consumed by the mint
+        // = 0.0994 refunded; net user spend = used + fee = 0.5006 per token.
+        assertEq(token0.balanceOf(user), 1_000_000 ether - 0.5006 ether, "User should spend 0.5 + 0.1% fee on token0");
+        assertEq(token1.balanceOf(user), 1_000_000 ether - 0.5006 ether, "User should spend 0.5 + 0.1% fee on token1");
     }
 
     function test_addLiquidity_emitsEvent() public {
@@ -350,6 +361,11 @@ contract AetherRouterTest is Test {
         vm.warp(1);
         vm.prank(user);
         PoolKey memory key = _testPoolKey();
+        // Fee events fire first (one per charged input token), then LiquidityAdded.
+        vm.expectEmit(true, true, true, true);
+        emit AetherRouter.ProtocolFeeCharged(address(token0), 0.0006 ether, TREASURY);
+        vm.expectEmit(true, true, true, true);
+        emit AetherRouter.ProtocolFeeCharged(address(token1), 0.0006 ether, TREASURY);
         vm.expectEmit(true, true, true, true);
         emit AetherRouter.LiquidityAdded(user, keccak256(abi.encode(key)), 0.5 ether, 0.5 ether);
         router.addLiquidity(key, _modifyLiqParams(), 0.6 ether, 0.6 ether, block.timestamp + 100);
@@ -429,8 +445,12 @@ contract AetherRouterTest is Test {
             })
         );
 
-        assertEq(token0.balanceOf(user), token0Before - 0.9 ether);
+        // Gross input 1 ether − 0.1% entry fee (0.001) → net 0.999 funds the swap (0.4 in /
+        // 0.3 out) + mint (0.5/0.2): dust 0.999 − 0.4 − 0.5 = 0.099 token0 refunded, so the
+        // user's net spend is 0.901; 0.3 − 0.2 = 0.1 token1 refunded as output dust.
+        assertEq(token0.balanceOf(user), token0Before - 0.901 ether);
         assertEq(token1.balanceOf(user), token1Before + 0.1 ether);
+        assertEq(token0.balanceOf(TREASURY), 0.001 ether, "treasury receives the exact 0.1% entry fee on the input");
         PoolKey memory key = _testPoolKey();
         bytes32 positionId =
             keccak256(abi.encode(keccak256(abi.encode(key)), int24(-887220), int24(887220), bytes32(0)));
@@ -486,7 +506,9 @@ contract AetherRouterTest is Test {
 
     function test_addLiquiditySingleSided_allowsPreExistingTokenDust() public {
         token0.mint(address(router), 1);
-        mockPM.setSwapDelta(toBalanceDelta(-int128(0.4 ether), int128(0.3 ether)));
+        // Swap consumes 0.39 (fits the post-fee net 0.3996 of 0.4 gross), but the mint owes
+        // 0.5 token0 > available (1 wei + 0.3996 − 0.39) → settlement revert surfaces.
+        mockPM.setSwapDelta(toBalanceDelta(-int128(0.39 ether), int128(0.3 ether)));
         mockPM.setModifyLiquidityDelta(toBalanceDelta(-int128(0.5 ether), -int128(0.2 ether)));
 
         vm.warp(1);
@@ -498,7 +520,7 @@ contract AetherRouterTest is Test {
                 liquidityParams: _modifyLiqParams(),
                 zeroForOne: true,
                 amountIn: 0.4 ether,
-                swapAmountIn: 0.4 ether,
+                swapAmountIn: 0.3996 ether,
                 minSwapAmountOut: 0.29 ether,
                 minAmount0: 0.5 ether,
                 minAmount1: 0.2 ether,
@@ -550,6 +572,158 @@ contract AetherRouterTest is Test {
                 hookData: ""
             })
         );
+    }
+
+    function test_addLiquiditySingleSided_revertsWhenSwapTargetExceedsNet() public {
+        // swapAmountIn == gross amountIn fits the gross pre-check but EXCEEDS the post-fee
+        // net (0.1% entry fee), so there is no deposit left for liquidity → revert.
+        mockPM.setSwapDelta(toBalanceDelta(-int128(1 ether), int128(0.9 ether)));
+        vm.warp(1);
+        vm.prank(user);
+        vm.expectRevert(Errors.InvalidAmount.selector);
+        router.addLiquiditySingleSided(
+            AetherRouter.SingleSidedLiquidityParams({
+                poolKey: _testPoolKey(),
+                liquidityParams: _modifyLiqParams(),
+                zeroForOne: true,
+                amountIn: 1 ether,
+                swapAmountIn: 1 ether,
+                minSwapAmountOut: 0,
+                minAmount0: 0,
+                minAmount1: 0,
+                deadline: block.timestamp + 100,
+                hookData: ""
+            })
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  PROTOCOL ENTRY FEE (Phase 4 — flat immutable 0.1% on deposits only)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    function test_addLiquidity_chargesExactPointOnePercentToTreasury() public {
+        mockPM.setModifyLiquidityDelta(toBalanceDelta(-int128(0.5 ether), -int128(0.5 ether)));
+
+        vm.warp(1);
+        vm.prank(user);
+        router.addLiquidity(_testPoolKey(), _modifyLiqParams(), 2 ether, 2 ether, block.timestamp + 100);
+
+        // 2 ether gross × 10 / 10_000 = 0.002 ether fee per token, exact.
+        assertEq(token0.balanceOf(TREASURY), 0.002 ether, "treasury must receive exactly 0.1% of token0 input");
+        assertEq(token1.balanceOf(TREASURY), 0.002 ether, "treasury must receive exactly 0.1% of token1 input");
+        // Router never retains fee balances: mint used 0.5, refund got the rest.
+        assertEq(token0.balanceOf(address(router)), 0, "router must not retain any token0");
+        assertEq(token1.balanceOf(address(router)), 0, "router must not retain any token1");
+        // Refund ceiling is NET of fee: 2 − 0.002 − 0.5 = 1.498 returned per token.
+        assertEq(token0.balanceOf(user), 1_000_000 ether - 0.502 ether);
+        assertEq(token1.balanceOf(user), 1_000_000 ether - 0.502 ether);
+    }
+
+    function test_addLiquidity_emitsProtocolFeeCharged() public {
+        mockPM.setModifyLiquidityDelta(toBalanceDelta(-int128(0.5 ether), -int128(0.5 ether)));
+
+        vm.warp(1);
+        vm.prank(user);
+        // 0.6 ether gross × 10 bps = 0.0006 ether fee per token.
+        vm.expectEmit(true, true, true, true);
+        emit AetherRouter.ProtocolFeeCharged(address(token0), 0.0006 ether, TREASURY);
+        vm.expectEmit(true, true, true, true);
+        emit AetherRouter.ProtocolFeeCharged(address(token1), 0.0006 ether, TREASURY);
+        router.addLiquidity(_testPoolKey(), _modifyLiqParams(), 0.6 ether, 0.6 ether, block.timestamp + 100);
+    }
+
+    function test_addLiquidity_zeroSideAmountChargesNoFeeForThatToken() public {
+        // Mint owes only token1; token0 max is zero → no fee event/transfer on token0.
+        mockPM.setModifyLiquidityDelta(toBalanceDelta(0, -int128(0.5 ether)));
+
+        vm.warp(1);
+        vm.prank(user);
+        router.addLiquidity(_testPoolKey(), _modifyLiqParams(), 0, 0.6 ether, block.timestamp + 100);
+
+        assertEq(token0.balanceOf(TREASURY), 0, "no token0 fee on a zero-amount side");
+        assertEq(token1.balanceOf(TREASURY), 0.0006 ether, "token1 fee still charged on the funded side");
+        assertEq(token1.balanceOf(user), 1_000_000 ether - 0.5006 ether);
+    }
+
+    function test_addLiquiditySingleSided_chargesFeeOnGrossInput() public {
+        mockPM.setSwapDelta(toBalanceDelta(-int128(0.4 ether), int128(0.3 ether)));
+        mockPM.setModifyLiquidityDelta(toBalanceDelta(-int128(0.5 ether), -int128(0.2 ether)));
+
+        uint256 token0Before = token0.balanceOf(user);
+        vm.warp(1);
+        vm.prank(user);
+        vm.expectEmit(true, true, true, true);
+        emit AetherRouter.ProtocolFeeCharged(address(token0), 0.001 ether, TREASURY);
+        router.addLiquiditySingleSided(
+            AetherRouter.SingleSidedLiquidityParams({
+                poolKey: _testPoolKey(),
+                liquidityParams: _modifyLiqParams(),
+                zeroForOne: true,
+                amountIn: 1 ether,
+                swapAmountIn: 0.4 ether,
+                minSwapAmountOut: 0.29 ether,
+                minAmount0: 0.5 ether,
+                minAmount1: 0.2 ether,
+                deadline: block.timestamp + 100,
+                hookData: ""
+            })
+        );
+
+        assertEq(token0.balanceOf(TREASURY), 0.001 ether, "treasury receives exactly 0.1% of the gross input");
+        assertEq(token0.balanceOf(user), token0Before - 0.901 ether, "user spend = mint+swap net of fee dust refund");
+        assertEq(token0.balanceOf(address(router)), 0, "router must not retain any fee balance");
+    }
+
+    function test_swaps_chargeNoProtocolFee() public {
+        mockPM.setSwapDelta(toBalanceDelta(-int128(1 ether), int128(0.9 ether)));
+
+        vm.warp(1);
+        vm.prank(user);
+        router.swapExactTokensForTokens(
+            AetherRouter.SwapExactInParams({
+                poolKey: _testPoolKey(),
+                zeroForOne: true,
+                amountIn: 1 ether,
+                minAmountOut: 0,
+                deadline: block.timestamp + 100,
+                hookData: ""
+            })
+        );
+        mockPM.setSwapDelta(toBalanceDelta(-int128(1.1 ether), int128(0.9 ether)));
+        vm.prank(user);
+        router.swapExactTokensForTokensOut(
+            AetherRouter.SwapExactOutParams({
+                poolKey: _testPoolKey(),
+                zeroForOne: true,
+                amountOut: 0.9 ether,
+                maxAmountIn: 1.2 ether,
+                deadline: block.timestamp + 100,
+                hookData: ""
+            })
+        );
+
+        assertEq(token0.balanceOf(TREASURY), 0, "exact-in swaps must be fee-free");
+        assertEq(token1.balanceOf(TREASURY), 0, "exact-out swaps must be fee-free");
+    }
+
+    function test_removeLiquidity_chargesNoProtocolFee() public {
+        mockPM.setModifyLiquidityDelta(toBalanceDelta(-int128(0.5 ether), -int128(0.5 ether)));
+        vm.prank(user);
+        router.addLiquidity(_testPoolKey(), _modifyLiqParams(), 0.6 ether, 0.6 ether, block.timestamp + 100);
+
+        uint256 treasuryBal0AfterAdd = token0.balanceOf(TREASURY);
+        uint256 treasuryBal1AfterAdd = token1.balanceOf(TREASURY);
+        assertGt(treasuryBal0AfterAdd, 0, "entry fee charged on the deposit");
+
+        mockPM.setModifyLiquidityDelta(toBalanceDelta(int128(0.5 ether), int128(0.5 ether)));
+        uint256 userBal0Before = token0.balanceOf(user);
+        vm.warp(1);
+        vm.prank(user);
+        router.removeLiquidity(_testPoolKey(), _removeLiqParams(), 0, 0, block.timestamp + 100);
+
+        assertEq(token0.balanceOf(TREASURY), treasuryBal0AfterAdd, "removeLiquidity must be fee-free (token0)");
+        assertEq(token1.balanceOf(TREASURY), treasuryBal1AfterAdd, "removeLiquidity must be fee-free (token1)");
+        assertEq(token0.balanceOf(user), userBal0Before + 0.5 ether, "user receives the full removed amount");
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
