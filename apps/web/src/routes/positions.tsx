@@ -5,6 +5,7 @@ import { useAccount } from "wagmi"
 import { Card, CardBody, CardTitle } from "../components/ui/Card"
 import { Input } from "../components/ui/Input"
 import { API_URL, isRecord } from "../lib/api"
+import { PROTOCOL_FEE_PERCENT_LABEL } from "../lib/protocol-fee"
 import {
   buildRebalanceIntent,
   type RebalanceFormValues,
@@ -334,6 +335,11 @@ function PositionsPage() {
                 </li>
               ))}
             </ol>
+            <p className="mt-4 rounded-box border border-base-300 bg-base-100 p-3 text-xs text-base-content/60">
+              <span className="font-medium text-base-content">Protocol fee: Free.</span> Rebalance (close · collect ·
+              re-mint) pays no {PROTOCOL_FEE_PERCENT_LABEL} entry fee — that fee applies only to new deposits routed
+              through the AetherDEX router.
+            </p>
             <div className="alert alert-warning mt-6 items-start text-sm">
               <span>
                 Execution unavailable until deployed manager/router config exists. A transaction hash or success state
@@ -348,6 +354,7 @@ function PositionsPage() {
                 <p className="font-mono">
                   Protection: {intent.slippageBps} bps · {intent.deadlineSeconds}s
                 </p>
+                <p className="font-mono">Protocol fee: 0% on rebalance</p>
               </div>
             ) : null}
           </CardBody>
