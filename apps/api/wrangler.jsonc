@@ -111,13 +111,28 @@
   },
 
   // Environment variables (non-secret)
-  // Contract addresses are deployment config (Phase-0 G5, owner RPC) — never hardcoded in source.
+  // Contract addresses are deployment config (owner RPC), never hardcoded in source.
+  // Phase 4 (#314): every address below is filled from the output of
+  // `forge script script/Deploy.s.sol ... --broadcast` — see the Deployment Summary it logs.
+  // The treasury multisig (TREASURY_ADDRESS) is config, NOT a secret: it is baked into the
+  // on-chain contracts at deploy time and only recorded here for deployment traceability.
   "vars": {
     "CHAIN_ID": "11155111",
     "SIWE_DOMAIN": "aetherdex.io",
     "SIWE_URI": "https://aetherdex.io",
+    // Phase 4 (#314) — from Deploy.s.sol summary: ROUTER_ADDRESS, FACTORY_ADDRESS,
+    // POSITION_MANAGER_ADDRESS, AETHER_HOOK_ADDRESS, POOL_MANAGER_ADDRESS, TREASURY_ADDRESS.
     "ROUTER_ADDRESS": "",
     "FACTORY_ADDRESS": "", // Sepolia for now
+    // AETHER_HOOK_ADDRESS (#314): the AetherHook oracle the keeper reads for TWAP-gated TP/SL.
+    // Passed to the keeper queue env (see src/index.ts) alongside RPC_URL; empty keeps TWAP
+    // reads disabled until configured.
+    "AETHER_HOOK_ADDRESS": "",
+    // V3 zap executor (DeployV3.s.sol output) — informational deployment record.
+    "V3_EXECUTOR_ADDRESS": "",
+    // TREASURY_ADDRESS (#314): the immutable 0.1% fee treasury multisig — recorded for
+    // traceability only; the fee accrues on-chain, the API never spends from it.
+    "TREASURY_ADDRESS": "",
     // Uniswap V4 on-chain read config for the quote engine (Phase-0 G2). Empty until G5 wires them.
     "STATE_VIEW_ADDRESS": "",
     "POOL_MANAGER_ADDRESS": "",
@@ -173,6 +188,10 @@
         "SIWE_URI": "http://localhost:3000",
         "ROUTER_ADDRESS": "",
         "FACTORY_ADDRESS": "",
+        // Phase 4 (#314) — fill from Deploy.s.sol summary on the staging network.
+        "AETHER_HOOK_ADDRESS": "",
+        "V3_EXECUTOR_ADDRESS": "",
+        "TREASURY_ADDRESS": "",
         "STATE_VIEW_ADDRESS": "",
         "POOL_MANAGER_ADDRESS": "",
         "V3_FACTORY_ADDRESS": "",
@@ -266,6 +285,10 @@
         "SIWE_URI": "https://aetherdex.io",
         "ROUTER_ADDRESS": "",
         "FACTORY_ADDRESS": "",
+        // Phase 4 (#314) — fill from Deploy.s.sol summary on the production network.
+        "AETHER_HOOK_ADDRESS": "",
+        "V3_EXECUTOR_ADDRESS": "",
+        "TREASURY_ADDRESS": "",
         "STATE_VIEW_ADDRESS": "",
         "POOL_MANAGER_ADDRESS": "",
         "V3_FACTORY_ADDRESS": "",

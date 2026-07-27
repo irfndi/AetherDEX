@@ -41,6 +41,14 @@ type Bindings = {
   V4_POOL_MANAGER_ADDRESS?: string
   INDEXER_ENABLED?: string
   INDEXER_BATCH_SIZE?: string
+  // Phase 4 (#314) deployment config — contract addresses filled from the Deploy.s.sol summary.
+  // AETHER_HOOK_ADDRESS + RPC_URL drive the keeper's on-chain TWAP reads in workers/queue-handler.ts
+  // (TP/SL gating); empty/absent values keep the on-chain TWAP read disabled with a safe fallback.
+  // TREASURY_ADDRESS / V3_EXECUTOR_ADDRESS are deployment records (fee accrues on-chain; the API
+  // never signs from the treasury).
+  AETHER_HOOK_ADDRESS?: string
+  V3_EXECUTOR_ADDRESS?: string
+  TREASURY_ADDRESS?: string
   // Phase-3 API safety knobs — optional; safe defaults live in src/lib/safety-config.ts.
   RATE_LIMIT_MAX?: string
   RATE_LIMIT_WINDOW_SECONDS?: string
@@ -236,6 +244,9 @@ const worker = {
       WEBSOCKET_HUB: env.WEBSOCKET_HUB,
       CHAIN_ID: env.CHAIN_ID,
       RPC_URL: env.RPC_URL,
+      // Phase 4 (#314): keeper queue needs the AetherHook oracle for on-chain TP/SL TWAP reads
+      // (queue-handler.readTwapFromChain). Undefined is safe — it falls back to KV-cached prices.
+      AETHER_HOOK_ADDRESS: env.AETHER_HOOK_ADDRESS,
       INDEXER_ENABLED: env.INDEXER_ENABLED,
       INDEXER_BATCH_SIZE: env.INDEXER_BATCH_SIZE,
       V3_POSITION_MANAGER_ADDRESS: env.V3_POSITION_MANAGER_ADDRESS,
