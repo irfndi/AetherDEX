@@ -4,8 +4,8 @@ A lean spot DEX built on Uniswap V4.
 
 ## Architecture
 
-- **AetherHook**: Custom V4 hook for fee override and TWAP
-- **AetherRouter**: User-facing router (swap, zap, and compatibility add/remove liquidity)
+- **AetherHook**: Oracle-only V4 hook recording a v3-style TWAP (pool-state tick) observation buffer for keeper-safe TP/SL. Phase 4: protocol fee admin/accrual removed — the hook holds no funds and has no owner
+- **AetherRouter**: User-facing router (swap, zap, and compatibility add/remove liquidity). Charges a flat, immutable 0.1% protocol ENTRY fee on liquidity deposits (addLiquidity / addLiquiditySingleSided), transferred directly to the immutable treasury; swaps, removals, rebalance, and TP/SL stay fee-free
 - **AetherPositionManager**: ERC721 receipt manager for transferable, owner-authorized V4 positions
 - **AetherFactory**: Deterministic pool deploys via CREATE2
 

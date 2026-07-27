@@ -322,6 +322,14 @@ function SwapPage() {
                       </span>
                     </div>
                     <div className="flex justify-between">
+                      <span className="text-base-content/60">Pool fee (to LPs)</span>
+                      <span>{(quote.fee / 10_000).toFixed(2)}%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-base-content/60">Protocol fee</span>
+                      <span className="text-success">Free · 0%</span>
+                    </div>
+                    <div className="flex justify-between">
                       <span className="text-base-content/60">Min received</span>
                       <span>
                         {formatAmount(quote.minAmountOut, tokenOut.decimals)} {tokenOut.symbol}

@@ -230,6 +230,9 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
 
         // Pull input from the owner only now that execution is committed.
         address tokenIn = Currency.unwrap(order.zeroForOne ? order.poolKey.currency0 : order.poolKey.currency1);
+        // By design: the keeper executes the owner's own order, so input is pulled only from order.owner
+        // (who must have approved tokenIn); proceeds settle straight back to order.owner, never a third party.
+        // slither-disable-next-line arbitrary-send-erc20
         IERC20(tokenIn).safeTransferFrom(order.owner, address(this), order.amountIn);
 
         // Execute the swap via PoolManager; proceeds go directly to the order owner.
@@ -239,6 +242,9 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
             sqrtPriceLimitX96: _sqrtPriceLimit(order.zeroForOne)
         });
 
+        // Trusted V4 PoolManager unlock callback: executeOrder is nonReentrant, order status is committed
+        // only after the callback returns, and getOrder/isTriggered observe consistent post-execution state.
+        // slither-disable-next-line reentrancy-no-eth
         bytes memory result = poolManager.unlock(
             abi.encode(Action.SWAP_EXACT_IN, abi.encode(order.poolKey, swapParams, hookData, order.owner))
         );
@@ -287,12 +293,13 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
         if (order.status != OrderStatus.PENDING) return false;
         if (block.timestamp > order.deadline) return false;
 
-        // Read current spot price from PoolManager
+        // Read current spot price (only the tick is needed; the other getSlot0 outputs are intentionally unused).
+        // slither-disable-next-line unused-return
         (, int24 tick,,) = poolManager.getSlot0(order.poolKey.toId());
         uint256 spotPriceX18 = _tickToPriceX18(tick);
 
         // Read TWAP from AetherHook (with fallback)
-        uint256 twapPriceX18;
+        uint256 twapPriceX18 = 0;
         try aetherHook.getCurrentTwap(PoolId.unwrap(order.poolKey.toId()), order.twapWindow) returns (uint256 price) {
             twapPriceX18 = price;
         } catch {
@@ -321,13 +328,14 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
     ///      A healthy oracle whose prices have not breached still reverts
     ///      {TriggerNotBreached}, since that is a caller error (check `checkTrigger` first).
     function _validateTrigger(TpSlOrder memory order) internal view returns (bool) {
-        // Read current spot price from PoolManager
+        // Read current spot price (only the tick is needed; the other getSlot0 outputs are intentionally unused).
+        // slither-disable-next-line unused-return
         (, int24 tick,,) = poolManager.getSlot0(order.poolKey.toId());
         uint256 spotPriceX18 = _tickToPriceX18(tick);
 
         // Read TWAP from AetherHook — an oracle failure means the trigger cannot be
         // verified, so signal a skip rather than propagating the revert.
-        uint256 twapPriceX18;
+        uint256 twapPriceX18 = 0;
         try aetherHook.getCurrentTwap(PoolId.unwrap(order.poolKey.toId()), order.twapWindow) returns (uint256 price) {
             twapPriceX18 = price;
         } catch {
@@ -346,6 +354,8 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
         pure
         returns (bool)
     {
+        // orderType is an enum dispatch, not a balance/wei value — the strict equality is intentional and safe.
+        // slither-disable-next-line incorrect-equality
         if (order.orderType == OrderType.TAKE_PROFIT) {
             if (order.zeroForOne) {
                 return spotPriceX18 <= order.triggerPriceX18 && twapPriceX18 <= order.triggerPriceX18;
@@ -396,6 +406,8 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
         Currency currencyIn = swapParams.zeroForOne ? poolKey.currency0 : poolKey.currency1;
         poolManager.sync(currencyIn);
         IERC20(Currency.unwrap(currencyIn)).safeTransfer(address(poolManager), amountIn);
+        // settle()'s return (amount settled) is intentionally unused — the PoolManager enforces delta accounting.
+        // slither-disable-next-line unused-return
         poolManager.settle();
 
         // Take output token DIRECTLY to the recipient (the order owner) — non-custodial:

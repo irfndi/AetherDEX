@@ -17,8 +17,6 @@ import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 contract Deploy is Script {
     // Sepolia Uniswap V4 PoolManager address
     address constant POOL_MANAGER = 0xE03A1074c86CFeDd5C142C4F04F1a1536e203543;
-    // Initial protocol fee: 0.30% (30 basis points)
-    uint24 constant INITIAL_PROTOCOL_FEE_BPS = 30;
 
     /// @dev Upper bound for the CREATE2 salt search. The hook needs a 2-bit address suffix
     ///      (BEFORE_SWAP | AFTER_SWAP), so a valid salt is found in ~2^14 iterations on average.
@@ -51,6 +49,9 @@ contract Deploy is Script {
 
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
+        // treasury multisig — receives the AetherRouter's IMMUTABLE 0.1% entry fee on
+        // liquidity deposits (Phase 4). TODO(#314): set AETHERDEX_TREASURY to the
+        // production multisig address for the target network before broadcasting.
         address treasury = vm.envAddress("AETHERDEX_TREASURY");
 
         vm.startBroadcast(deployerPrivateKey);
@@ -61,14 +62,13 @@ contract Deploy is Script {
         //    be placed at an address whose flag bits match `_hookPermissions()`; the salt is
         //    mined off-chain (AetherHookAddressMiner.findSalt) against the broadcast EOA as
         //    the CREATE2 deployer. The constructor also self-validates and would revert on a
-        //    mismatched address.
-        bytes memory hookCtorArgs = abi.encode(IPoolManager(POOL_MANAGER), treasury, INITIAL_PROTOCOL_FEE_BPS, deployer);
+        //    mismatched address. Phase 4: the hook is oracle-only — no treasury/fee args.
+        bytes memory hookCtorArgs = abi.encode(IPoolManager(POOL_MANAGER));
         bytes32 hookInitCodeHash = keccak256(abi.encodePacked(type(AetherHook).creationCode, hookCtorArgs));
         (bool saltFound, bytes32 hookSalt,) =
             AetherHookAddressMiner.findSalt(deployer, hookInitCodeHash, HOOK_SALT_MAX_ITERATIONS);
         require(saltFound, "Deploy: no CREATE2 salt satisfies BEFORE_SWAP|AFTER_SWAP flags");
-        AetherHook hook =
-            new AetherHook{salt: hookSalt}(IPoolManager(POOL_MANAGER), treasury, INITIAL_PROTOCOL_FEE_BPS, deployer);
+        AetherHook hook = new AetherHook{salt: hookSalt}(IPoolManager(POOL_MANAGER));
         // Fail loudly if the deployed address does not encode exactly the implemented
         // permissions — a guard against a future hook variant lacking constructor validation.
         Hooks.validateHookPermissions(IHooks(address(hook)), _hookPermissions());
@@ -78,8 +78,8 @@ contract Deploy is Script {
         AetherFactory factory = new AetherFactory(IPoolManager(POOL_MANAGER), IHooks(address(hook)), deployer);
         console.log("AetherFactory deployed at:", address(factory));
 
-        // 3. Deploy AetherRouter
-        AetherRouter router = new AetherRouter(IPoolManager(POOL_MANAGER), factory, deployer);
+        // 3. Deploy AetherRouter (immutable treasury for the flat 0.1% entry fee)
+        AetherRouter router = new AetherRouter(IPoolManager(POOL_MANAGER), factory, treasury, deployer);
         console.log("AetherRouter deployed at:", address(router));
 
         // 4. Deploy the canonical transferable receipt-position manager.
@@ -99,7 +99,7 @@ contract Deploy is Script {
         console.log("AetherRouter: ", address(router));
         console.log("PositionManager:", address(positionManager));
         console.log("Treasury:    ", treasury);
-        console.log("Protocol Fee:", INITIAL_PROTOCOL_FEE_BPS, "bps");
+        console.log("Protocol Entry Fee:", router.PROTOCOL_FEE_BPS(), "bps (immutable)");
         console.log("=====================================\n");
     }
 }

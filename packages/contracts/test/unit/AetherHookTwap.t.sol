@@ -24,7 +24,6 @@ contract AetherHookTwapTest is Test {
     MockPoolManager internal mockPoolManager;
 
     address internal constant HOOK_ADDR = address(uint160(0x80C0));
-    address internal constant TREASURY = address(0xCAFE);
 
     bytes32 internal poolId;
 
@@ -35,11 +34,8 @@ contract AetherHookTwapTest is Test {
     function setUp() public {
         vm.warp(_clock);
         mockPoolManager = new MockPoolManager();
-        deployCodeTo(
-            "AetherHook.sol:AetherHook",
-            abi.encode(IPoolManager(address(mockPoolManager)), TREASURY, uint24(0), address(this)),
-            HOOK_ADDR
-        );
+        // Phase 4: oracle-only constructor — poolManager only.
+        deployCodeTo("AetherHook.sol:AetherHook", abi.encode(IPoolManager(address(mockPoolManager))), HOOK_ADDR);
         hook = AetherHook(HOOK_ADDR);
 
         PoolKey memory key = PoolKey({

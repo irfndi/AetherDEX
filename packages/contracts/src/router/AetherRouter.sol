@@ -21,10 +21,30 @@ import {IAetherFactory} from "../interfaces/IAetherFactory.sol";
 /// @notice User-facing router for AetherDEX swaps and liquidity operations
 /// @dev Wraps Uniswap V4 PoolManager via the unlock/callback pattern.
 ///      All pool interactions happen inside unlockCallback to ensure proper delta settlement.
+///
+///      Phase 4 (monetization): charges a flat, IMMUTABLE protocol ENTRY fee
+///      ({PROTOCOL_FEE_BPS} = 10 bps = 0.1%) on liquidity deposits (addLiquidity /
+///      addLiquiditySingleSided), transferred non-custodially and directly from the
+///      user-provided input to the immutable {treasury}. The router never retains fee
+///      balances and exposes NO admin surface to mutate the fee rate or the treasury.
+///      Swaps, removeLiquidity, rebalance, and TP/SL execution remain fee-free.
 contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
+
+    // ── Protocol entry fee (Phase 4 monetization — immutable, no admin setter) ───
+
+    /// @notice Flat protocol entry fee charged on liquidity deposits: 10 bps = 0.1%
+    /// @dev Hard-coded constant — deliberately NOT owner-adjustable. Changing the rate
+    ///      requires a redeploy (locked owner decision: flat 0.1% to treasury, no token).
+    uint24 public constant PROTOCOL_FEE_BPS = 10;
+
+    /// @notice Basis-point denominator for fee math
+    uint256 internal constant BPS_DENOMINATOR = 10_000;
+
+    /// @notice Immutable treasury that receives protocol entry fees via direct transfer
+    address public immutable treasury;
 
     // ── Internal action dispatch tag ──────────────────────────────────────────
     enum Action {
@@ -84,13 +104,26 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
 
     event LiquidityRemoved(address indexed provider, bytes32 indexed poolId, uint256 amount0, uint256 amount1);
 
+    /// @notice Emitted when the flat protocol entry fee is transferred to the treasury
+    ///         on a liquidity deposit (one event per charged input token)
+    event ProtocolFeeCharged(address indexed token, uint256 amount, address indexed treasury);
+
     // ── Constructor ───────────────────────────────────────────────────────────
 
-    constructor(IPoolManager _poolManager, IAetherFactory _factory, address _initialOwner) Ownable(_initialOwner) {
+    /// @param _poolManager The Uniswap V4 PoolManager
+    /// @param _factory The AetherDEX pool factory
+    /// @param _treasury Immutable recipient of the flat protocol entry fee (non-zero)
+    /// @param _initialOwner Initial contract owner (no fee/treasury admin exists; retained
+    ///        for future router governance, e.g. position-manager migration)
+    constructor(IPoolManager _poolManager, IAetherFactory _factory, address _treasury, address _initialOwner)
+        Ownable(_initialOwner)
+    {
         if (address(_poolManager) == address(0)) revert Errors.ZeroAddress();
         if (address(_factory) == address(0)) revert Errors.ZeroAddress();
+        if (_treasury == address(0)) revert Errors.ZeroAddress();
         poolManager = _poolManager;
         factory = _factory;
+        treasury = _treasury;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -184,11 +217,15 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
     }
 
     /// @notice Add concentrated liquidity to a pool
-    /// @dev Pulls both tokens, executes modifyLiquidity, refunds unused tokens
+    /// @dev Pulls both tokens, charges the flat protocol entry fee on the pulled input
+    ///      (transferred directly to {treasury}), executes modifyLiquidity with the net
+    ///      amounts, and refunds unused net tokens. The fee is charged on the gross input
+    ///      the user presents, so the liquidity operation + refund ceiling consume exactly
+    ///      `amount0Max - fee0` / `amount1Max - fee1`.
     /// @param poolKey The pool to add liquidity to
     /// @param params Liquidity parameters: tickLower, tickUpper, liquidityDelta, salt
-    /// @param amount0Max Maximum token0 to pull from user
-    /// @param amount1Max Maximum token1 to pull from user
+    /// @param amount0Max Maximum token0 to pull from user (gross of the entry fee)
+    /// @param amount1Max Maximum token1 to pull from user (gross of the entry fee)
     /// @param deadline Transaction deadline
     /// @return delta The caller's balance delta after adding liquidity
     function addLiquidity(
@@ -211,29 +248,39 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
         IERC20(token0).safeTransferFrom(msg.sender, address(this), amount0Max);
         IERC20(token1).safeTransferFrom(msg.sender, address(this), amount1Max);
 
+        // Charge the flat protocol entry fee on the gross input BEFORE the liquidity
+        // operation; the net amounts fund the mint and bound the user's refund.
+        uint256 netAmount0 = _chargeEntryFee(token0, amount0Max);
+        uint256 netAmount1 = _chargeEntryFee(token1, amount1Max);
+
         // Unlock PoolManager
         bytes memory result =
-            poolManager.unlock(abi.encode(Action.ADD_LIQUIDITY, abi.encode(poolKey, params, amount0Max, amount1Max)));
+            poolManager.unlock(abi.encode(Action.ADD_LIQUIDITY, abi.encode(poolKey, params, netAmount0, netAmount1)));
 
         delta = abi.decode(result, (BalanceDelta));
         positionOwner[positionId] = msg.sender;
         positionLiquidity[positionId] = uint256(params.liquidityDelta);
 
-        // Refund unused tokens to user
+        // Refund unused NET tokens to user (the entry fee already left for the treasury,
+        // so the router never retains fee balances; settlement inside the callback reverts
+        // if the mint owes more than the net deposit).
         uint256 used0 = uint256(-int256(delta.amount0()));
         uint256 used1 = uint256(-int256(delta.amount1()));
-        if (used0 < amount0Max) {
-            IERC20(token0).safeTransfer(msg.sender, amount0Max - used0);
+        if (used0 < netAmount0) {
+            IERC20(token0).safeTransfer(msg.sender, netAmount0 - used0);
         }
-        if (used1 < amount1Max) {
-            IERC20(token1).safeTransfer(msg.sender, amount1Max - used1);
+        if (used1 < netAmount1) {
+            IERC20(token1).safeTransfer(msg.sender, netAmount1 - used1);
         }
 
         emit LiquidityAdded(msg.sender, PoolId.unwrap(poolKey.toId()), used0, used1);
     }
 
     /// @notice Deposit one token, swap part of it, and add concentrated liquidity atomically.
-    /// @dev Positions are protected by the router ownership ledger until native V4 PositionManager integration.
+    /// @dev Charges the flat protocol entry fee on the gross `amountIn` BEFORE the swap/mint;
+    ///      the net amount funds the swap + liquidity, so `swapAmountIn` must fit within the
+    ///      post-fee deposit. Positions are protected by the router ownership ledger until
+    ///      native V4 PositionManager integration.
     function addLiquiditySingleSided(SingleSidedLiquidityParams calldata params)
         external
         nonReentrant
@@ -254,6 +301,11 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
         uint256 balance0Before = IERC20(Currency.unwrap(params.poolKey.currency0)).balanceOf(address(this));
         uint256 balance1Before = IERC20(Currency.unwrap(params.poolKey.currency1)).balanceOf(address(this));
         IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), params.amountIn);
+
+        // Charge the flat protocol entry fee on the gross input BEFORE the swap/mint; the
+        // swap target must fit within the post-fee deposit (net = gross - fee < gross).
+        uint256 netAmountIn = _chargeEntryFee(tokenIn, params.amountIn);
+        if (params.swapAmountIn > netAmountIn) revert Errors.InvalidAmount();
 
         bytes memory result = poolManager.unlock(
             abi.encode(Action.ADD_LIQUIDITY_SINGLE_SIDED, abi.encode(params, balance0Before, balance1Before))
@@ -527,6 +579,25 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
     /// @dev Returns the appropriate sqrt price limit for the swap direction
     function _sqrtPriceLimit(bool zeroForOne) internal pure returns (uint160) {
         return zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
+    }
+
+    /// @notice Charge the flat protocol entry fee on a deposit input amount
+    /// @dev Transfers the fee DIRECTLY from the already-pulled input to the immutable
+    ///      {treasury} (non-custodial: the router never retains fee balances) and returns
+    ///      the net amount available to the liquidity operation. ERC20-only: both deposit
+    ///      entry points gate native currency (single-sided explicitly, double-sided by
+    ///      ERC20 settlement), so no native fee path is needed. No-op (zero fee) when
+    ///      `amountIn` is too small for a full basis-point slice.
+    /// @param token The deposit input token (ERC20)
+    /// @param amountIn The gross input amount pulled from the user
+    /// @return amountAfterFee The input net of the entry fee
+    function _chargeEntryFee(address token, uint256 amountIn) internal returns (uint256 amountAfterFee) {
+        uint256 fee = (amountIn * PROTOCOL_FEE_BPS) / BPS_DENOMINATOR;
+        amountAfterFee = amountIn - fee;
+        if (fee > 0) {
+            IERC20(token).safeTransfer(treasury, fee);
+            emit ProtocolFeeCharged(token, fee, treasury);
+        }
     }
 
     function _positionId(PoolKey calldata poolKey, ModifyLiquidityParams calldata params)
