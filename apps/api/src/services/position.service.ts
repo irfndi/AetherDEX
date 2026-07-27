@@ -6,10 +6,11 @@
 
 import { Context, Effect, Layer } from "effect"
 import { SqlClient } from "effect/unstable/sql"
-import { listLiquidityEvents, updateLiquidityPosition } from "../db/queries"
+import { listLiquidityEvents, updateLiquidityPosition, updateV4LiquidityPosition } from "../db/queries"
 import { type LiquidityPosition, rowToLiquidityPosition } from "../db/schema"
 import type { V3LiquidityEvent } from "./v3-liquidity-events"
 import { reduceV3PositionEvents } from "./v3-position-reducer"
+import type { V4PositionState } from "./v4-position-reader.service"
 
 // --- Types ---
 
@@ -52,6 +53,12 @@ export interface PositionService {
     tokenId: string,
     chainId: number,
   ) => Effect.Effect<LiquidityPosition | null, RecordPositionError>
+  readonly reconcileV4Position: (
+    userAddress: string,
+    tokenId: string,
+    chainId: number,
+    state: V4PositionState,
+  ) => Effect.Effect<number | null, RecordPositionError>
 }
 
 // --- Tag ---
@@ -70,9 +77,23 @@ const makePositionService = Effect.gen(function* () {
   ): Effect.Effect<LiquidityPosition[], PositionListError, never> =>
     Effect.gen(function* () {
       const rows = (yield* sql`
-        SELECT liquidity_positions.*, pools.tick_spacing
+        SELECT liquidity_positions.*,
+          pools.tick_spacing,
+          pools.token0_address AS pool_token0_address,
+          pools.token1_address AS pool_token1_address,
+          pools.fee AS pool_fee,
+          pools.hook_address AS pool_hook_address,
+          pools.sqrt_price_x96 AS pool_sqrt_price_x96,
+          pools.current_tick AS pool_current_tick,
+          pools.liquidity AS pool_liquidity,
+          token0.decimals AS pool_token0_decimals,
+          token1.decimals AS pool_token1_decimals
         FROM liquidity_positions
-        LEFT JOIN pools ON pools.pool_id = liquidity_positions.pool_id
+        LEFT JOIN pools ON pools.chain_id = liquidity_positions.chain_id AND pools.pool_id = liquidity_positions.pool_id
+        LEFT JOIN tokens token0 ON token0.chain_id = liquidity_positions.chain_id
+          AND token0.address = pools.token0_address
+        LEFT JOIN tokens token1 ON token1.chain_id = liquidity_positions.chain_id
+          AND token1.address = pools.token1_address
         WHERE liquidity_positions.chain_id = ${chainId} AND user_address = ${userAddress} AND is_active = 1
         ORDER BY created_at DESC
         LIMIT ${limit}
@@ -109,7 +130,9 @@ const makePositionService = Effect.gen(function* () {
     chainId: number,
   ): Effect.Effect<LiquidityPosition | null, RecordPositionError, never> =>
     Effect.gen(function* () {
-      const events = yield* listLiquidityEvents(chainId, "v3", tokenId)
+      const events = yield* listLiquidityEvents(chainId, "v3", tokenId).pipe(
+        Effect.provideService(SqlClient.SqlClient, sql),
+      )
       const normalized: V3LiquidityEvent[] = events.map((event) => ({
         protocol: "v3",
         eventType: event.eventType,
@@ -139,11 +162,11 @@ const makePositionService = Effect.gen(function* () {
         costBasis0: state.costBasis0.toString(),
         costBasis1: state.costBasis1.toString(),
         isActive: state.isActive,
-      })
+      }).pipe(Effect.provideService(SqlClient.SqlClient, sql))
       if (positionId === null) return null
       const rows = yield* sql`
         SELECT liquidity_positions.*, pools.tick_spacing
-        FROM liquidity_positions LEFT JOIN pools ON pools.pool_id = liquidity_positions.pool_id
+        FROM liquidity_positions LEFT JOIN pools ON pools.chain_id = liquidity_positions.chain_id AND pools.pool_id = liquidity_positions.pool_id
         WHERE liquidity_positions.id = ${positionId}
       `
       const row = rows[0]
@@ -152,12 +175,35 @@ const makePositionService = Effect.gen(function* () {
       Effect.catch((error) =>
         error instanceof RecordPositionError ? Effect.fail(error) : Effect.fail(new RecordPositionError(String(error))),
       ),
-    ) as unknown as Effect.Effect<LiquidityPosition | null, RecordPositionError, never>
+    )
+
+  const reconcileV4Position = (
+    userAddress: string,
+    tokenId: string,
+    chainId: number,
+    state: V4PositionState,
+  ): Effect.Effect<number | null, RecordPositionError, never> =>
+    state.owner.toLowerCase() !== userAddress.toLowerCase()
+      ? Effect.succeed(null)
+      : updateV4LiquidityPosition({
+          chainId,
+          tokenId,
+          ownerAddress: userAddress,
+          tickLower: state.tickLower,
+          tickUpper: state.tickUpper,
+          liquidity: state.liquidity.toString(),
+        }).pipe(
+          Effect.provideService(SqlClient.SqlClient, sql),
+          Effect.catch((error) =>
+            Effect.fail(error instanceof RecordPositionError ? error : new RecordPositionError(String(error))),
+          ),
+        )
 
   return {
     listByUser,
     recordPosition,
     reconcileV3Position,
+    reconcileV4Position,
   }
 })
 

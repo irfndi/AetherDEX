@@ -78,7 +78,7 @@ export const upsertPool = (pool: Omit<Pool, "createdAt" | "updatedAt">) =>
     yield* sql`
       INSERT INTO pools (chain_id, pool_id, token0_address, token1_address, fee, tick_spacing, hook_address, sqrt_price_x96, current_tick, liquidity, tvl_usd, volume_24h_usd, fees_24h_usd, is_active, created_at, updated_at)
       VALUES (${pool.chainId}, ${pool.poolId}, ${pool.token0Address}, ${pool.token1Address}, ${pool.fee}, ${pool.tickSpacing}, ${pool.hookAddress}, ${pool.sqrtPriceX96}, ${pool.currentTick}, ${pool.liquidity}, ${pool.tvlUsd}, ${pool.volume24hUsd}, ${pool.fees24hUsd}, ${pool.isActive ? 1 : 0}, ${Date.now()}, ${Date.now()})
-      ON CONFLICT(pool_id) DO UPDATE SET
+      ON CONFLICT(chain_id, pool_id) DO UPDATE SET
         sqrt_price_x96 = excluded.sqrt_price_x96,
         current_tick = excluded.current_tick,
         liquidity = excluded.liquidity,
@@ -134,7 +134,7 @@ export const getUser = (address: string) =>
 /* ============ SWAP RECORD ============ */
 
 export interface RecordSwapInput {
-  chainId?: number
+  chainId: number
   txHash: string
   userAddress: string
   poolId: string | null
@@ -153,8 +153,8 @@ export const recordSwap = (tx: RecordSwapInput) =>
     yield* sql`
       INSERT INTO transactions
         (chain_id, tx_hash, user_address, pool_id, tx_type, token_in, token_out, amount_in, amount_out, amount_usd, block_number, block_timestamp, status, created_at)
-      VALUES (${tx.chainId ?? 1}, ${tx.txHash}, ${tx.userAddress}, ${tx.poolId}, 'swap', ${tx.tokenIn}, ${tx.tokenOut}, ${tx.amountIn}, ${tx.amountOut}, ${tx.amountUsd}, ${tx.blockNumber}, ${tx.blockTimestamp}, 'pending', ${Date.now()})
-      ON CONFLICT(tx_hash) DO NOTHING
+      VALUES (${tx.chainId}, ${tx.txHash}, ${tx.userAddress}, ${tx.poolId}, 'swap', ${tx.tokenIn}, ${tx.tokenOut}, ${tx.amountIn}, ${tx.amountOut}, ${tx.amountUsd}, ${tx.blockNumber}, ${tx.blockTimestamp}, 'pending', ${Date.now()})
+      ON CONFLICT(chain_id, tx_hash) DO NOTHING
     `
   })
 
@@ -169,6 +169,28 @@ export const insertLiquidityEvent = (event: Omit<LiquidityEvent, "id" | "created
         ${event.blockNumber}, ${event.blockTimestamp}, ${event.poolId}, ${event.tokenId}, ${event.ownerAddress},
         ${event.tickLower}, ${event.tickUpper}, ${event.liquidityDelta}, ${event.amount0}, ${event.amount1}, ${Date.now()})
       ON CONFLICT(chain_id, tx_hash, log_index) DO NOTHING
+    `
+  })
+
+export const getIndexerCursor = (chainId: number, indexer: string) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    const rows = yield* sql`
+      SELECT next_block FROM indexer_cursors
+      WHERE chain_id = ${chainId} AND indexer = ${indexer}
+    `
+    return rows.length === 0 ? null : BigInt(String((rows[0] as { next_block: number | string }).next_block))
+  })
+
+export const setIndexerCursor = (chainId: number, indexer: string, nextBlock: bigint) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    yield* sql`
+      INSERT INTO indexer_cursors (chain_id, indexer, next_block, updated_at)
+      VALUES (${chainId}, ${indexer}, ${nextBlock.toString()}, ${Date.now()})
+      ON CONFLICT(chain_id, indexer) DO UPDATE SET
+        next_block = excluded.next_block,
+        updated_at = excluded.updated_at
     `
   })
 
@@ -205,6 +227,27 @@ export const updateLiquidityPosition = (input: {
           cost_basis_token0 = ${input.costBasis0}, cost_basis_token1 = ${input.costBasis1},
           is_active = ${input.isActive ? 1 : 0}, updated_at = ${Date.now()}
       WHERE chain_id = ${input.chainId} AND protocol = 'v3' AND token_id = ${input.tokenId}
+      RETURNING id
+    `
+    const id = rows[0]?.id
+    return typeof id === "number" ? id : null
+  })
+
+export const updateV4LiquidityPosition = (input: {
+  chainId: number
+  tokenId: string
+  ownerAddress: string
+  tickLower: number
+  tickUpper: number
+  liquidity: string
+}) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    const rows = yield* sql`
+      UPDATE liquidity_positions
+      SET user_address = ${input.ownerAddress}, tick_lower = ${input.tickLower}, tick_upper = ${input.tickUpper},
+          liquidity = ${input.liquidity}, is_active = 1, updated_at = ${Date.now()}
+      WHERE chain_id = ${input.chainId} AND protocol = 'v4' AND token_id = ${input.tokenId}
       RETURNING id
     `
     const id = rows[0]?.id

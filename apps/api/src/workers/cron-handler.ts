@@ -1,21 +1,11 @@
-/**
- * AetherDEX Cron Handlers — Phase 2 Extended
- * Scheduled tasks (every 5 minutes per wrangler.jsonc):
- * - Refresh pool TVL/volume from on-chain
- * - Enqueue price refresh for top tokens
- * - Cleanup expired sessions
- * - **NEW: Keeper tick — evaluate TP/SL triggers and auto-recenter**
- */
-
 import { Effect } from "effect"
+import { makeDbLayer } from "../db/client"
+import { getIndexerCursor, setIndexerCursor } from "../db/queries"
+import { parseChainId } from "../lib/chain-id"
+import { runEffect } from "../lib/effect-bridge"
+import { V3LiquidityIndexer, V3LiquidityIndexerLive } from "../services/v3-liquidity-indexer.service"
+import { finalizedV3Head, nextV3IndexerRange, V3_INDEXER_NAME } from "./v3-indexer-cursor"
 
-/**
- * Convert a float to a BigInt scaled by 10^decimals, using string-based
- * decimal conversion to avoid IEEE-754 exponential notation that breaks
- * BigInt() parsing (e.g. Number.toString() returns "1e+21" for large values).
- *
- *   toScaledBigInt(2500.5, 6) → 2500500000n
- */
 function toScaledBigInt(value: number, decimals: number): bigint {
   const negative = value < 0
   const abs = Math.abs(value)
@@ -34,16 +24,15 @@ interface CronEnv {
   SETTLE_QUEUE: Queue
   KEEPER_QUEUE: Queue
   CHAIN_ID: string
+  RPC_URL?: string
+  V3_POSITION_MANAGER_ADDRESS?: string
+  V3_POSITION_MANAGER_DEPLOYMENT_BLOCK?: string
 }
 
-/**
- * Scheduled task — runs every 5 minutes
- */
 export const handleScheduled = async (event: ScheduledEvent, env: CronEnv, ctx: ExecutionContext): Promise<void> => {
   const cron = event.cron
   console.log(`Cron triggered: ${cron} at ${new Date(event.scheduledTime).toISOString()}`)
 
-  // Existing: refresh pools + prices
   ctx.waitUntil(
     Effect.runPromise(
       Effect.gen(function* () {
@@ -66,7 +55,8 @@ export const handleScheduled = async (event: ScheduledEvent, env: CronEnv, ctx: 
     ).catch((err) => console.error("Cron price enqueue error:", err)),
   )
 
-  // NEW: Keeper tick — evaluate TP/SL triggers and auto-recenter
+  ctx.waitUntil(runV3LiquidityIndexer(env).catch((err) => console.error("Cron v3 indexer error:", err)))
+
   ctx.waitUntil(
     Effect.runPromise(
       Effect.gen(function* () {
@@ -79,18 +69,37 @@ export const handleScheduled = async (event: ScheduledEvent, env: CronEnv, ctx: 
   )
 }
 
-/**
- * Keeper tick — evaluates pending TP/SL orders and queues execution jobs.
- * Runs every 5 minutes via cron. The actual execution happens in the queue handler
- * where the keeper has time to sign and submit transactions.
- */
+async function runV3LiquidityIndexer(env: CronEnv): Promise<void> {
+  const chainId = parseChainId(env.CHAIN_ID)
+  if (chainId === null || !env.RPC_URL || !env.V3_POSITION_MANAGER_ADDRESS) return
+
+  const indexerLayer = V3LiquidityIndexerLive({
+    chainId,
+    rpcUrl: env.RPC_URL,
+    positionManager: env.V3_POSITION_MANAGER_ADDRESS as `0x${string}`,
+    pools: [],
+  })
+
+  await runEffect(
+    Effect.gen(function* () {
+      const indexer = yield* V3LiquidityIndexer
+      const latestBlock = finalizedV3Head(yield* indexer.latestBlock)
+      const cursor = yield* getIndexerCursor(chainId, V3_INDEXER_NAME)
+      const deploymentBlock = BigInt(env.V3_POSITION_MANAGER_DEPLOYMENT_BLOCK ?? "0")
+      const range = nextV3IndexerRange(cursor, latestBlock, deploymentBlock)
+      if (!range) return
+      yield* indexer.indexRange(range.fromBlock, range.toBlock)
+      yield* setIndexerCursor(chainId, V3_INDEXER_NAME, range.toBlock + 1n)
+    }).pipe(Effect.provide(indexerLayer), Effect.provide(makeDbLayer(env.DB))),
+  )
+}
+
 async function runKeeperTick(env: CronEnv): Promise<void> {
   const chainId = Number.parseInt(env.CHAIN_ID, 10) || 11155111
   const now = Date.now()
 
   console.log(`[Keeper] Tick started for chain ${chainId}`)
 
-  // 1. Find pending TP/SL orders that haven't expired
   const pendingOrders = await env.DB.prepare(`
     SELECT id, pool_id, order_type, zero_for_one, amount_in, min_amount_out,
            trigger_price_x18, twap_window, slippage_bps, deadline, user_address
@@ -121,7 +130,6 @@ async function runKeeperTick(env: CronEnv): Promise<void> {
 
   console.log(`[Keeper] Evaluating ${pendingOrders.results.length} pending orders`)
 
-  // 2. Enqueue each order for evaluation + potential execution
   for (const order of pendingOrders.results) {
     try {
       await env.KEEPER_QUEUE.send({
@@ -144,7 +152,6 @@ async function runKeeperTick(env: CronEnv): Promise<void> {
     }
   }
 
-  // 3. Check for expired orders and mark them
   const expiredResult = await env.DB.prepare(`
     UPDATE tp_sl_orders
     SET status = 'expired'
@@ -157,7 +164,6 @@ async function runKeeperTick(env: CronEnv): Promise<void> {
     console.log(`[Keeper] Expired ${expiredResult.meta.changes} orders`)
   }
 
-  // 4. Check for out-of-range positions needing auto-recenter
   const outOfRangePositions = await env.DB.prepare(`
     SELECT pp.id, pp.position_id, pp.pool_id, pp.user_address, pp.min_drift_bps,
            lp.tick_lower, lp.tick_upper, lp.liquidity
@@ -206,7 +212,6 @@ async function runKeeperTick(env: CronEnv): Promise<void> {
 async function refreshTopPools(env: CronEnv): Promise<void> {
   console.log("Refreshing top pools from on-chain")
 
-  // Get top 50 active pools from D1
   const pools = await env.DB.prepare(
     `SELECT pool_id, token0_address, token1_address FROM pools
      WHERE is_active = 1 ORDER BY tvl_usd DESC LIMIT 50`,
@@ -214,7 +219,6 @@ async function refreshTopPools(env: CronEnv): Promise<void> {
 
   if (!pools.results) return
 
-  // Enqueue a price-refresh message for each pool's tokens
   const tokenAddresses = new Set<string>()
   for (const pool of pools.results) {
     tokenAddresses.add(pool.token0_address)
@@ -267,8 +271,6 @@ async function refreshTopPools(env: CronEnv): Promise<void> {
 }
 
 async function enqueuePriceRefresh(env: CronEnv): Promise<void> {
-  // Refresh verified tokens every 5 minutes — scoped to this chain: tokens are keyed
-  // by (chain_id, address) and another chain's tokens must not be refreshed here.
   const chainId = Number.parseInt(env.CHAIN_ID, 10)
   const tokens = await env.DB.prepare("SELECT address FROM tokens WHERE is_verified = 1 AND chain_id = ? LIMIT 200")
     .bind(Number.isNaN(chainId) ? 1 : chainId)
@@ -278,7 +280,6 @@ async function enqueuePriceRefresh(env: CronEnv): Promise<void> {
 
   if (!tokens.results || tokens.results.length === 0) return
 
-  // Split into batches of 50 (per queue message limit)
   for (let i = 0; i < tokens.results.length; i += 50) {
     const batch = tokens.results.slice(i, i + 50).map((t) => t.address)
     await env.PRICE_QUEUE.send({
