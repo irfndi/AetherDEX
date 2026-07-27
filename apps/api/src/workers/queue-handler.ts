@@ -7,6 +7,21 @@
  * - **NEW: auto-recenter-check: check and queue position rebalances**
  */
 
+import { createPublicClient, http } from "viem"
+
+const AETHER_HOOK_ABI = [
+  {
+    name: "getCurrentTwap",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "poolId", type: "bytes32" },
+      { name: "secondsAgo", type: "uint32" },
+    ],
+    outputs: [{ name: "priceX18", type: "uint256" }],
+  },
+] as const
+
 export interface PriceRefreshMessage {
   type: "price-refresh"
   tokens: string[]
@@ -64,6 +79,8 @@ interface QueueEnv {
   STORAGE: R2Bucket
   WEBSOCKET_HUB: DurableObjectNamespace
   CHAIN_ID: string
+  RPC_URL?: string
+  AETHER_HOOK_ADDRESS?: string
 }
 
 const readIntegerCacheValue = (payload: string, field: string): string | null => {
@@ -73,6 +90,44 @@ const readIntegerCacheValue = (payload: string, field: string): string | null =>
     BigInt(value)
     return value
   } catch {
+    return null
+  }
+}
+
+/**
+ * Read the TWAP from the on-chain AetherHook oracle and cache it in KV.
+ * Returns the price as a decimal string, or null when unconfigured / on error.
+ */
+async function readTwapFromChain(
+  env: Pick<QueueEnv, "CACHE" | "RPC_URL" | "AETHER_HOOK_ADDRESS">,
+  poolId: string,
+  twapWindow: number,
+): Promise<string | null> {
+  const rpcUrl = env.RPC_URL
+  const hookAddress = env.AETHER_HOOK_ADDRESS
+  if (!rpcUrl || !hookAddress) {
+    console.warn("[Keeper] RPC_URL or AETHER_HOOK_ADDRESS not configured — skipping on-chain TWAP read")
+    return null
+  }
+
+  try {
+    const client = createPublicClient({ transport: http(rpcUrl) })
+    const priceX18 = await client.readContract({
+      address: hookAddress as `0x${string}`,
+      abi: AETHER_HOOK_ABI,
+      functionName: "getCurrentTwap",
+      args: [poolId as `0x${string}`, twapWindow],
+    })
+
+    const priceStr = priceX18.toString()
+    const twapKey = `twap:${poolId}:${twapWindow}`
+    await env.CACHE.put(twapKey, JSON.stringify({ price: priceStr, updatedAt: Date.now() }), {
+      expirationTtl: 300,
+    })
+
+    return priceStr
+  } catch (error) {
+    console.error(`[Keeper] On-chain TWAP read failed for pool ${poolId}:`, error)
     return null
   }
 }
@@ -157,11 +212,22 @@ async function handleTpSlEvaluate(msg: TpSlEvaluateMessage, env: QueueEnv): Prom
     return
   }
 
-  // 4. Read TWAP from hook (via KV cache)
+  // 4. Read TWAP — populate cache from on-chain AetherHook oracle, then read from KV
   const twapKey = `twap:${msg.poolId}:${msg.twapWindow}`
-  const twapData = await env.CACHE.get(twapKey)
 
-  const twapPriceX18 = twapData === null ? null : readIntegerCacheValue(twapData, "price")
+  let twapPriceX18: string | null = null
+  const twapData = await env.CACHE.get(twapKey)
+  if (twapData !== null) {
+    twapPriceX18 = readIntegerCacheValue(twapData, "price")
+  }
+
+  if (twapPriceX18 === null) {
+    const chainTwap = await readTwapFromChain(env, msg.poolId, msg.twapWindow)
+    if (chainTwap !== null) {
+      twapPriceX18 = readIntegerCacheValue(JSON.stringify({ price: chainTwap }), "price")
+    }
+  }
+
   if (twapPriceX18 === null) {
     console.log(`[Keeper] No valid TWAP available for pool ${msg.poolId}, skipping`)
     return

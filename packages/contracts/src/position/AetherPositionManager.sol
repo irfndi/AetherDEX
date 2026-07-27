@@ -137,6 +137,9 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
         (closedAmount0, closedAmount1, usedAmount0, usedAmount1) =
             abi.decode(result, (uint256, uint256, uint256, uint256));
         if (closedAmount0 < params.amount0Min || closedAmount1 < params.amount1Min) revert SlippageExceeded();
+        // Enforce the same maxima as mintPosition: the re-mint must not consume more of
+        // either token than the caller's stated caps (fresh funds pulled + closed proceeds).
+        if (usedAmount0 > params.amount0Max || usedAmount1 > params.amount1Max) revert AmountMaximumExceeded();
 
         _positions[params.tokenId] =
             Position(position.poolKey, params.tickLower, params.tickUpper, params.liquidity, position.salt);

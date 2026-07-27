@@ -66,23 +66,13 @@ const makeAutoRecenterService = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
 
   const detectOutOfRangePositions = (
-    chainId: number,
+    _chainId: number,
   ): Effect.Effect<readonly RebalanceRequest[], AutoRecenterError, never> =>
-    Effect.gen(function* () {
-      // Query positions with active auto-recenter policies
-      const positions = (yield* sql`
-        SELECT pp.*, lp.tick_lower, lp.tick_upper, lp.liquidity
-        FROM position_policies pp
-        JOIN liquidity_positions lp ON pp.position_id = CAST(lp.id AS TEXT) AND lp.chain_id = pp.chain_id
-        WHERE pp.chain_id = ${chainId}
-          AND pp.is_active = 1
-          AND pp.policy_type = 'auto_recenter'
-          AND lp.is_active = 1
-      `) as unknown as readonly Record<string, unknown>[]
-
-      void positions
-      return []
-    }).pipe(Effect.catch((error) => Effect.fail(new AutoRecenterError(`Failed to detect positions: ${String(error)}`))))
+    // Phase 2 gating: detection runs only through the cron → queue-handler path,
+    // which verifies on-chain state per-position before acting. Trusting D1 alone
+    // is unsafe until the Phase 3 indexer reconciles positions on-chain.
+    // See AGENTS.md: "reconciliation-gated per action" until Phase 3 indexer lands.
+    Effect.succeed([])
 
   const computeOptimalRange = (input: {
     readonly currentTick: number

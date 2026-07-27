@@ -10,6 +10,10 @@ import { Effect, Schema } from "effect"
 
 export const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080/api/v1"
 
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
 export interface ListPoolsOptions {
   sortBy?: "tvl" | "volume" | "fees" | "created"
   sortDirection?: "asc" | "desc"

@@ -2,11 +2,12 @@ import { useAppKit } from "@reown/appkit/react"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { type FormEvent, useEffect, useState } from "react"
 import { encodeFunctionData, getAddress, isAddress, parseUnits } from "viem"
-import { useAccount, usePublicClient, useWalletClient } from "wagmi"
+import { useAccount, useChainId, usePublicClient, useSwitchChain, useWalletClient } from "wagmi"
 import { DexScreenerChart } from "../components/DexScreenerChart"
 import { RangeSelector } from "../components/RangeSelector"
 import { TokenChip } from "../components/TokenChip"
 import { Button, Card, CardBody, Input, Stat } from "../components/ui"
+import { API_URL } from "../lib/api"
 import {
   buildLiquidityRequest,
   LIQUIDITY_PROTOCOLS,
@@ -16,7 +17,6 @@ import {
   type LiquidityTransactionRequest,
   validateLiquidityForm,
 } from "../lib/liquidity"
-import { submitProtectedRawTransaction } from "../lib/protected-submission"
 import { buildV4SingleSidedCall, findV4SwapAmount } from "../lib/v4-liquidity"
 
 interface Pool {
@@ -48,7 +48,6 @@ export const Route = createFileRoute("/pools/$poolId")({
   loader: ({ params }) => ({ poolId: params.poolId }),
 })
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080/api/v1"
 const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID ?? "11155111")
 const ERC20_ABI = [
   {
@@ -192,6 +191,9 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
   const { address, isConnected } = useAccount()
   const publicClient = usePublicClient()
   const { data: walletClient } = useWalletClient()
+  const chainId = useChainId()
+  const { mutate: switchChain, isPending: isSwitchingChain } = useSwitchChain()
+  const isWrongChain = isConnected && chainId !== CHAIN_ID
   const [values, setValues] = useState<LiquidityFormValues>({
     protocol: "v4",
     tokenSide: "token0",
@@ -225,6 +227,10 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
       open()
       return
     }
+    if (isWrongChain) {
+      setErrorMessage(`This pool is on chain ${CHAIN_ID}; switch your wallet network before continuing.`)
+      return
+    }
 
     const nextRequest = buildLiquidityRequest(pool.poolId, values, pool.tickSpacing)
     if (!nextRequest) return
@@ -237,9 +243,7 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
       }
       if (!address || !walletClient || !publicClient) throw new Error("Wallet client is not ready")
       const routerAddress = import.meta.env.VITE_ROUTER_ADDRESS
-      const privateRpcUrl = import.meta.env.VITE_PRIVATE_RPC_URL
       if (!routerAddress || !isAddress(routerAddress)) throw new Error("V4 router address is not configured")
-      if (!privateRpcUrl) throw new Error("Protected submission is not configured")
       if (!selectedToken || !otherToken || !token0 || !token1 || !pool.hookAddress || !isAddress(pool.hookAddress)) {
         throw new Error("Pool token metadata is incomplete")
       }
@@ -298,27 +302,20 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
         args: [address, router],
       })
       if (allowance < amountIn) {
-        const approvalPrepared = await walletClient.prepareTransactionRequest({
+        const approvalHash = await walletClient.sendTransaction({
           account: address,
           to: tokenAddress,
           data: encodeFunctionData({ abi: ERC20_ABI, functionName: "approve", args: [router, amountIn] }),
           value: 0n,
         })
-        const approvalSigned = await walletClient.signTransaction(approvalPrepared)
-        const approvalHash = await submitProtectedRawTransaction({
-          rpcUrl: privateRpcUrl,
-          signedTransaction: approvalSigned,
-        })
         await publicClient.waitForTransactionReceipt({ hash: approvalHash })
       }
-      const prepared = await walletClient.prepareTransactionRequest({
+      const txHash = await walletClient.sendTransaction({
         account: address,
         to: router,
         data: call.calldata,
         value: 0n,
       })
-      const signedTransaction = await walletClient.signTransaction(prepared)
-      const txHash = await submitProtectedRawTransaction({ rpcUrl: privateRpcUrl, signedTransaction })
       setRequest({ ...nextRequest, execution: { status: "submitted", txHash } })
     } catch (error: unknown) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to prepare liquidity transaction")
@@ -482,11 +479,28 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
             </div>
           </div>
 
+          {isWrongChain ? (
+            <div role="alert" className="alert alert-warning text-sm">
+              <span>
+                Your wallet is connected to chain {chainId}, but this pool is on chain {CHAIN_ID}. Switch networks to
+                continue.
+              </span>
+              <button
+                type="button"
+                className="btn btn-warning btn-xs"
+                disabled={isSwitchingChain}
+                onClick={() => switchChain({ chainId: CHAIN_ID })}
+              >
+                {isSwitchingChain ? "Switching…" : "Switch network"}
+              </button>
+            </div>
+          ) : null}
+
           {request ? (
             <div role="status" className="alert alert-warning text-sm">
               <span>
                 {request.execution.status === "submitted"
-                  ? `Protected transaction submitted: ${request.execution.txHash}`
+                  ? `Transaction submitted: ${request.execution.txHash}`
                   : "V3 execution remains gated until its position manager and protected batch route are configured."}
               </span>
             </div>
@@ -501,10 +515,10 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
             type="submit"
             variant="primary"
             fullWidth
-            disabled={isConnected && (!validation.valid || request !== null)}
+            disabled={isConnected && (!validation.valid || request !== null || preparing || isWrongChain)}
           >
             {preparing
-              ? "Preparing protected transaction…"
+              ? "Preparing transaction…"
               : request
                 ? "Transaction submitted"
                 : isConnected

@@ -553,30 +553,6 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
         if (balance1 > 0) IERC20(token1).safeTransfer(recipient, balance1);
     }
 
-    function _positionId(PoolKey calldata poolKey, ModifyLiquidityParams calldata params)
-        internal
-        pure
-        returns (bytes32)
-    {
-        return keccak256(abi.encode(poolKey.toId(), params.tickLower, params.tickUpper, params.salt));
-    }
-
-    function _refundSingleSidedDust(
-        PoolKey calldata poolKey,
-        address recipient,
-        uint256 balance0Before,
-        uint256 balance1Before
-    ) internal {
-        address token0 = Currency.unwrap(poolKey.currency0);
-        address token1 = Currency.unwrap(poolKey.currency1);
-        uint256 balance0After = IERC20(token0).balanceOf(address(this));
-        uint256 balance1After = IERC20(token1).balanceOf(address(this));
-        uint256 balance0 = balance0After > balance0Before ? balance0After - balance0Before : 0;
-        uint256 balance1 = balance1After > balance1Before ? balance1After - balance1Before : 0;
-        if (balance0 > 0) IERC20(token0).safeTransfer(recipient, balance0);
-        if (balance1 > 0) IERC20(token1).safeTransfer(recipient, balance1);
-    }
-
     /// @notice Receive ETH (in case someone sends it accidentally)
     receive() external payable {}
 }

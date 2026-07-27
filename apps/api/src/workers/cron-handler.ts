@@ -9,6 +9,23 @@
 
 import { Effect } from "effect"
 
+/**
+ * Convert a float to a BigInt scaled by 10^decimals, using string-based
+ * decimal conversion to avoid IEEE-754 exponential notation that breaks
+ * BigInt() parsing (e.g. Number.toString() returns "1e+21" for large values).
+ *
+ *   toScaledBigInt(2500.5, 6) → 2500500000n
+ */
+function toScaledBigInt(value: number, decimals: number): bigint {
+  const negative = value < 0
+  const abs = Math.abs(value)
+  const str = abs.toFixed(decimals)
+  const [whole, frac] = str.split(".")
+  const fracPadded = (frac ?? "").padEnd(decimals, "0").slice(0, decimals)
+  const result = BigInt(whole) * 10n ** BigInt(decimals) + (fracPadded ? BigInt(fracPadded) : 0n)
+  return negative ? -result : result
+}
+
 interface CronEnv {
   DB: D1Database
   CACHE: KVNamespace
@@ -230,9 +247,9 @@ async function refreshTopPools(env: CronEnv): Promise<void> {
       const t1 = prices.get(pool.token1_address) ?? null
 
       if (t0?.priceUsd && t1?.priceUsd && t0.priceUsd > 0 && t1.priceUsd > 0) {
-        const scale = 1_000_000n
-        const numerator = BigInt(Math.round(t0.priceUsd * Number(scale)))
-        const denominator = BigInt(Math.round(t1.priceUsd * Number(scale)))
+        const PRICE_DECIMALS = 6
+        const numerator = toScaledBigInt(t0.priceUsd, PRICE_DECIMALS)
+        const denominator = toScaledBigInt(t1.priceUsd, PRICE_DECIMALS)
         if (denominator === 0n) continue
         const spotPriceX18 = String((numerator * 10n ** 18n) / denominator)
         await env.CACHE.put(

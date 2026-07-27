@@ -30,7 +30,11 @@ import {Errors} from "../lib/Errors.sol";
 ///      - Dual trigger: both spot price AND TWAP must breach the trigger (anti-flash-loan)
 ///      - Slippage cap: maximum 5% slippage on execution
 ///      - Expiry: orders expire after a configurable deadline
-///      - Non-custodial: this contract never holds user funds between transactions
+///      - Non-custodial: this contract holds NO user funds between transactions. On
+///        execution the input is pulled only once the dual trigger is re-verified, settled
+///        to the PoolManager within the same atomic transaction, and swap proceeds are
+///        taken DIRECTLY from the PoolManager to the order owner (`take(currencyOut,
+///        order.owner, …)`). There is no deposit/withdraw layer and no intermediary balance.
 contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using CurrencyLibrary for Currency;
@@ -107,12 +111,7 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
         uint256 triggerPriceX18
     );
 
-    event OrderExecuted(
-        uint256 indexed orderId,
-        address indexed owner,
-        uint256 amountOut,
-        uint256 timestamp
-    );
+    event OrderExecuted(uint256 indexed orderId, address indexed owner, uint256 amountOut, uint256 timestamp);
 
     event OrderCancelled(uint256 indexed orderId, address indexed owner);
 
@@ -205,9 +204,19 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
     }
 
     /// @notice Execute a triggered order (called by keeper after trigger validation)
+    /// @dev Non-custodial ordering guarantees, by construction:
+    ///      1. The dual trigger is re-verified BEFORE any funds move. If the hook's TWAP
+    ///         oracle cannot answer (e.g. insufficient observations), the order is SKIPPED
+    ///         (returns false) instead of reverting, so one unverifiable order cannot brick
+    ///         a keeper's batch execution.
+    ///      2. Input tokens are pulled from the owner only once execution is committed, are
+    ///         settled to the PoolManager inside the same unlock callback, and swap proceeds
+    ///         are taken DIRECTLY from the PoolManager to the order owner — this contract
+    ///         never holds user output and keeps no balance between transactions.
     /// @param orderId The order to execute
     /// @param hookData Data passed to the hook (for TWAP verification)
-    function executeOrder(uint256 orderId, bytes calldata hookData) external nonReentrant {
+    /// @return executed True if the swap executed; false if skipped (oracle unavailable)
+    function executeOrder(uint256 orderId, bytes calldata hookData) external nonReentrant returns (bool executed) {
         TpSlOrder storage order = orders[orderId];
         if (order.status != OrderStatus.PENDING) revert OrderNotPending();
         if (block.timestamp > order.deadline) {
@@ -215,13 +224,15 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
             revert OrderExpired();
         }
 
+        // Validate trigger first: both spot AND TWAP must breach. A failing oracle read
+        // returns false here (skip) rather than reverting the whole execution batch.
+        if (!_validateTrigger(order)) return false;
+
+        // Pull input from the owner only now that execution is committed.
         address tokenIn = Currency.unwrap(order.zeroForOne ? order.poolKey.currency0 : order.poolKey.currency1);
         IERC20(tokenIn).safeTransferFrom(order.owner, address(this), order.amountIn);
 
-        // Validate trigger: both spot AND TWAP must breach
-        _validateTrigger(order);
-
-        // Execute the swap via PoolManager
+        // Execute the swap via PoolManager; proceeds go directly to the order owner.
         SwapParams memory swapParams = SwapParams({
             zeroForOne: order.zeroForOne,
             amountSpecified: -int256(uint256(order.amountIn)),
@@ -229,24 +240,21 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
         });
 
         bytes memory result = poolManager.unlock(
-            abi.encode(Action.SWAP_EXACT_IN, abi.encode(order.poolKey, swapParams, hookData))
+            abi.encode(Action.SWAP_EXACT_IN, abi.encode(order.poolKey, swapParams, hookData, order.owner))
         );
 
         BalanceDelta delta = abi.decode(result, (BalanceDelta));
-        uint256 amountOut = order.zeroForOne
-            ? uint256(int256(delta.amount1()))
-            : uint256(int256(delta.amount0()));
+        uint256 amountOut = order.zeroForOne ? uint256(int256(delta.amount1())) : uint256(int256(delta.amount0()));
 
-        // Slippage check
+        // Slippage check — a revert here atomically unwinds the input pull, so the owner
+        // never loses funds to a failed execution.
         if (amountOut < order.minAmountOut) revert ExecutionFailed();
 
         order.status = OrderStatus.EXECUTED;
         order.executedAt = block.timestamp;
 
-        address tokenOut = Currency.unwrap(order.zeroForOne ? order.poolKey.currency1 : order.poolKey.currency0);
-        IERC20(tokenOut).safeTransfer(order.owner, amountOut);
-
         emit OrderExecuted(orderId, order.owner, amountOut, block.timestamp);
+        executed = true;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -305,21 +313,39 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
     //  INTERNAL FUNCTIONS
     // ═══════════════════════════════════════════════════════════════════════════
 
-    function _validateTrigger(TpSlOrder memory order) internal view {
+    /// @dev Re-validates the dual trigger (spot AND TWAP) at execution time.
+    ///      Returns false — meaning "skip, do not execute" — when the hook's TWAP read
+    ///      reverts (e.g. {Errors.InsufficientObservations}): executing a TP/SL on spot
+    ///      alone would defeat the anti-flash-loan dual trigger, but the oracle being
+    ///      temporarily unavailable must not revert (and thus brick) a keeper's batch.
+    ///      A healthy oracle whose prices have not breached still reverts
+    ///      {TriggerNotBreached}, since that is a caller error (check `checkTrigger` first).
+    function _validateTrigger(TpSlOrder memory order) internal view returns (bool) {
         // Read current spot price from PoolManager
         (, int24 tick,,) = poolManager.getSlot0(order.poolKey.toId());
         uint256 spotPriceX18 = _tickToPriceX18(tick);
 
-        // Read TWAP from AetherHook
-        uint256 twapPriceX18 = aetherHook.getCurrentTwap(PoolId.unwrap(order.poolKey.toId()), order.twapWindow);
+        // Read TWAP from AetherHook — an oracle failure means the trigger cannot be
+        // verified, so signal a skip rather than propagating the revert.
+        uint256 twapPriceX18;
+        try aetherHook.getCurrentTwap(PoolId.unwrap(order.poolKey.toId()), order.twapWindow) returns (uint256 price) {
+            twapPriceX18 = price;
+        } catch {
+            return false;
+        }
 
         // Dual trigger: BOTH spot AND TWAP must breach
         if (!_evaluateTrigger(order, spotPriceX18, twapPriceX18)) {
             revert TriggerNotBreached();
         }
+        return true;
     }
 
-    function _evaluateTrigger(TpSlOrder memory order, uint256 spotPriceX18, uint256 twapPriceX18) internal pure returns (bool) {
+    function _evaluateTrigger(TpSlOrder memory order, uint256 spotPriceX18, uint256 twapPriceX18)
+        internal
+        pure
+        returns (bool)
+    {
         if (order.orderType == OrderType.TAKE_PROFIT) {
             if (order.zeroForOne) {
                 return spotPriceX18 <= order.triggerPriceX18 && twapPriceX18 <= order.triggerPriceX18;
@@ -347,9 +373,9 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
         (Action action, bytes memory actionData) = abi.decode(data, (Action, bytes));
 
         if (action == Action.SWAP_EXACT_IN) {
-            (PoolKey memory poolKey, SwapParams memory swapParams, bytes memory hookData) =
-                abi.decode(actionData, (PoolKey, SwapParams, bytes));
-            return _handleSwapExactIn(poolKey, swapParams, hookData);
+            (PoolKey memory poolKey, SwapParams memory swapParams, bytes memory hookData, address proceedsRecipient) =
+                abi.decode(actionData, (PoolKey, SwapParams, bytes, address));
+            return _handleSwapExactIn(poolKey, swapParams, hookData, proceedsRecipient);
         }
 
         revert Errors.InvalidAction();
@@ -358,7 +384,8 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
     function _handleSwapExactIn(
         PoolKey memory poolKey,
         SwapParams memory swapParams,
-        bytes memory hookData
+        bytes memory hookData,
+        address proceedsRecipient
     ) internal returns (bytes memory) {
         if (swapParams.amountSpecified >= 0) revert InvalidAmount();
         uint256 amountIn = uint256(-swapParams.amountSpecified);
@@ -371,13 +398,12 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
         IERC20(Currency.unwrap(currencyIn)).safeTransfer(address(poolManager), amountIn);
         poolManager.settle();
 
-        // Take output token
+        // Take output token DIRECTLY to the recipient (the order owner) — non-custodial:
+        // this contract never holds, and never re-routes, the swap proceeds.
         Currency currencyOut = swapParams.zeroForOne ? poolKey.currency1 : poolKey.currency0;
-        uint256 amountOut = swapParams.zeroForOne
-            ? uint256(int256(delta.amount1()))
-            : uint256(int256(delta.amount0()));
+        uint256 amountOut = swapParams.zeroForOne ? uint256(int256(delta.amount1())) : uint256(int256(delta.amount0()));
         if (amountOut > 0) {
-            poolManager.take(currencyOut, address(this), amountOut);
+            poolManager.take(currencyOut, proceedsRecipient, amountOut);
         }
 
         return abi.encode(delta);
@@ -385,8 +411,12 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
 
     // ── Helpers ────────────────────────────────────────────────────────────
 
+    /// @dev V4 core rejects limits AT the boundaries, not beyond them: Pool.swap reverts
+    ///      PriceLimitOutOfBounds when `sqrtPriceLimitX96 <= TickMath.MIN_SQRT_PRICE`
+    ///      (zeroForOne) or `>= TickMath.MAX_SQRT_PRICE` (oneForZero). The nearest accepted
+    ///      limits are therefore MIN_SQRT_PRICE + 1 / MAX_SQRT_PRICE - 1.
     function _sqrtPriceLimit(bool zeroForOne) internal pure returns (uint160) {
-        return zeroForOne ? TickMath.MIN_SQRT_PRICE : TickMath.MAX_SQRT_PRICE;
+        return zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
     }
 
     function _tickToPriceX18(int24 tick) internal pure returns (uint256) {
@@ -394,5 +424,4 @@ contract AetherTPSL is IUnlockCallback, Ownable, ReentrancyGuard {
         uint256 priceX96 = FullMath.mulDiv(uint256(sqrtPriceX96), uint256(sqrtPriceX96), FixedPoint96.Q96);
         return FullMath.mulDiv(priceX96, 1e18, FixedPoint96.Q96);
     }
-
 }

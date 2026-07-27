@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useMemo, useState } from "react"
 import { useAccount } from "wagmi"
 import { Card, CardBody, CardTitle } from "../components/ui/Card"
 import { Input } from "../components/ui/Input"
+import { API_URL, isRecord } from "../lib/api"
 import {
   buildRebalanceIntent,
   type RebalanceFormValues,
@@ -29,12 +30,6 @@ interface IndexedPosition {
   readonly tickLower: number
   readonly tickUpper: number
   readonly liquidity: string
-}
-
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080/api/v1"
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
 }
 
 function isIndexedPosition(value: unknown): value is IndexedPosition {

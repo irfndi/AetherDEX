@@ -17,6 +17,24 @@ interface IAetherFactory {
         external
         returns (bytes32 poolId);
 
+    /// @notice Create and initialize a new pool with a transaction deadline
+    /// @dev Reverts with {Errors.DeadlineExpired} if `block.timestamp > deadline`
+    /// @param token0 First token (must be sorted < token1)
+    /// @param token1 Second token
+    /// @param fee Pool fee tier (e.g. 3000 = 0.3%)
+    /// @param tickSpacing Tick spacing for concentrated liquidity
+    /// @param sqrtPriceX96 Initial sqrt price as Q64.96
+    /// @param deadline Latest timestamp at which the transaction may execute
+    /// @return poolId The keccak256-encoded PoolKey identifier
+    function createPoolWithDeadline(
+        address token0,
+        address token1,
+        uint24 fee,
+        int24 tickSpacing,
+        uint160 sqrtPriceX96,
+        uint256 deadline
+    ) external returns (bytes32 poolId);
+
     /// @notice Get pool key by ID
     /// @param poolId The keccak256-encoded PoolKey identifier
     /// @return The PoolKey for the given pool

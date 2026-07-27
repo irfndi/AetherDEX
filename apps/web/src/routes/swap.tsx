@@ -8,7 +8,6 @@ import { type Token, TokenSearch } from "../components/TokenSearch"
 import { Button } from "../components/ui/Button"
 import { Card, CardBody } from "../components/ui/Card"
 import { useSiweAuth } from "../hooks/useSiweAuth"
-import { submitProtectedRawTransaction } from "../lib/protected-submission"
 
 export const Route = createFileRoute("/swap")({
   component: SwapPage,
@@ -135,23 +134,14 @@ function SwapPage() {
       if (!/^0x[a-fA-F0-9]{40}$/.test(calldata.to)) {
         throw new Error(`Invalid router address from API: ${calldata.to}`)
       }
-      const privateRpcUrl = import.meta.env.VITE_PRIVATE_RPC_URL
-      if (!privateRpcUrl) throw new Error("Protected submission is not configured")
       if (!walletClient) throw new Error("Wallet client is not ready")
-      const prepared = await walletClient.prepareTransactionRequest({
+      setSwapState("signing")
+      const hash = await walletClient.sendTransaction({
         account: address,
         to: calldata.to as `0x${string}`,
         data: calldata.data as `0x${string}`,
         value: BigInt(calldata.value || "0"),
       })
-      const signedTransaction = await walletClient.signTransaction(prepared)
-
-      setSwapState("signing")
-      const hash = await submitProtectedRawTransaction({
-        rpcUrl: privateRpcUrl,
-        signedTransaction,
-      })
-
       setTxHash(hash)
       setSwapState("pending")
     } catch (err) {
