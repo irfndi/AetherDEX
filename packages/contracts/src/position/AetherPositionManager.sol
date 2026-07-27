@@ -37,6 +37,7 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
     }
 
     // slither-disable-next-line write-after-write
+    // slither-disable-next-line reentrancy-benign
     function mintPosition(MintPositionParams calldata params)
         external
         payable
@@ -69,7 +70,8 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
     }
 
     // PoolManager is the trusted unlock target; the balance snapshots are intentional settlement guards.
-    // slither-disable-next-line reentrancy-balance,reentrancy-benign,write-after-write
+    // slither-disable-start reentrancy-balance
+    // slither-disable-next-line reentrancy-benign
     function mintPositionSingleSided(SingleSidedMintParams calldata params)
         external
         nonReentrant
@@ -91,6 +93,7 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
         uint256 balance1Before = _balanceBeforeCall(params.poolKey.currency1);
         Currency currencyIn = params.zeroForOne ? params.poolKey.currency0 : params.poolKey.currency1;
         IERC20(Currency.unwrap(currencyIn)).safeTransferFrom(msg.sender, address(this), params.amountIn);
+        // slither-disable-next-line write-after-write
         _unlockActive = true;
         bytes memory result = poolManager.unlock(
             abi.encode(Action.SINGLE_SIDED_MINT, abi.encode(position, params, balance0Before, balance1Before))
@@ -104,6 +107,7 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
         _safeMint(params.recipient, tokenId);
         _refund(params.poolKey, params.recipient, balance0Before, balance1Before);
     }
+    // slither-disable-end reentrancy-balance
 
     // slither-disable-next-line write-after-write
     function removeLiquidity(RemoveLiquidityParams calldata params)
@@ -137,7 +141,8 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
         _pay(position.poolKey, recipient, amount0, amount1);
     }
 
-    // slither-disable-next-line reentrancy-balance,reentrancy-no-eth,write-after-write
+    // slither-disable-start reentrancy-balance,reentrancy-no-eth
+    // slither-disable-next-line reentrancy-benign
     function rebalancePosition(RebalancePositionParams calldata params)
         external
         payable
@@ -174,6 +179,7 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
             Position(position.poolKey, params.tickLower, params.tickUpper, params.liquidity, position.salt);
         _refund(position.poolKey, positionOwner, balance0Before, balance1Before);
     }
+    // slither-disable-end reentrancy-balance,reentrancy-no-eth
 
     function getPosition(uint256 tokenId) external view returns (Position memory) {
         return _positions[tokenId];
