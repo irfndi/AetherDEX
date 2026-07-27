@@ -2,7 +2,7 @@ import type { InputHTMLAttributes } from "react"
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string
-  error?: string
+  error?: string | undefined
 }
 
 export function Input({ label, error, className = "", id, ...rest }: InputProps) {
