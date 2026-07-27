@@ -27,6 +27,7 @@ export interface Token {
 }
 
 export interface Pool {
+  chainId: number
   poolId: string
   token0Address: string
   token1Address: string
@@ -49,6 +50,7 @@ export type TransactionStatus = "pending" | "confirmed" | "failed"
 
 export interface Transaction {
   id: number
+  chainId: number
   txHash: string
   userAddress: string
   poolId: string | null
@@ -68,8 +70,12 @@ export interface Transaction {
 
 export interface LiquidityPosition {
   id: number
+  chainId: number
+  protocol: "v3" | "v4"
+  tokenId: string | null
   userAddress: string
   poolId: string
+  tickSpacing: number
   tickLower: number
   tickUpper: number
   liquidity: string
@@ -77,9 +83,42 @@ export interface LiquidityPosition {
   amount1: string
   feesEarnedToken0: string
   feesEarnedToken1: string
+  costBasisToken0: string
+  costBasisToken1: string
   isActive: boolean
   createdAt: number
   updatedAt: number
+  readonly poolToken0Address?: string
+  readonly poolToken1Address?: string
+  readonly poolToken0Decimals?: number
+  readonly poolToken1Decimals?: number
+  readonly poolFee?: number
+  readonly poolHookAddress?: string | null
+  readonly poolSqrtPriceX96?: string
+  readonly poolCurrentTick?: number
+  readonly poolLiquidity?: string
+}
+
+export type LiquidityEventType = "mint" | "burn" | "increase" | "decrease" | "collect" | "transfer"
+
+export interface LiquidityEvent {
+  id: number
+  chainId: number
+  protocol: "v3" | "v4"
+  eventType: LiquidityEventType
+  txHash: string
+  logIndex: number
+  blockNumber: number
+  blockTimestamp: number
+  poolId: string | null
+  tokenId: string | null
+  ownerAddress: string | null
+  tickLower: number | null
+  tickUpper: number | null
+  liquidityDelta: string | null
+  amount0: string | null
+  amount1: string | null
+  createdAt: number
 }
 
 export interface PriceCache {
@@ -109,6 +148,7 @@ export function rowToToken(row: Record<string, unknown>): Token {
 
 export function rowToPool(row: Record<string, unknown>): Pool {
   return {
+    chainId: (row.chain_id as number | undefined) ?? 1,
     poolId: row.pool_id as string,
     token0Address: row.token0_address as string,
     token1Address: row.token1_address as string,
@@ -130,6 +170,7 @@ export function rowToPool(row: Record<string, unknown>): Pool {
 export function rowToTransaction(row: Record<string, unknown>): Transaction {
   return {
     id: row.id as number,
+    chainId: (row.chain_id as number | undefined) ?? 1,
     txHash: row.tx_hash as string,
     userAddress: row.user_address as string,
     poolId: (row.pool_id as string | null) ?? null,
@@ -162,8 +203,12 @@ export function rowToUser(row: Record<string, unknown>): User {
 export function rowToLiquidityPosition(row: Record<string, unknown>): LiquidityPosition {
   return {
     id: row.id as number,
+    chainId: (row.chain_id as number | undefined) ?? 1,
+    protocol: row.protocol === "v3" ? "v3" : "v4",
+    tokenId: (row.token_id as string | null) ?? null,
     userAddress: row.user_address as string,
     poolId: row.pool_id as string,
+    tickSpacing: (row.tick_spacing as number | undefined) ?? 0,
     tickLower: row.tick_lower as number,
     tickUpper: row.tick_upper as number,
     liquidity: row.liquidity as string,
@@ -171,9 +216,42 @@ export function rowToLiquidityPosition(row: Record<string, unknown>): LiquidityP
     amount1: row.amount1 as string,
     feesEarnedToken0: row.fees_earned_token0 as string,
     feesEarnedToken1: row.fees_earned_token1 as string,
+    costBasisToken0: (row.cost_basis_token0 as string | undefined) ?? "0",
+    costBasisToken1: (row.cost_basis_token1 as string | undefined) ?? "0",
     isActive: Boolean(row.is_active),
     createdAt: row.created_at as number,
     updatedAt: row.updated_at as number,
+    poolToken0Address: (row.pool_token0_address as string | undefined) ?? undefined,
+    poolToken1Address: (row.pool_token1_address as string | undefined) ?? undefined,
+    poolToken0Decimals: (row.pool_token0_decimals as number | undefined) ?? undefined,
+    poolToken1Decimals: (row.pool_token1_decimals as number | undefined) ?? undefined,
+    poolFee: (row.pool_fee as number | undefined) ?? undefined,
+    poolHookAddress: (row.pool_hook_address as string | null | undefined) ?? null,
+    poolSqrtPriceX96: (row.pool_sqrt_price_x96 as string | undefined) ?? undefined,
+    poolCurrentTick: (row.pool_current_tick as number | undefined) ?? undefined,
+    poolLiquidity: (row.pool_liquidity as string | undefined) ?? undefined,
+  }
+}
+
+export function rowToLiquidityEvent(row: Record<string, unknown>): LiquidityEvent {
+  return {
+    id: row.id as number,
+    chainId: (row.chain_id as number | undefined) ?? 1,
+    protocol: row.protocol === "v3" ? "v3" : "v4",
+    eventType: row.event_type as LiquidityEventType,
+    txHash: row.tx_hash as string,
+    logIndex: row.log_index as number,
+    blockNumber: row.block_number as number,
+    blockTimestamp: row.block_timestamp as number,
+    poolId: (row.pool_id as string | null) ?? null,
+    tokenId: (row.token_id as string | null) ?? null,
+    ownerAddress: (row.owner_address as string | null) ?? null,
+    tickLower: (row.tick_lower as number | null) ?? null,
+    tickUpper: (row.tick_upper as number | null) ?? null,
+    liquidityDelta: (row.liquidity_delta as string | null) ?? null,
+    amount0: (row.amount0 as string | null) ?? null,
+    amount1: (row.amount1 as string | null) ?? null,
+    createdAt: row.created_at as number,
   }
 }
 

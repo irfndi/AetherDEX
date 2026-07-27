@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.31;
+pragma solidity ^0.8.36;
 
 /// @title MockPoolManager
 /// @notice Minimal stand-in for the Uniswap V4 PoolManager used by AetherHook unit/fuzz tests.

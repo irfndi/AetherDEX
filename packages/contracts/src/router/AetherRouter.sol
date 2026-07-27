@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.31;
+pragma solidity ^0.8.36;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -31,12 +31,15 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
         SWAP_EXACT_IN,
         SWAP_EXACT_OUT,
         ADD_LIQUIDITY,
-        REMOVE_LIQUIDITY
+        REMOVE_LIQUIDITY,
+        ADD_LIQUIDITY_SINGLE_SIDED
     }
 
     // ── Immutables ────────────────────────────────────────────────────────────
     IPoolManager public immutable poolManager;
     IAetherFactory public immutable factory;
+    mapping(bytes32 positionId => address owner) public positionOwner;
+    mapping(bytes32 positionId => uint256 liquidity) public positionLiquidity;
 
     // ── User-facing parameter structs ─────────────────────────────────────────
 
@@ -58,29 +61,28 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
         bytes hookData;
     }
 
+    struct SingleSidedLiquidityParams {
+        PoolKey poolKey;
+        ModifyLiquidityParams liquidityParams;
+        bool zeroForOne;
+        uint128 amountIn;
+        uint128 swapAmountIn;
+        uint128 minSwapAmountOut;
+        uint256 minAmount0;
+        uint256 minAmount1;
+        uint256 deadline;
+        bytes hookData;
+    }
+
     // ── Events ────────────────────────────────────────────────────────────────
 
     event Swap(
-        address indexed sender,
-        address indexed tokenIn,
-        address indexed tokenOut,
-        uint256 amountIn,
-        uint256 amountOut
+        address indexed sender, address indexed tokenIn, address indexed tokenOut, uint256 amountIn, uint256 amountOut
     );
 
-    event LiquidityAdded(
-        address indexed provider,
-        bytes32 indexed poolId,
-        uint256 amount0,
-        uint256 amount1
-    );
+    event LiquidityAdded(address indexed provider, bytes32 indexed poolId, uint256 amount0, uint256 amount1);
 
-    event LiquidityRemoved(
-        address indexed provider,
-        bytes32 indexed poolId,
-        uint256 amount0,
-        uint256 amount1
-    );
+    event LiquidityRemoved(address indexed provider, bytes32 indexed poolId, uint256 amount0, uint256 amount1);
 
     // ── Constructor ───────────────────────────────────────────────────────────
 
@@ -99,7 +101,11 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
     /// @dev Pulls input tokens from sender, executes swap via PoolManager, forwards output
     /// @param params Swap parameters: pool, direction, amountIn, minAmountOut, deadline
     /// @return amountOut The actual output tokens received by the caller
-    function swapExactTokensForTokens(SwapExactInParams calldata params) external nonReentrant returns (uint256 amountOut) {
+    function swapExactTokensForTokens(SwapExactInParams calldata params)
+        external
+        nonReentrant
+        returns (uint256 amountOut)
+    {
         if (block.timestamp > params.deadline) revert Errors.DeadlineExpired();
         if (params.amountIn == 0) revert Errors.ZeroAmount();
 
@@ -138,7 +144,11 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
     /// @dev Pulls max input from sender, executes swap, refunds excess input
     /// @param params Swap parameters: pool, direction, amountOut, maxAmountIn, deadline
     /// @return amountIn The actual input tokens consumed
-    function swapExactTokensForTokensOut(SwapExactOutParams calldata params) external nonReentrant returns (uint256 amountIn) {
+    function swapExactTokensForTokensOut(SwapExactOutParams calldata params)
+        external
+        nonReentrant
+        returns (uint256 amountIn)
+    {
         if (block.timestamp > params.deadline) revert Errors.DeadlineExpired();
         if (params.amountOut == 0) revert Errors.ZeroAmount();
 
@@ -189,6 +199,10 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
         uint256 deadline
     ) external nonReentrant returns (BalanceDelta delta) {
         if (block.timestamp > deadline) revert Errors.DeadlineExpired();
+        if (params.liquidityDelta <= 0) revert Errors.InvalidLiquidityDelta();
+
+        bytes32 positionId = _positionId(poolKey, params);
+        if (positionOwner[positionId] != address(0)) revert Errors.PositionAlreadyOwned();
 
         address token0 = Currency.unwrap(poolKey.currency0);
         address token1 = Currency.unwrap(poolKey.currency1);
@@ -198,9 +212,12 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
         IERC20(token1).safeTransferFrom(msg.sender, address(this), amount1Max);
 
         // Unlock PoolManager
-        bytes memory result = poolManager.unlock(abi.encode(Action.ADD_LIQUIDITY, abi.encode(poolKey, params, amount0Max, amount1Max)));
+        bytes memory result =
+            poolManager.unlock(abi.encode(Action.ADD_LIQUIDITY, abi.encode(poolKey, params, amount0Max, amount1Max)));
 
         delta = abi.decode(result, (BalanceDelta));
+        positionOwner[positionId] = msg.sender;
+        positionLiquidity[positionId] = uint256(params.liquidityDelta);
 
         // Refund unused tokens to user
         uint256 used0 = uint256(-int256(delta.amount0()));
@@ -213,6 +230,52 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
         }
 
         emit LiquidityAdded(msg.sender, PoolId.unwrap(poolKey.toId()), used0, used1);
+    }
+
+    /// @notice Deposit one token, swap part of it, and add concentrated liquidity atomically.
+    /// @dev Positions are protected by the router ownership ledger until native V4 PositionManager integration.
+    function addLiquiditySingleSided(SingleSidedLiquidityParams calldata params)
+        external
+        nonReentrant
+        returns (BalanceDelta delta, uint256 amountOut)
+    {
+        if (block.timestamp > params.deadline) revert Errors.DeadlineExpired();
+        if (params.amountIn == 0 || params.swapAmountIn == 0) revert Errors.ZeroAmount();
+        if (params.swapAmountIn > params.amountIn) revert Errors.InvalidAmount();
+        if (params.liquidityParams.liquidityDelta <= 0) revert Errors.InvalidLiquidityDelta();
+        if (params.poolKey.currency0.isAddressZero() || params.poolKey.currency1.isAddressZero()) {
+            revert Errors.UnsupportedNativeCurrency();
+        }
+
+        bytes32 positionId = _positionId(params.poolKey, params.liquidityParams);
+        if (positionOwner[positionId] != address(0)) revert Errors.PositionAlreadyOwned();
+
+        address tokenIn = Currency.unwrap(params.zeroForOne ? params.poolKey.currency0 : params.poolKey.currency1);
+        uint256 balance0Before = IERC20(Currency.unwrap(params.poolKey.currency0)).balanceOf(address(this));
+        uint256 balance1Before = IERC20(Currency.unwrap(params.poolKey.currency1)).balanceOf(address(this));
+        IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), params.amountIn);
+
+        bytes memory result = poolManager.unlock(
+            abi.encode(Action.ADD_LIQUIDITY_SINGLE_SIDED, abi.encode(params, balance0Before, balance1Before))
+        );
+        (delta, amountOut) = abi.decode(result, (BalanceDelta, uint256));
+        if (amountOut < params.minSwapAmountOut) {
+            revert Errors.SlippageExceeded(params.minSwapAmountOut, amountOut);
+        }
+
+        uint256 used0 = uint256(-int256(delta.amount0()));
+        uint256 used1 = uint256(-int256(delta.amount1()));
+        if (used0 < params.minAmount0 || used1 < params.minAmount1) {
+            revert Errors.SlippageExceeded(
+                params.minAmount0 > params.minAmount1 ? params.minAmount0 : params.minAmount1,
+                used0 > used1 ? used0 : used1
+            );
+        }
+
+        positionOwner[positionId] = msg.sender;
+        positionLiquidity[positionId] = uint256(params.liquidityParams.liquidityDelta);
+        _refundSingleSidedDust(params.poolKey, msg.sender, balance0Before, balance1Before);
+        emit LiquidityAdded(msg.sender, PoolId.unwrap(params.poolKey.toId()), used0, used1);
     }
 
     /// @notice Remove concentrated liquidity from a pool
@@ -231,6 +294,10 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
         uint256 deadline
     ) external nonReentrant returns (BalanceDelta delta) {
         if (block.timestamp > deadline) revert Errors.DeadlineExpired();
+        if (params.liquidityDelta >= 0) revert Errors.InvalidLiquidityDelta();
+
+        bytes32 positionId = _positionId(poolKey, params);
+        if (positionOwner[positionId] != msg.sender) revert Errors.UnauthorizedPosition();
 
         address token0 = Currency.unwrap(poolKey.currency0);
         address token1 = Currency.unwrap(poolKey.currency1);
@@ -245,7 +312,18 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
 
         // Slippage check
         if (received0 < minAmount0 || received1 < minAmount1) {
-            revert Errors.SlippageExceeded(minAmount0 > minAmount1 ? minAmount0 : minAmount1, received0 > received1 ? received0 : received1);
+            revert Errors.SlippageExceeded(
+                minAmount0 > minAmount1 ? minAmount0 : minAmount1, received0 > received1 ? received0 : received1
+            );
+        }
+
+        uint256 removedLiquidity = uint256(-params.liquidityDelta);
+        uint256 currentLiquidity = positionLiquidity[positionId];
+        if (removedLiquidity >= currentLiquidity) {
+            delete positionOwner[positionId];
+            delete positionLiquidity[positionId];
+        } else {
+            positionLiquidity[positionId] = currentLiquidity - removedLiquidity;
         }
 
         // Transfer tokens to user (already held by this contract from take())
@@ -276,8 +354,13 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
                 abi.decode(actionData, (PoolKey, ModifyLiquidityParams, uint256, uint256));
             return _handleAddLiquidity(pKey, liqP);
         } else if (action == Action.REMOVE_LIQUIDITY) {
-            (PoolKey memory pKey, ModifyLiquidityParams memory liqP) = abi.decode(actionData, (PoolKey, ModifyLiquidityParams));
+            (PoolKey memory pKey, ModifyLiquidityParams memory liqP) =
+                abi.decode(actionData, (PoolKey, ModifyLiquidityParams));
             return _handleRemoveLiquidity(pKey, liqP);
+        } else if (action == Action.ADD_LIQUIDITY_SINGLE_SIDED) {
+            (SingleSidedLiquidityParams memory params, uint256 balance0Before, uint256 balance1Before) =
+                abi.decode(actionData, (SingleSidedLiquidityParams, uint256, uint256));
+            return _handleAddLiquiditySingleSided(params, balance0Before, balance1Before);
         }
 
         revert Errors.InvalidPath();
@@ -288,8 +371,11 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
     // ═══════════════════════════════════════════════════════════════════════════
 
     function _handleSwapExactIn(SwapExactInParams memory params) internal returns (bytes memory) {
-        SwapParams memory swapParams =
-            SwapParams({zeroForOne: params.zeroForOne, amountSpecified: int256(int128(params.amountIn)), sqrtPriceLimitX96: _sqrtPriceLimit(params.zeroForOne)});
+        SwapParams memory swapParams = SwapParams({
+            zeroForOne: params.zeroForOne,
+            amountSpecified: int256(int128(params.amountIn)),
+            sqrtPriceLimitX96: _sqrtPriceLimit(params.zeroForOne)
+        });
 
         BalanceDelta delta = poolManager.swap(params.poolKey, swapParams, params.hookData);
 
@@ -311,8 +397,11 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
 
     function _handleSwapExactOut(SwapExactOutParams memory params) internal returns (bytes memory) {
         // For exact-out, amountSpecified is negative
-        SwapParams memory swapParams =
-            SwapParams({zeroForOne: params.zeroForOne, amountSpecified: -int256(int128(params.amountOut)), sqrtPriceLimitX96: _sqrtPriceLimit(params.zeroForOne)});
+        SwapParams memory swapParams = SwapParams({
+            zeroForOne: params.zeroForOne,
+            amountSpecified: -int256(int128(params.amountOut)),
+            sqrtPriceLimitX96: _sqrtPriceLimit(params.zeroForOne)
+        });
 
         BalanceDelta delta = poolManager.swap(params.poolKey, swapParams, params.hookData);
 
@@ -332,7 +421,10 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
         return abi.encode(delta);
     }
 
-    function _handleAddLiquidity(PoolKey memory poolKey, ModifyLiquidityParams memory liqParams) internal returns (bytes memory) {
+    function _handleAddLiquidity(PoolKey memory poolKey, ModifyLiquidityParams memory liqParams)
+        internal
+        returns (bytes memory)
+    {
         (BalanceDelta callerDelta,) = poolManager.modifyLiquidity(poolKey, liqParams, "");
 
         // Settle tokens owed to the pool (negative delta = we owe)
@@ -354,7 +446,10 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
         return abi.encode(callerDelta);
     }
 
-    function _handleRemoveLiquidity(PoolKey memory poolKey, ModifyLiquidityParams memory liqParams) internal returns (bytes memory) {
+    function _handleRemoveLiquidity(PoolKey memory poolKey, ModifyLiquidityParams memory liqParams)
+        internal
+        returns (bytes memory)
+    {
         (BalanceDelta callerDelta,) = poolManager.modifyLiquidity(poolKey, liqParams, "");
 
         // Take tokens owed to us (positive delta = pool owes us)
@@ -372,13 +467,90 @@ contract AetherRouter is IUnlockCallback, Ownable, ReentrancyGuard {
         return abi.encode(callerDelta);
     }
 
+    function _handleAddLiquiditySingleSided(
+        SingleSidedLiquidityParams memory params,
+        uint256 balance0Before,
+        uint256 balance1Before
+    ) internal returns (bytes memory) {
+        SwapParams memory swapParams = SwapParams({
+            zeroForOne: params.zeroForOne,
+            amountSpecified: -int256(int128(params.swapAmountIn)),
+            sqrtPriceLimitX96: _sqrtPriceLimit(params.zeroForOne)
+        });
+        BalanceDelta swapDelta = poolManager.swap(params.poolKey, swapParams, params.hookData);
+
+        Currency currencyIn = params.zeroForOne ? params.poolKey.currency0 : params.poolKey.currency1;
+        uint256 actualAmountIn =
+            params.zeroForOne ? uint256(-int256(swapDelta.amount0())) : uint256(-int256(swapDelta.amount1()));
+        if (actualAmountIn > params.swapAmountIn) revert Errors.InvalidAmount();
+        poolManager.sync(currencyIn);
+        IERC20(Currency.unwrap(currencyIn)).safeTransfer(address(poolManager), actualAmountIn);
+        poolManager.settle();
+
+        Currency currencyOut = params.zeroForOne ? params.poolKey.currency1 : params.poolKey.currency0;
+        uint256 amountOut =
+            params.zeroForOne ? uint256(int256(swapDelta.amount1())) : uint256(int256(swapDelta.amount0()));
+        if (amountOut > 0) poolManager.take(currencyOut, address(this), amountOut);
+
+        (BalanceDelta liquidityDelta,) = poolManager.modifyLiquidity(params.poolKey, params.liquidityParams, "");
+        _settleLiquidityDeltas(params.poolKey, liquidityDelta, balance0Before, balance1Before);
+        return abi.encode(liquidityDelta, amountOut);
+    }
+
+    function _settleLiquidityDeltas(
+        PoolKey memory poolKey,
+        BalanceDelta delta,
+        uint256 balance0Before,
+        uint256 balance1Before
+    ) internal {
+        uint256 owed0 = uint256(-int256(delta.amount0()));
+        uint256 owed1 = uint256(-int256(delta.amount1()));
+        _settleCallScoped(poolKey.currency0, owed0, balance0Before);
+        _settleCallScoped(poolKey.currency1, owed1, balance1Before);
+    }
+
+    function _settleCallScoped(Currency currency, uint256 amount, uint256 balanceBefore) internal {
+        if (amount == 0) return;
+        uint256 balanceAfter = IERC20(Currency.unwrap(currency)).balanceOf(address(this));
+        if (balanceAfter < balanceBefore || balanceAfter - balanceBefore < amount) {
+            revert Errors.InsufficientCallBalance();
+        }
+        poolManager.sync(currency);
+        IERC20(Currency.unwrap(currency)).safeTransfer(address(poolManager), amount);
+        poolManager.settle();
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════
     //  HELPERS
     // ═══════════════════════════════════════════════════════════════════════════
 
     /// @dev Returns the appropriate sqrt price limit for the swap direction
     function _sqrtPriceLimit(bool zeroForOne) internal pure returns (uint160) {
-        return zeroForOne ? TickMath.MIN_SQRT_PRICE : TickMath.MAX_SQRT_PRICE;
+        return zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
+    }
+
+    function _positionId(PoolKey calldata poolKey, ModifyLiquidityParams calldata params)
+        internal
+        pure
+        returns (bytes32)
+    {
+        return keccak256(abi.encode(poolKey.toId(), params.tickLower, params.tickUpper, params.salt));
+    }
+
+    function _refundSingleSidedDust(
+        PoolKey calldata poolKey,
+        address recipient,
+        uint256 balance0Before,
+        uint256 balance1Before
+    ) internal {
+        address token0 = Currency.unwrap(poolKey.currency0);
+        address token1 = Currency.unwrap(poolKey.currency1);
+        uint256 balance0After = IERC20(token0).balanceOf(address(this));
+        uint256 balance1After = IERC20(token1).balanceOf(address(this));
+        uint256 balance0 = balance0After > balance0Before ? balance0After - balance0Before : 0;
+        uint256 balance1 = balance1After > balance1Before ? balance1After - balance1Before : 0;
+        if (balance0 > 0) IERC20(token0).safeTransfer(recipient, balance0);
+        if (balance1 > 0) IERC20(token1).safeTransfer(recipient, balance1);
     }
 
     /// @notice Receive ETH (in case someone sends it accidentally)

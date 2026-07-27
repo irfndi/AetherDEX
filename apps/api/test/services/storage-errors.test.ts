@@ -31,7 +31,7 @@ describe("PoolService storage failures", () => {
   it("fails getPool with PoolReadError instead of null when D1 rejects a valid id", async () => {
     const program = Effect.gen(function* () {
       const poolService = yield* PoolService
-      return yield* poolService.getPool(POOL_ID)
+      return yield* poolService.getPool(POOL_ID, 1)
     })
     const err = await Effect.runPromise(
       program.pipe(Effect.provide(PoolServiceLive.pipe(Layer.provide(failingSqlLayer()))), Effect.flip),
@@ -42,7 +42,7 @@ describe("PoolService storage failures", () => {
   it("keeps null for getPool when D1 succeeds with no matching row", async () => {
     const program = Effect.gen(function* () {
       const poolService = yield* PoolService
-      return yield* poolService.getPool(POOL_ID)
+      return yield* poolService.getPool(POOL_ID, 1)
     })
     const pool = await Effect.runPromise(
       program.pipe(Effect.provide(PoolServiceLive.pipe(Layer.provide(emptySqlLayer())))),

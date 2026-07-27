@@ -7,6 +7,7 @@ import {
   RecordPositionError,
   type RecordPositionInput,
 } from "../../src/services/position.service"
+import type { V4PositionState } from "../../src/services/v4-position-reader.service"
 
 const validInput: RecordPositionInput = {
   userAddress: "0x1111111111111111111111111111111111111111",
@@ -56,6 +57,7 @@ describe("PositionService.listByUser", () => {
     id: 7,
     user_address: "0x1111111111111111111111111111111111111111",
     pool_id: "0x2222222222222222222222222222222222222222222222222222222222222222",
+    tick_spacing: 10,
     tick_lower: -60,
     tick_upper: 60,
     liquidity: "1000",
@@ -71,7 +73,14 @@ describe("PositionService.listByUser", () => {
   it("maps D1 rows to LiquidityPosition objects", async () => {
     const list = await Effect.runPromise(withService((svc) => svc.listByUser(row.user_address), [row]))
     expect(list).toHaveLength(1)
-    expect(list[0]).toMatchObject({ id: 7, poolId: row.pool_id, tickLower: -60, tickUpper: 60, isActive: true })
+    expect(list[0]).toMatchObject({
+      id: 7,
+      poolId: row.pool_id,
+      tickSpacing: row.tick_spacing,
+      tickLower: -60,
+      tickUpper: 60,
+      isActive: true,
+    })
   })
 
   it("returns an empty list when the user has no positions", async () => {
@@ -96,5 +105,45 @@ describe("PositionService error surfacing", () => {
       ),
     )
     expect(String((err as { cause: string }).cause)).toContain("D1 exploded")
+  })
+})
+
+describe("PositionService.reconcileV4Position", () => {
+  const state: V4PositionState = {
+    owner: "0x1111111111111111111111111111111111111111",
+    poolKey: {
+      currency0: "0x0000000000000000000000000000000000000001",
+      currency1: "0x0000000000000000000000000000000000000002",
+      fee: 3000,
+      tickSpacing: 60,
+      hooks: "0x0000000000000000000000000000000000000000",
+    },
+    tickLower: -60,
+    tickUpper: 60,
+    liquidity: 1000n,
+  }
+
+  it("returns the indexed position id after chain-derived state is written", async () => {
+    const id = await Effect.runPromise(
+      withService((svc) => svc.reconcileV4Position(state.owner, "7", 11155111, state), [{ id: 7 }]),
+    )
+    expect(id).toBe(7)
+  })
+
+  it("returns null when the chain position has no indexed row", async () => {
+    const id = await Effect.runPromise(
+      withService((svc) => svc.reconcileV4Position(state.owner, "7", 11155111, state), []),
+    )
+    expect(id).toBeNull()
+  })
+
+  it("rejects a chain position owned by a different address without writing", async () => {
+    const id = await Effect.runPromise(
+      withService(
+        (svc) => svc.reconcileV4Position("0x9999999999999999999999999999999999999999", "7", 11155111, state),
+        [{ id: 7 }],
+      ),
+    )
+    expect(id).toBeNull()
   })
 })

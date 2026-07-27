@@ -1,0 +1,94 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.36;
+
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+
+interface IAetherPositionManager {
+    error InvalidCallbackCaller(address caller);
+    error InvalidCallbackContext();
+    error AmountMaximumExceeded();
+    error DeadlineExpired();
+    error InvalidLiquidity();
+    error SlippageExceeded();
+    error ZeroRecipient();
+    error NativeTransferFailed();
+    error UnexpectedNativeValue();
+    error InsufficientCallBalance();
+
+    struct MintPositionParams {
+        PoolKey poolKey;
+        int24 tickLower;
+        int24 tickUpper;
+        uint128 liquidity;
+        uint256 amount0Max;
+        uint256 amount1Max;
+        address recipient;
+        uint256 deadline;
+        bytes hookData;
+    }
+
+    struct SingleSidedMintParams {
+        PoolKey poolKey;
+        int24 tickLower;
+        int24 tickUpper;
+        uint128 liquidity;
+        bool zeroForOne;
+        uint128 amountIn;
+        uint128 swapAmountIn;
+        uint128 minSwapAmountOut;
+        uint256 minAmount0;
+        uint256 minAmount1;
+        address recipient;
+        uint256 deadline;
+        bytes hookData;
+    }
+
+    struct RemoveLiquidityParams {
+        uint256 tokenId;
+        uint128 liquidity;
+        uint256 amount0Min;
+        uint256 amount1Min;
+        uint256 deadline;
+        bytes hookData;
+    }
+
+    struct Position {
+        PoolKey poolKey;
+        int24 tickLower;
+        int24 tickUpper;
+        uint128 liquidity;
+        bytes32 salt;
+    }
+
+    struct RebalancePositionParams {
+        uint256 tokenId;
+        int24 tickLower;
+        int24 tickUpper;
+        uint128 liquidity;
+        uint256 amount0Max;
+        uint256 amount1Max;
+        uint256 amount0Min;
+        uint256 amount1Min;
+        uint256 deadline;
+        bytes hookData;
+    }
+
+    function mintPosition(MintPositionParams calldata params)
+        external
+        payable
+        returns (uint256 tokenId, uint256 amount0, uint256 amount1);
+
+    function mintPositionSingleSided(SingleSidedMintParams calldata params)
+        external
+        returns (uint256 tokenId, uint256 amount0, uint256 amount1, uint256 amountOut);
+
+    function removeLiquidity(RemoveLiquidityParams calldata params) external returns (uint256 amount0, uint256 amount1);
+
+    function rebalancePosition(RebalancePositionParams calldata params)
+        external
+        payable
+        returns (uint256 closedAmount0, uint256 closedAmount1, uint256 usedAmount0, uint256 usedAmount1);
+
+    function getPosition(uint256 tokenId) external view returns (Position memory);
+    function unlockCallback(bytes calldata data) external returns (bytes memory);
+}

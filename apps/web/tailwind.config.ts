@@ -7,30 +7,13 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
+        sans: ["Inter", "ui-sans-serif", "system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "sans-serif"],
+        mono: ["ui-monospace", "SFMono-Regular", "Menlo", "Monaco", "Consolas", "monospace"],
       },
     },
   },
   plugins: [daisyui],
   daisyui: {
-    themes: [
-      {
-        aetherdex: {
-          primary: "#0EA5E9",
-          "primary-content": "#FFFFFF",
-          secondary: "#A855F7",
-          accent: "#10B981",
-          neutral: "#1F2937",
-          "base-100": "#0A0A0B",
-          "base-200": "#131316",
-          "base-300": "#1F1F23",
-          "base-content": "#F5F5F7",
-          info: "#0EA5E9",
-          success: "#10B981",
-          warning: "#F59E0B",
-          error: "#EF4444",
-        },
-      },
-    ],
+    themes: false,
   },
 } satisfies Config

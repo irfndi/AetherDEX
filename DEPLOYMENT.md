@@ -38,20 +38,31 @@ forge script script/Deploy.s.sol --rpc-url sepolia --broadcast --verify
 ```bash
 cd apps/api
 
-# Create D1 database
+# Create default development resources
 bun run d1:create
-# Copy the database_id output into wrangler.jsonc
-
-# Create KV namespace
 bun run kv:create
-# Copy the id output into wrangler.jsonc
-
-# Create R2 bucket
 bun run r2:create
+
+# Create isolated staging resources
+bun run d1:create:staging
+bun run kv:create:staging
+bun run r2:create:staging
+bun run queues:create:staging
+
+# Create isolated production resources
+bun run d1:create:production
+bun run kv:create:production
+bun run r2:create:production
+bun run queues:create:production
+
+# Copy each command's returned D1 database_id and KV id into the matching
+# staging/production blocks in wrangler.jsonc. Do not reuse IDs across environments.
 
 # Run migrations
 bun run d1:migrate:local
 bun run d1:migrate:remote
+bun run d1:migrate:staging
+bun run d1:migrate:production
 
 # Deploy to staging
 bun run deploy:staging

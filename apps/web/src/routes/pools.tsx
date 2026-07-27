@@ -1,6 +1,6 @@
 import type { Pool } from "@aetherdex/shared"
 import { useQuery } from "@tanstack/react-query"
-import { createFileRoute, Link } from "@tanstack/react-router"
+import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router"
 import { useEffect, useState } from "react"
 import { TokenChip } from "../components/TokenChip"
 import { Card, CardBody, Input, Stat } from "../components/ui"
@@ -35,6 +35,14 @@ export const Route = createFileRoute("/pools")({
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080/api/v1"
 
 function PoolsPage() {
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
+
+  if (pathname !== "/pools") return <Outlet />
+
+  return <PoolsIndexPage />
+}
+
+function PoolsIndexPage() {
   const { sortBy, filterToken } = Route.useSearch()
   const navigate = Route.useNavigate()
   const [tokens, setTokens] = useState<Record<string, Token>>({})
@@ -83,23 +91,21 @@ function PoolsPage() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </form>
-        <div className="flex flex-col gap-1">
-          <label htmlFor="sort-select" className="label-text text-xs">
-            Sort by
-          </label>
-          <div className="join" id="sort-select">
+        <fieldset className="flex flex-col gap-1">
+          <legend className="label-text text-xs">Sort by</legend>
+          <div className="flex flex-wrap gap-1" id="sort-select">
             {SORT_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
                 type="button"
                 onClick={() => navigate({ search: { sortBy: opt.value, filterToken } })}
-                className={`join-item btn btn-sm ${sortBy === opt.value ? "btn-primary" : "btn-ghost"}`}
+                className={`btn btn-sm ${sortBy === opt.value ? "btn-primary" : "btn-ghost border border-base-300"}`}
               >
                 {opt.label}
               </button>
             ))}
           </div>
-        </div>
+        </fieldset>
       </div>
 
       <PoolsResults isPending={isPending} isError={isError} pools={pools} tokens={tokens} onRetry={() => refetch()} />
@@ -118,8 +124,9 @@ interface PoolsResultsProps {
 export function PoolsResults({ isPending, isError, pools, tokens, onRetry }: PoolsResultsProps) {
   if (isPending) {
     return (
-      <div className="flex justify-center py-12">
-        <span className="loading loading-spinner loading-lg" />
+      <div className="flex items-center justify-center gap-3 py-12" role="status" aria-label="Loading pools">
+        <span className="loading loading-spinner loading-md text-primary" aria-hidden="true" />
+        <span className="text-sm text-base-content/60">Loading pools…</span>
       </div>
     )
   }

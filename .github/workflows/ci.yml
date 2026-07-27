@@ -53,6 +53,7 @@ jobs:
               - 'tooling/**'
               - 'apps/**'
               - 'packages/**'
+              - 'infra/**'
               - 'package.json'
               - 'bun.lock'
               - 'tsconfig.json'
@@ -145,19 +146,21 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-foundry-${{ env.FOUNDRY_VERSION }}-
 
-      # lib/ is tracked only as orphaned gitlinks (no .gitmodules), so a fresh checkout
-      # leaves it empty. Install pinned versions, but only on a cache miss.
       - name: Install contract libs (pinned, cache-miss only)
-        if: steps.foundry-cache.outputs.cache-hit != 'true'
         working-directory: packages/contracts
         run: |
           set -euo pipefail
-          rm -rf lib
-          # Pins reproduce the exact commits recorded as gitlinks in the working tree;
-          # OpenZeppelin is pinned to the v5.5.0 release tag.
-          forge install foundry-rs/forge-std@ebc60f500bc6870baaf321a0196fddc24d6edb03 --no-git
-          forge install Uniswap/v4-core@d153b048868a60c2403a3ef5b2301bb247884d46 --no-git
-          forge install OpenZeppelin/openzeppelin-contracts@v5.5.0 --no-git
+          if [[ "${{ steps.foundry-cache.outputs.cache-hit }}" != "true" ||
+            ! -f lib/forge-std/src/Vm.sol ||
+            ! -f lib/v4-core/src/PoolManager.sol ||
+            ! -f lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol ]]; then
+            rm -rf lib
+            forge install foundry-rs/forge-std@ebc60f500bc6870baaf321a0196fddc24d6edb03 --no-git
+            forge install Uniswap/v4-core@d153b048868a60c2403a3ef5b2301bb247884d46 --no-git
+            forge install OpenZeppelin/openzeppelin-contracts@v5.5.0 --no-git
+          else
+            echo "Foundry libraries restored from cache"
+          fi
 
       - name: Build
         working-directory: packages/contracts
@@ -171,7 +174,7 @@ jobs:
         working-directory: packages/contracts
         run: |
           set -euo pipefail
-          forge coverage --report summary --report lcov --ir-minimum | tee coverage-summary.txt
+          forge coverage --report summary --report lcov --ir-minimum --no-match-coverage 'script/|test/' | tee coverage-summary.txt
           python3 - <<'PY'
           import re, sys
 
@@ -221,16 +224,15 @@ jobs:
         run: |
           set -euo pipefail
           pip3 install --no-cache-dir slither-analyzer solc-select
-          solc-select install 0.8.31
-          solc-select use 0.8.31
+          solc-select install 0.8.36
+          solc-select use 0.8.36
 
       - name: Slither static analysis (gate on high/medium)
         working-directory: packages/contracts
         run: |
           set -euo pipefail
-          # Hard gate: fail the job on any high or medium finding in project sources.
-          # Vendored deps (lib/) and tests/scripts/build artifacts are excluded.
-          slither . --fail-high --fail-medium --exclude-dependencies \
+          slither . --fail-medium \
+            --exclude-dependencies \
             --filter-paths "lib|test|script|out|cache"
 
       - name: Upload coverage to Codecov
@@ -482,8 +484,8 @@ jobs:
           sudo mv /tmp/echidna /usr/local/bin/echidna
           echo "Echidna version: $(echidna --version)"
           pip3 install --no-cache-dir solc-select
-          solc-select install 0.8.31
-          solc-select use 0.8.31
+          solc-select install 0.8.36
+          solc-select use 0.8.36
 
       - name: Run Echidna (property harness)
         if: steps.harness.outputs.present == 'true'

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.31;
+pragma solidity ^0.8.36;
 
 import "forge-std/Test.sol";
 import {AetherFactory} from "src/factory/AetherFactory.sol";
@@ -70,6 +70,12 @@ contract AetherFactoryTest is Test {
         bytes32 actualId = factory.createPool(TOKEN_A, TOKEN_B, 3000, 60, INITIAL_SQRT_PRICE);
 
         assertEq(actualId, expectedId, "PoolId should be deterministic keccak256(PoolKey)");
+    }
+
+    function test_createPoolWithDeadline_revertsWhenExpired() public {
+        vm.warp(100);
+        vm.expectRevert(Errors.DeadlineExpired.selector);
+        factory.createPoolWithDeadline(TOKEN_A, TOKEN_B, 3000, 60, INITIAL_SQRT_PRICE, 99);
     }
 
     function test_createPool_emitsEvent() public {

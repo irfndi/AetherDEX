@@ -1,0 +1,157 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.36;
+
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {Errors} from "../lib/Errors.sol";
+
+interface IV3SwapRouter {
+    struct ExactInputSingleParams {
+        address tokenIn;
+        address tokenOut;
+        uint24 fee;
+        address recipient;
+        uint256 deadline;
+        uint256 amountIn;
+        uint256 amountOutMinimum;
+        uint160 sqrtPriceLimitX96;
+    }
+
+    function exactInputSingle(ExactInputSingleParams calldata params) external returns (uint256 amountOut);
+}
+
+interface IV3PositionManager {
+    struct MintParams {
+        address token0;
+        address token1;
+        uint24 fee;
+        int24 tickLower;
+        int24 tickUpper;
+        uint256 amount0Desired;
+        uint256 amount1Desired;
+        uint256 amount0Min;
+        uint256 amount1Min;
+        address recipient;
+        uint256 deadline;
+    }
+
+    function mint(MintParams calldata params)
+        external
+        returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1);
+}
+
+contract AetherV3ZapExecutor is ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    IV3SwapRouter public immutable swapRouter;
+    IV3PositionManager public immutable positionManager;
+
+    event ZapExecuted(
+        address indexed account,
+        uint256 indexed tokenId,
+        address tokenIn,
+        uint256 amountIn,
+        uint256 amountOut,
+        uint256 amount0,
+        uint256 amount1
+    );
+
+    struct SingleSidedZapParams {
+        address token0;
+        address token1;
+        address tokenIn;
+        uint24 fee;
+        int24 tickLower;
+        int24 tickUpper;
+        uint256 amountIn;
+        uint256 swapAmountIn;
+        uint256 minSwapAmountOut;
+        uint256 amount0Min;
+        uint256 amount1Min;
+        uint160 sqrtPriceLimitX96;
+        uint256 deadline;
+    }
+
+    constructor(IV3SwapRouter _swapRouter, IV3PositionManager _positionManager) {
+        if (address(_swapRouter) == address(0) || address(_positionManager) == address(0)) revert Errors.ZeroAddress();
+        swapRouter = _swapRouter;
+        positionManager = _positionManager;
+    }
+
+    function zap(SingleSidedZapParams calldata params)
+        external
+        nonReentrant
+        returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1, uint256 amountOut)
+    {
+        _validate(params);
+        IERC20 token0 = IERC20(params.token0);
+        IERC20 token1 = IERC20(params.token1);
+        IERC20 tokenIn = IERC20(params.tokenIn);
+        uint256 balanceBefore = tokenIn.balanceOf(address(this));
+        tokenIn.safeTransferFrom(msg.sender, address(this), params.amountIn);
+        if (tokenIn.balanceOf(address(this)) - balanceBefore != params.amountIn) revert Errors.InvalidAmount();
+
+        tokenIn.forceApprove(address(swapRouter), params.swapAmountIn);
+        amountOut = swapRouter.exactInputSingle(
+            IV3SwapRouter.ExactInputSingleParams({
+                tokenIn: params.tokenIn,
+                tokenOut: params.tokenIn == params.token0 ? params.token1 : params.token0,
+                fee: params.fee,
+                recipient: address(this),
+                deadline: params.deadline,
+                amountIn: params.swapAmountIn,
+                amountOutMinimum: params.minSwapAmountOut,
+                sqrtPriceLimitX96: params.sqrtPriceLimitX96
+            })
+        );
+        if (amountOut < params.minSwapAmountOut) {
+            revert Errors.SlippageExceeded(params.minSwapAmountOut, amountOut);
+        }
+
+        uint256 remainingInput = params.amountIn - params.swapAmountIn;
+        uint256 amount0Desired = params.tokenIn == params.token0 ? remainingInput : amountOut;
+        uint256 amount1Desired = params.tokenIn == params.token0 ? amountOut : remainingInput;
+        token0.forceApprove(address(positionManager), amount0Desired);
+        token1.forceApprove(address(positionManager), amount1Desired);
+        (tokenId, liquidity, amount0, amount1) = positionManager.mint(
+            IV3PositionManager.MintParams({
+                token0: params.token0,
+                token1: params.token1,
+                fee: params.fee,
+                tickLower: params.tickLower,
+                tickUpper: params.tickUpper,
+                amount0Desired: amount0Desired,
+                amount1Desired: amount1Desired,
+                amount0Min: params.amount0Min,
+                amount1Min: params.amount1Min,
+                recipient: msg.sender,
+                deadline: params.deadline
+            })
+        );
+        token0.forceApprove(address(positionManager), 0);
+        token1.forceApprove(address(positionManager), 0);
+        tokenIn.forceApprove(address(swapRouter), 0);
+        _refund(token0);
+        _refund(token1);
+        emit ZapExecuted(msg.sender, tokenId, params.tokenIn, params.amountIn, amountOut, amount0, amount1);
+    }
+
+    function _validate(SingleSidedZapParams calldata params) private view {
+        if (block.timestamp > params.deadline) revert Errors.DeadlineExpired();
+        if (params.token0 == address(0) || params.token1 == address(0) || params.tokenIn == address(0)) {
+            revert Errors.ZeroAddress();
+        }
+        if (params.token0 >= params.token1 || params.token0 == params.token1) revert Errors.InvalidPair();
+        if (params.tokenIn != params.token0 && params.tokenIn != params.token1) revert Errors.InvalidPair();
+        if (params.fee == 0 || params.fee > 1_000_000) revert Errors.InvalidFee();
+        if (params.tickLower >= params.tickUpper) revert Errors.InvalidTickRange();
+        if (params.amountIn == 0 || params.minSwapAmountOut == 0) revert Errors.ZeroAmount();
+        if (params.swapAmountIn == 0 || params.swapAmountIn >= params.amountIn) revert Errors.InvalidSwapAmount();
+    }
+
+    function _refund(IERC20 token) private {
+        uint256 balance = token.balanceOf(address(this));
+        if (balance != 0) token.safeTransfer(msg.sender, balance);
+    }
+}

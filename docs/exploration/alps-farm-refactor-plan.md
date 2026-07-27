@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Exploration / proposal — no implementation committed |
+| **Status** | Phase 1 implementation in progress |
 | **Branch** | `explore/alps-farm-refactor` |
 | **Author** | Sisyphus (AetherDEX) |
 | **Decision needed from** | Project owner |
@@ -87,7 +87,7 @@ The hackathon repo is the valuable reference: it is inspectable source for the k
 | Persistence | None server-side (browser) | SQLite (WAL) | **D1 + R2 + KV + Durable Objects** | AetherDEX is *more* capable |
 | Auth | SIWE | SIWE → JWT | **SIWE (built)** | **Identical** |
 | Realtime | WSS (inferred) | WSS (Hono) | **Durable Objects WebSocket (built, unrouted)** | Compatible |
-| Contracts | Solidity (verified, immutable) | Foundry/Solidity (ERC4626 + adapters) | **Foundry + Solidity 0.8.31 + V4-core + OZ v5** | **Same toolchain** |
+| Contracts | Solidity (verified, immutable) | Foundry/Solidity (ERC4626 + adapters) | **Foundry + Solidity 0.8.36 + V4-core + OZ v5** | **Same toolchain** |
 | Chain lib | viem v2 | viem v2 + Uniswap v3/v4 SDK | **viem v2** (no Uniswap SDK yet) | Add `@uniswap/v3-sdk` + `@uniswap/v4-sdk` |
 
 **Conclusion:** The only *new* dependencies AetherDEX needs are `@uniswap/v3-sdk` and `@uniswap/v4-sdk` (for correct tick math — see §6.2, gap #3). Most of the stack maps across, but this is **compatible foundations + a non-trivial migration** — closing the Effect-bypass, WebSocket-routing, quote-correctness, position-ownership, and modernization gaps (§6.2, §10) is genuine work, not a zero-cost drop-in.
@@ -271,8 +271,24 @@ This reframes the existing AGENTS.md "Wave 3+" backlog around the Alpine LP thes
 - **Liquidity page** with visual depth-chart range selector (mountain silhouette, drag handles, tick snapping, live-price guard).
 - **Single-sided zap**: `AetherRouter.addLiquiditySingleSided` + build service ("one token in, correct orientation out").
 - **One-click rebalance** flow on `/positions`.
-- **Pool creation flow** with execution-time price re-check.
+- **Pool creation flow** with a deadline-enforced factory path and an explicit oracle price-guard gate before wallet submission.
 - **Portfolio / Folio** page: positions + PnL (start with D1 + on-chain event parse).
+
+**Phase 1 implementation status (2026-07-24):** the first contract increment now adds an atomic V4 swap-plus-liquidity zap with deadline, swap slippage, minimum liquidity-consumption, dust-refund, and reentrancy guards. Existing router positions also have an owner ledger that blocks arbitrary public removal. A standalone `AetherPositionManager` receipt-NFT foundation is implemented, tested, and included in the Sepolia deployment script as the canonical transferable-position artifact; router legacy-ledger positions remain an explicitly gated compatibility surface until the ownership migration is complete. The web surface now includes protected liquidity/range, v3/v4 rebalance submission, pool-creation submission, and portfolio states. Pool creation has a deadline-enforced factory entrypoint and live price guard; wallet execution is enabled only when the target chain's deployments, wallet, API, and private RPC are configured. The ledger is a security containment layer, not a substitute for native V4 PositionManager integration.
+
+**Phase 1 continuation status (2026-07-25):** the v3 single-sided path now has an atomic `AetherV3ZapExecutor` that pulls one token, swaps through the canonical v3 router, mints through the canonical v3 position manager, enforces deadline/fee/range/slippage bounds, refunds leftovers including any pre-existing executor dust, and emits an execution event. Its env-driven deployment script and typed web calldata builder are covered by contract and adapter tests. The v3 UI remains execution-gated until the v3 quote source and deployed executor address are configured; it must not reuse the current v4-only quote path.
+
+**Phase 1 pool-creation status (2026-07-25):** pool creation now performs a fresh two-token price check through the API immediately before signing. The guard rejects malformed/sorted-pair violations, unavailable prices, and opening prices more than 5% from the fresh USD-implied ratio by default. When the factory deployment, wallet, chain, and private RPC are configured, the page encodes `createPoolWithDeadline`, signs locally, and submits only through the protected RPC; otherwise it remains an explicit local intent. The guard is an execution-time safety gate, not a substitute for a chain-native oracle, and arbitrary-token production rollout still requires a trusted oracle policy.
+
+**Phase 1 v3 quote status (2026-07-25):** the v3 liquidity form now uses a configured Uniswap v3 QuoterV2 simulation through `/v3/quote` to search the single-sided split, rather than reusing the V4 quote path or a constant-product approximation. The resulting bounds feed `AetherV3ZapExecutor`, and approvals plus zap submission use the protected RPC. The route stays unavailable until `RPC_URL`, `V3_FACTORY_ADDRESS`, `V3_QUOTER_ADDRESS`, and `VITE_V3_ZAP_EXECUTOR_ADDRESS` are configured for the target chain.
+
+**Phase 1 rebalance status (2026-07-25):** the positions endpoint now returns chain-qualified NFT and pool-state metadata needed by the UI. For v4 receipt positions, the rebalance flow verifies `ownerOf` and `getPosition` directly against the configured `AetherPositionManager`; for v3 positions, it verifies `ownerOf` and `positions` against the canonical `NonfungiblePositionManager`. Both paths derive guarded SDK calldata, obtain ERC20 approvals for remint inputs, and submit the atomic close-and-re-mint through the protected RPC. The API now also exposes authenticated `POST /positions/v4/:tokenId/reconcile`, which reads the v4 manager state from the configured RPC and updates the chain-scoped D1 row only when the authenticated wallet owns the NFT. Legacy router positions, native-currency pools, incomplete index rows, and unconfigured deployments remain explicitly gated.
+
+**Phase 1 security status (2026-07-26):** authenticated sessions reject malformed, expired, future-dated, or cross-chain records, and authentication failures are sanitized at the HTTP boundary. SIWE nonces now use one Durable Object per nonce with serialized consume and expiry alarms, so concurrent verification can mint at most one session from a nonce and unconsumed records are removed after expiry. Chain-state reads reject wrong-chain RPCs and pin all StateView calls to one block; focused regression coverage is green. The remaining production gate is provisioning the isolated environment resources and live end-to-end validation of the bindings and deployed contracts.
+
+**Phase 1 verification status (2026-07-26):** route guard tests now cover malformed pairs, unavailable prices, invalid v3 quote inputs, unsupported swap modes, and deadline/slippage boundaries. Web regression tests cover range snapping, missing depth, pool-stat failure states, and live ticker connection/trend handling. The backend production-surface gate reports 73.87% lines, the web suite reports 77.03% statements and 82.44% lines, and the Solidity suite passes 162 tests under Solidity 0.8.36. Contract CI coverage now excludes deployment scripts and test harnesses from the production threshold; the required 90% production-contract gate still needs to pass on PR CI. Phase 1 remains open until that CI gate, protected/private submission validation, and isolated live deployment checks are complete.
+
+**Phase 1 security review status (2026-07-26):** the V3 executor no longer has a pre-existing-token-balance griefing path, and the Slither gate now runs without global high/medium detector exclusions; narrowly scoped suppressions document intentional PoolManager callback/oracle patterns. Independent review still blocks merge on the factory's direct `PoolManager.initialize` front-running surface, semantic calldata/parser coverage, live protected-RPC evidence, and isolated deployment validation. These are merge gates, not reasons to start Phase 2.
 
 ### Phase 2 — V4-native automation (the differentiator)
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.31;
+pragma solidity ^0.8.36;
 
 /// @title AetherDEX Errors
 /// @notice Custom errors for AetherDEX contracts
@@ -17,6 +17,14 @@ library Errors {
     error Unauthorized();
     error InvalidPath();
     error InvalidAction();
+    error InvalidLiquidityDelta();
+    error PositionAlreadyOwned();
+    error UnauthorizedPosition();
+    error InsufficientCallBalance();
+    error UnsupportedNativeCurrency();
+    error InvalidTickRange();
+    error InvalidSwapAmount();
+    error PreExistingBalance();
     error PoolIndexOutOfBounds();
     /// @notice Oracle has not recorded enough observations to answer the query
     error InsufficientObservations();
