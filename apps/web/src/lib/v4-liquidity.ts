@@ -238,7 +238,6 @@ function validateInput(input: V4SingleSidedCallInput): void {
   if (input.pool.tickSpacing <= 0) throw new Error("V4 tick spacing must be positive")
   if (input.pool.sqrtPriceX96 <= 0n || input.pool.liquidity <= 0n) throw new Error("V4 pool state is invalid")
   if (input.deadline <= 0n) throw new Error("V4 deadline must be positive")
-  if (input.salt === `0x${"00".repeat(32)}`) throw new Error("V4 position salt must be unique")
 }
 
 export function deriveV4PositionSalt(owner: `0x${string}`, nonce: bigint): Hex {

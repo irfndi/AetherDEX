@@ -15,6 +15,7 @@ import {
   validateRebalanceForm,
 } from "../lib/rebalance"
 import { buildV3PoolContext, buildV3RebalancePlan, type V3Fee } from "../lib/v3-liquidity"
+import { getV4PoolId } from "../lib/v4-liquidity"
 
 export const Route = createFileRoute("/positions")({
   component: PositionsPage,
@@ -191,6 +192,28 @@ const V3_POOL_ABI = [
     stateMutability: "view",
     inputs: [],
     outputs: [{ name: "", type: "uint128" }],
+  },
+] as const
+
+const V4_STATE_VIEW_ABI = [
+  {
+    name: "getSlot0",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "poolId", type: "bytes32" }],
+    outputs: [
+      { name: "sqrtPriceX96", type: "uint160" },
+      { name: "tick", type: "int24" },
+      { name: "protocolFee", type: "uint24" },
+      { name: "lpFee", type: "uint24" },
+    ],
+  },
+  {
+    name: "getLiquidity",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "poolId", type: "bytes32" }],
+    outputs: [{ name: "liquidity", type: "uint128" }],
   },
 ] as const
 
@@ -432,10 +455,7 @@ function PositionsPage() {
       indexedSelectedPosition.poolToken0Decimals === undefined ||
       indexedSelectedPosition.poolToken1Decimals === undefined ||
       indexedSelectedPosition.poolFee === undefined ||
-      !indexedSelectedPosition.poolHookAddress ||
-      !indexedSelectedPosition.poolSqrtPriceX96 ||
-      indexedSelectedPosition.poolCurrentTick === undefined ||
-      !indexedSelectedPosition.poolLiquidity
+      !indexedSelectedPosition.poolHookAddress
     ) {
       setErrorMessage("Indexed position is missing pool metadata; rebalance is unavailable")
       return
@@ -448,11 +468,15 @@ function PositionsPage() {
     setErrorMessage(null)
     try {
       const tokenId = BigInt(indexedSelectedPosition.tokenId)
+      const blockNumber = await publicClient.getBlockNumber()
+      const stateViewAddress = import.meta.env.VITE_STATE_VIEW_ADDRESS
+      if (!stateViewAddress || !isAddress(stateViewAddress)) throw new Error("V4 StateView is not configured")
       const owner = await publicClient.readContract({
         address: getAddress(managerAddress),
         abi: POSITION_MANAGER_ABI,
         functionName: "ownerOf",
         args: [tokenId],
+        blockNumber,
       })
       if (owner.toLowerCase() !== address.toLowerCase()) throw new Error("Connected wallet does not own this position")
       const onchainPosition = await publicClient.readContract({
@@ -460,6 +484,7 @@ function PositionsPage() {
         abi: POSITION_MANAGER_ABI,
         functionName: "getPosition",
         args: [tokenId],
+        blockNumber,
       })
       if (onchainPosition.liquidity === 0n) throw new Error("Position has no active liquidity")
       if (
@@ -477,6 +502,34 @@ function PositionsPage() {
       ) {
         throw new Error("Indexed pool metadata does not match the on-chain position")
       }
+      const poolId = getV4PoolId({
+        chainId: indexedSelectedPosition.chainId,
+        token0: getAddress(onchainPosition.poolKey.currency0),
+        token1: getAddress(onchainPosition.poolKey.currency1),
+        token0Decimals: indexedSelectedPosition.poolToken0Decimals,
+        token1Decimals: indexedSelectedPosition.poolToken1Decimals,
+        fee: onchainPosition.poolKey.fee,
+        tickSpacing: onchainPosition.poolKey.tickSpacing,
+        hooks: getAddress(onchainPosition.poolKey.hooks),
+      })
+      const [slot0, poolLiquidity] = await Promise.all([
+        publicClient.readContract({
+          address: getAddress(stateViewAddress),
+          abi: V4_STATE_VIEW_ABI,
+          functionName: "getSlot0",
+          args: [poolId],
+          blockNumber,
+        }),
+        publicClient.readContract({
+          address: getAddress(stateViewAddress),
+          abi: V4_STATE_VIEW_ABI,
+          functionName: "getLiquidity",
+          args: [poolId],
+          blockNumber,
+        }),
+      ])
+      const [sqrtPriceX96, currentTick] = slot0
+      if (sqrtPriceX96 === 0n || poolLiquidity === 0n) throw new Error("V4 pool has no active liquidity")
       const call = buildV4RebalanceCall({
         managerAddress: getAddress(managerAddress),
         pool: {
@@ -488,9 +541,9 @@ function PositionsPage() {
           fee: onchainPosition.poolKey.fee,
           tickSpacing: onchainPosition.poolKey.tickSpacing,
           hooks: getAddress(onchainPosition.poolKey.hooks),
-          sqrtPriceX96: BigInt(indexedSelectedPosition.poolSqrtPriceX96),
-          poolLiquidity: BigInt(indexedSelectedPosition.poolLiquidity),
-          currentTick: indexedSelectedPosition.poolCurrentTick,
+          sqrtPriceX96,
+          poolLiquidity,
+          currentTick,
         },
         tokenId,
         currentLiquidity: onchainPosition.liquidity,

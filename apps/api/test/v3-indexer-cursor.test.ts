@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest"
 import { assertIndexerChainId, V3LiquidityIndexerError } from "../src/services/v3-liquidity-indexer.service"
-import { nextV3IndexerRange, V3_INDEXER_INITIAL_LOOKBACK, V3_INDEXER_MAX_RANGE } from "../src/workers/v3-indexer-cursor"
+import {
+  finalizedV3Head,
+  nextV3IndexerRange,
+  V3_INDEXER_CONFIRMATIONS,
+  V3_INDEXER_MAX_RANGE,
+} from "../src/workers/v3-indexer-cursor"
 
 describe("v3 indexer cursor", () => {
-  it("starts from a bounded lookback and caps each scheduled range", () => {
-    expect(nextV3IndexerRange(null, V3_INDEXER_INITIAL_LOOKBACK + 100n)).toEqual({
+  it("starts from the configured deployment block and caps each range", () => {
+    expect(nextV3IndexerRange(null, 20_000n, 100n)).toEqual({
       fromBlock: 100n,
       toBlock: 100n + V3_INDEXER_MAX_RANGE - 1n,
     })
@@ -16,6 +21,10 @@ describe("v3 indexer cursor", () => {
 
   it("does not schedule a range beyond the chain head", () => {
     expect(nextV3IndexerRange(31n, 30n)).toBeNull()
+  })
+
+  it("keeps the confirmation window out of the index", () => {
+    expect(finalizedV3Head(100n)).toBe(100n - V3_INDEXER_CONFIRMATIONS)
   })
 
   it("rejects an RPC on a different chain", () => {

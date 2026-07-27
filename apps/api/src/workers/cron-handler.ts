@@ -6,13 +6,13 @@
  * - Cleanup expired sessions
  */
 
-import { Effect, Layer } from "effect"
+import { Effect } from "effect"
 import { makeDbLayer } from "../db/client"
 import { getIndexerCursor, setIndexerCursor } from "../db/queries"
 import { parseChainId } from "../lib/chain-id"
 import { runEffect } from "../lib/effect-bridge"
 import { V3LiquidityIndexer, V3LiquidityIndexerLive } from "../services/v3-liquidity-indexer.service"
-import { nextV3IndexerRange, V3_INDEXER_NAME } from "./v3-indexer-cursor"
+import { finalizedV3Head, nextV3IndexerRange, V3_INDEXER_NAME } from "./v3-indexer-cursor"
 
 interface CronEnv {
   DB: D1Database
@@ -23,6 +23,7 @@ interface CronEnv {
   CHAIN_ID: string
   RPC_URL?: string
   V3_POSITION_MANAGER_ADDRESS?: string
+  V3_POSITION_MANAGER_DEPLOYMENT_BLOCK?: string
 }
 
 /**
@@ -66,18 +67,19 @@ async function runV3LiquidityIndexer(env: CronEnv): Promise<void> {
     rpcUrl: env.RPC_URL,
     positionManager: env.V3_POSITION_MANAGER_ADDRESS as `0x${string}`,
     pools: [],
-  }).pipe(Layer.provide(makeDbLayer(env.DB)))
+  })
 
   await runEffect(
     Effect.gen(function* () {
       const indexer = yield* V3LiquidityIndexer
-      const latestBlock = yield* indexer.latestBlock
+      const latestBlock = finalizedV3Head(yield* indexer.latestBlock)
       const cursor = yield* getIndexerCursor(chainId, V3_INDEXER_NAME)
-      const range = nextV3IndexerRange(cursor, latestBlock)
+      const deploymentBlock = BigInt(env.V3_POSITION_MANAGER_DEPLOYMENT_BLOCK ?? "0")
+      const range = nextV3IndexerRange(cursor, latestBlock, deploymentBlock)
       if (!range) return
       yield* indexer.indexRange(range.fromBlock, range.toBlock)
       yield* setIndexerCursor(chainId, V3_INDEXER_NAME, range.toBlock + 1n)
-    }).pipe(Effect.provide(indexerLayer)),
+    }).pipe(Effect.provide(indexerLayer), Effect.provide(makeDbLayer(env.DB))),
   )
 }
 

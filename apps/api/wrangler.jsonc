@@ -110,6 +110,7 @@
     "V3_QUOTER_ADDRESS": "",
     "POSITION_MANAGER_ADDRESS": "",
     "V3_POSITION_MANAGER_ADDRESS": "",
+    "V3_POSITION_MANAGER_DEPLOYMENT_BLOCK": "0",
     "RPC_URL": "",
     // "auto" = V4 tick-math when STATE_VIEW_ADDRESS+RPC_URL are set, else legacy D1 approximation.
     "QUOTE_ENGINE_MODE": "auto",
@@ -134,6 +135,7 @@
         "V3_QUOTER_ADDRESS": "",
         "POSITION_MANAGER_ADDRESS": "",
         "V3_POSITION_MANAGER_ADDRESS": "",
+        "V3_POSITION_MANAGER_DEPLOYMENT_BLOCK": "0",
         "RPC_URL": "",
         "QUOTE_ENGINE_MODE": "auto",
         "TOKEN_LIST_URL": "https://tokens.uniswap.org",
@@ -201,6 +203,7 @@
         "V3_QUOTER_ADDRESS": "",
         "POSITION_MANAGER_ADDRESS": "",
         "V3_POSITION_MANAGER_ADDRESS": "",
+        "V3_POSITION_MANAGER_DEPLOYMENT_BLOCK": "0",
         "RPC_URL": "",
         "QUOTE_ENGINE_MODE": "auto",
         "TOKEN_LIST_URL": "https://tokens.uniswap.org",

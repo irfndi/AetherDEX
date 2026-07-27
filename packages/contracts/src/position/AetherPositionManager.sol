@@ -68,6 +68,8 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
         _refund(params.poolKey, params.recipient, balance0Before, balance1Before);
     }
 
+    // PoolManager is the trusted unlock target; the balance snapshots are intentional settlement guards.
+    // slither-disable-next-line reentrancy-balance,reentrancy-benign,write-after-write
     function mintPositionSingleSided(SingleSidedMintParams calldata params)
         external
         nonReentrant
@@ -351,6 +353,8 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
         if (available >= required) return;
         uint256 shortfall = required - available;
         if (shortfall > amountMax || currency.isAddressZero()) revert AmountMaximumExceeded();
+        // positionOwner is the authorized NFT owner checked by rebalancePosition; the allowance is user-controlled.
+        // slither-disable-next-line arbitrary-send-erc20
         IERC20(Currency.unwrap(currency)).safeTransferFrom(positionOwner, address(this), shortfall);
     }
 

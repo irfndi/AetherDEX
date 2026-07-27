@@ -13,6 +13,7 @@ interface __BaseEnv_Env {
 	V3_QUOTER_ADDRESS: "";
 	POSITION_MANAGER_ADDRESS: "";
 	V3_POSITION_MANAGER_ADDRESS: "";
+	V3_POSITION_MANAGER_DEPLOYMENT_BLOCK: "0";
 	RPC_URL: "";
 	QUOTE_ENGINE_MODE: "auto";
 	TOKEN_LIST_URL: "https://tokens.uniswap.org";
@@ -43,6 +44,7 @@ declare namespace Cloudflare {
 		V3_QUOTER_ADDRESS: "";
 		POSITION_MANAGER_ADDRESS: "";
 		V3_POSITION_MANAGER_ADDRESS: "";
+		V3_POSITION_MANAGER_DEPLOYMENT_BLOCK: "0";
 		RPC_URL: "";
 		QUOTE_ENGINE_MODE: "auto";
 		TOKEN_LIST_URL: "https://tokens.uniswap.org";
@@ -60,6 +62,7 @@ declare namespace Cloudflare {
 		V3_QUOTER_ADDRESS: "";
 		POSITION_MANAGER_ADDRESS: "";
 		V3_POSITION_MANAGER_ADDRESS: "";
+		V3_POSITION_MANAGER_DEPLOYMENT_BLOCK: "0";
 		RPC_URL: "";
 		QUOTE_ENGINE_MODE: "auto";
 		TOKEN_LIST_URL: "https://tokens.uniswap.org";
@@ -72,7 +75,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "CHAIN_ID" | "SIWE_DOMAIN" | "SIWE_URI" | "ROUTER_ADDRESS" | "FACTORY_ADDRESS" | "STATE_VIEW_ADDRESS" | "POOL_MANAGER_ADDRESS" | "V3_FACTORY_ADDRESS" | "V3_QUOTER_ADDRESS" | "POSITION_MANAGER_ADDRESS" | "V3_POSITION_MANAGER_ADDRESS" | "RPC_URL" | "QUOTE_ENGINE_MODE" | "TOKEN_LIST_URL" | "ENVIRONMENT">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "CHAIN_ID" | "SIWE_DOMAIN" | "SIWE_URI" | "ROUTER_ADDRESS" | "FACTORY_ADDRESS" | "STATE_VIEW_ADDRESS" | "POOL_MANAGER_ADDRESS" | "V3_FACTORY_ADDRESS" | "V3_QUOTER_ADDRESS" | "POSITION_MANAGER_ADDRESS" | "V3_POSITION_MANAGER_ADDRESS" | "V3_POSITION_MANAGER_DEPLOYMENT_BLOCK" | "RPC_URL" | "QUOTE_ENGINE_MODE" | "TOKEN_LIST_URL" | "ENVIRONMENT">> {}
 }
 
 // Begin runtime types

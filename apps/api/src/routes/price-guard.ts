@@ -7,6 +7,7 @@ import { PriceService, PriceServiceDeps, PriceServiceLive } from "../services/pr
 type Bindings = {
   DB: D1Database
   CACHE: KVNamespace
+  CHAIN_ID: string
 }
 
 const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/

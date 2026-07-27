@@ -1,5 +1,7 @@
 import { decodeEventLog, getAddress, type Hex } from "viem"
 
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
+
 const POSITION_MANAGER_ABI = [
   {
     type: "event",
@@ -153,7 +155,11 @@ function parsePositionManagerLog(log: RawLog): V3LiquidityEvent | null {
     }
     if (decoded.eventName === "Transfer") {
       if (!("to" in args) || typeof args.to !== "string") return null
-      return { ...base, eventType: "transfer", ownerAddress: getAddress(args.to) }
+      return {
+        ...base,
+        eventType: "transfer",
+        ownerAddress: args.to.toLowerCase() === ZERO_ADDRESS ? null : getAddress(args.to),
+      }
     }
     return null
   } catch {

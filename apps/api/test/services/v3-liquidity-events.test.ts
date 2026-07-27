@@ -72,4 +72,18 @@ describe("parseV3LiquidityLog", () => {
     )
     expect(parsed).toMatchObject({ eventType: "collect", tokenId: "7", amount0: "17", amount1: "19" })
   })
+
+  it("normalizes a burned position transfer to a null owner", () => {
+    const event = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)")
+    const topics = encodeEventTopics({
+      abi: [event],
+      eventName: "Transfer",
+      args: ["0x0000000000000000000000000000000000000007", "0x0000000000000000000000000000000000000000", 7n],
+    })
+    const parsed = parseV3LiquidityLog(
+      { address: manager, topics, data: "0x", transactionHash: txHash, logIndex: 5, blockNumber: 103 },
+      { positionManager: manager },
+    )
+    expect(parsed).toMatchObject({ eventType: "transfer", tokenId: "7", ownerAddress: null })
+  })
 })

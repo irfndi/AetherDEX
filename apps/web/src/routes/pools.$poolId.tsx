@@ -1,12 +1,13 @@
 import { useAppKit } from "@reown/appkit/react"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { type FormEvent, useEffect, useState } from "react"
-import { encodeFunctionData, getAddress, type Hex, isAddress, parseUnits, zeroAddress } from "viem"
+import { encodeFunctionData, getAddress, type Hex, isAddress, parseEventLogs, parseUnits, zeroAddress } from "viem"
 import { useAccount, usePublicClient, useWalletClient } from "wagmi"
 import { DexScreenerChart } from "../components/DexScreenerChart"
 import { RangeSelector } from "../components/RangeSelector"
 import { TokenChip } from "../components/TokenChip"
 import { Button, Card, CardBody, Input, Stat } from "../components/ui"
+import { useSiweAuth } from "../hooks/useSiweAuth"
 import {
   buildLiquidityRequest,
   LIQUIDITY_PROTOCOLS,
@@ -131,6 +132,17 @@ const V4_STATE_VIEW_ABI = [
     outputs: [{ name: "liquidity", type: "uint128" }],
   },
 ] as const
+const POSITION_MANAGER_EVENTS_ABI = [
+  {
+    name: "Transfer",
+    type: "event",
+    inputs: [
+      { name: "from", type: "address", indexed: true },
+      { name: "to", type: "address", indexed: true },
+      { name: "tokenId", type: "uint256", indexed: true },
+    ],
+  },
+] as const
 
 function PoolDetailPage() {
   const { poolId } = Route.useLoaderData()
@@ -251,6 +263,7 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
   const { address, isConnected } = useAccount()
   const publicClient = usePublicClient()
   const { data: walletClient } = useWalletClient()
+  const { signIn } = useSiweAuth()
   const [values, setValues] = useState<LiquidityFormValues>({
     protocol: "v4",
     tokenSide: "token0",
@@ -528,6 +541,46 @@ function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
       })
       const signedTransaction = await walletClient.signTransaction(prepared)
       const txHash = await submitProtectedRawTransaction({ rpcUrl: privateRpcUrl, signedTransaction })
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash })
+      const transfers = parseEventLogs({
+        abi: POSITION_MANAGER_EVENTS_ABI,
+        eventName: "Transfer",
+        logs: receipt.logs,
+        strict: false,
+      })
+      const positionTransfer = transfers.find(
+        (log) =>
+          log.address.toLowerCase() === positionManager.toLowerCase() &&
+          typeof log.args.to === "string" &&
+          log.args.to.toLowerCase() === address.toLowerCase(),
+      )
+      if (!positionTransfer) throw new Error("Confirmed V4 transaction did not emit a position NFT transfer")
+      const tokenId = positionTransfer.args.tokenId
+      if (typeof tokenId !== "bigint") throw new Error("Confirmed V4 position transfer did not include a tokenId")
+      let authToken = localStorage.getItem("aetherdex-auth-token")
+      if (!authToken) {
+        await signIn()
+        authToken = localStorage.getItem("aetherdex-auth-token")
+      }
+      if (!authToken) throw new Error("Sign-in is required to index the new position")
+      const indexResponse = await fetch(`${API_URL}/positions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          protocol: "v4",
+          tokenId: tokenId.toString(),
+          poolId: pool.poolId,
+          tickLower: Number(values.lowerTick),
+          tickUpper: Number(values.upperTick),
+          liquidity: call.liquidityDelta.toString(),
+          amount0: call.expectedAmount0.toString(),
+          amount1: call.expectedAmount1.toString(),
+        }),
+      })
+      if (!indexResponse.ok) throw new Error(`Position indexing failed with HTTP ${indexResponse.status}`)
       setRequest({ ...nextRequest, execution: { status: "submitted", txHash } })
     } catch (error: unknown) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to prepare liquidity transaction")
