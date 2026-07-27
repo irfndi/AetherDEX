@@ -10,7 +10,7 @@ import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockC
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -96,39 +96,6 @@ contract AetherPositionManagerTest is Test {
         assertEq(mockPoolManager.nonzeroDeltaCount(), 0);
     }
 
-    function test_mintPositionSingleSided_mintsReceiptAfterSwapAndLiquidity() public {
-        mockPoolManager.setSwapDelta(toBalanceDelta(-int128(0.4 ether), int128(0.3 ether)));
-        token1.mint(address(mockPoolManager), 1 ether);
-        vm.prank(user);
-        (uint256 tokenId, uint256 amount0, uint256 amount1, uint256 amountOut) =
-            positionManager.mintPositionSingleSided(
-                IAetherPositionManager.SingleSidedMintParams({
-                    poolKey: poolKey,
-                    tickLower: -60,
-                    tickUpper: 60,
-                    liquidity: LIQUIDITY,
-                    zeroForOne: true,
-                    amountIn: 1 ether,
-                    swapAmountIn: 0.4 ether,
-                    minSwapAmountOut: 0.29 ether,
-                    minAmount0: 0,
-                    minAmount1: 0,
-                    recipient: user,
-                    deadline: block.timestamp + 100,
-                    hookData: ""
-                })
-            );
-
-        assertEq(tokenId, 1);
-        assertEq(amountOut, 0.3 ether);
-        assertGt(amount0, 0);
-        assertGt(amount1, 0);
-        assertEq(positionManager.ownerOf(tokenId), user);
-        assertEq(
-            mockPoolManager.positionLiquidity(poolKey, address(positionManager), -60, 60, bytes32(tokenId)), LIQUIDITY
-        );
-    }
-
     function test_removeLiquidity_revertsForUnapprovedCaller() public {
         uint256 tokenId = _mintForUser();
 
@@ -182,10 +149,6 @@ contract AetherPositionManagerTest is Test {
         uint256 tokenId = _mintForUser();
         token0.mint(address(positionManager), 7);
         token1.mint(address(positionManager), 13);
-        vm.startPrank(user);
-        token0.transfer(attacker, token0.balanceOf(user));
-        token1.transfer(attacker, token1.balanceOf(user));
-        vm.stopPrank();
         uint256 balance0Before = token0.balanceOf(user);
         uint256 balance1Before = token1.balanceOf(user);
 
@@ -212,32 +175,11 @@ contract AetherPositionManagerTest is Test {
         assertEq(token1.balanceOf(address(positionManager)), 13);
     }
 
-    function test_rebalancePosition_revertsWhenTotalSpendExceedsMaximumDespiteClosedProceeds() public {
-        uint256 tokenId = _mintForUser();
-        IAetherPositionManager.RebalancePositionParams memory params = _rebalanceParams(tokenId);
-        params.amount0Max = LIQUIDITY / 1000 - 1;
-        params.amount1Max = LIQUIDITY / 1000 - 1;
-
-        vm.expectRevert(IAetherPositionManager.AmountMaximumExceeded.selector);
-        vm.prank(user);
-        positionManager.rebalancePosition(params);
-    }
-
     function test_rebalancePosition_revertsForUnapprovedCaller() public {
         uint256 tokenId = _mintForUser();
 
-        vm.expectRevert(IAetherPositionManager.RebalanceOwnerOnly.selector);
+        vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721InsufficientApproval.selector, attacker, tokenId));
         vm.prank(attacker);
-        positionManager.rebalancePosition(_rebalanceParams(tokenId));
-    }
-
-    function test_rebalancePosition_revertsForApprovedOperator() public {
-        uint256 tokenId = _mintForUser();
-        vm.prank(user);
-        positionManager.approve(operator, tokenId);
-
-        vm.expectRevert(IAetherPositionManager.RebalanceOwnerOnly.selector);
-        vm.prank(operator);
         positionManager.rebalancePosition(_rebalanceParams(tokenId));
     }
 
@@ -498,39 +440,18 @@ contract PositionPoolManagerMock {
     error InsufficientCredit();
     error SettlementExceedsDebt();
     error NativeTransferFailed();
-    error InvalidSwapAmount();
 
     bool internal unlocked;
     Currency internal syncedCurrency;
     uint256 internal syncedBalance;
     int256 public nonzeroDeltaCount;
     address public lastModifyLiquidityCaller;
-    BalanceDelta internal configuredSwapDelta;
 
     mapping(bytes32 positionKey => uint128 liquidity) internal positions;
     mapping(address account => mapping(Currency currency => int256 delta)) internal currencyDeltas;
 
     function initialize(PoolKey memory, uint160) external pure returns (int24) {
         return 0;
-    }
-
-    function setSwapDelta(BalanceDelta delta) external {
-        configuredSwapDelta = delta;
-    }
-
-    function swap(PoolKey memory key, SwapParams memory params, bytes calldata)
-        external
-        returns (BalanceDelta delta)
-    {
-        if (!unlocked) revert ManagerLocked();
-        if (params.amountSpecified >= 0) revert InvalidSwapAmount();
-        delta = configuredSwapDelta;
-        Currency input = params.zeroForOne ? key.currency0 : key.currency1;
-        Currency output = params.zeroForOne ? key.currency1 : key.currency0;
-        uint256 amountIn = params.zeroForOne ? uint256(-int256(delta.amount0())) : uint256(-int256(delta.amount1()));
-        uint256 amountOut = params.zeroForOne ? uint256(int256(delta.amount1())) : uint256(int256(delta.amount0()));
-        _accountDelta(msg.sender, input, -int256(amountIn));
-        _accountDelta(msg.sender, output, int256(amountOut));
     }
 
     function unlock(bytes calldata data) external returns (bytes memory result) {

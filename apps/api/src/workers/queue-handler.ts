@@ -1,9 +1,26 @@
 /**
- * AetherDEX Queue Handlers
+ * AetherDEX Queue Handlers — Phase 2 Extended
  * Processes messages from Cloudflare Queues:
  * - price-refresh: refresh token prices from external sources
  * - trade-settlement: archive completed trades to R2
+ * - **NEW: tp-sl-evaluate: evaluate and execute TP/SL orders**
+ * - **NEW: auto-recenter-check: check and queue position rebalances**
  */
+
+import { createPublicClient, http } from "viem"
+
+const AETHER_HOOK_ABI = [
+  {
+    name: "getCurrentTwap",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "poolId", type: "bytes32" },
+      { name: "secondsAgo", type: "uint32" },
+    ],
+    outputs: [{ name: "priceX18", type: "uint256" }],
+  },
+] as const
 
 export interface PriceRefreshMessage {
   type: "price-refresh"
@@ -21,7 +38,40 @@ export interface TradeArchiveMessage {
   month: number
 }
 
-export type QueueMessage = PriceRefreshMessage | TradeSettlementMessage | TradeArchiveMessage
+export interface TpSlEvaluateMessage {
+  type: "tp-sl-evaluate"
+  orderId: number
+  poolId: string
+  orderType: string
+  zeroForOne: boolean
+  amountIn: string
+  minAmountOut: string
+  triggerPriceX18: string
+  twapWindow: number
+  slippageBps: number
+  deadline: number
+  userAddress: string
+  chainId: number
+}
+
+export interface AutoRecenterCheckMessage {
+  type: "auto-recenter-check"
+  policyId: number
+  positionId: string
+  poolId: string
+  userAddress: string
+  tickLower: number
+  tickUpper: number
+  minDriftBps: number
+  chainId: number
+}
+
+export type QueueMessage =
+  | PriceRefreshMessage
+  | TradeSettlementMessage
+  | TradeArchiveMessage
+  | TpSlEvaluateMessage
+  | AutoRecenterCheckMessage
 
 interface QueueEnv {
   DB: D1Database
@@ -29,6 +79,57 @@ interface QueueEnv {
   STORAGE: R2Bucket
   WEBSOCKET_HUB: DurableObjectNamespace
   CHAIN_ID: string
+  RPC_URL?: string
+  AETHER_HOOK_ADDRESS?: string
+}
+
+const readIntegerCacheValue = (payload: string, field: string): string | null => {
+  try {
+    const value = (JSON.parse(payload) as Record<string, unknown>)[field]
+    if (typeof value !== "string" || !/^[0-9]+$/.test(value)) return null
+    BigInt(value)
+    return value
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Read the TWAP from the on-chain AetherHook oracle and cache it in KV.
+ * Returns the price as a decimal string, or null when unconfigured / on error.
+ */
+async function readTwapFromChain(
+  env: Pick<QueueEnv, "CACHE" | "RPC_URL" | "AETHER_HOOK_ADDRESS">,
+  poolId: string,
+  twapWindow: number,
+): Promise<string | null> {
+  const rpcUrl = env.RPC_URL
+  const hookAddress = env.AETHER_HOOK_ADDRESS
+  if (!rpcUrl || !hookAddress) {
+    console.warn("[Keeper] RPC_URL or AETHER_HOOK_ADDRESS not configured — skipping on-chain TWAP read")
+    return null
+  }
+
+  try {
+    const client = createPublicClient({ transport: http(rpcUrl) })
+    const priceX18 = await client.readContract({
+      address: hookAddress as `0x${string}`,
+      abi: AETHER_HOOK_ABI,
+      functionName: "getCurrentTwap",
+      args: [poolId as `0x${string}`, twapWindow],
+    })
+
+    const priceStr = priceX18.toString()
+    const twapKey = `twap:${poolId}:${twapWindow}`
+    await env.CACHE.put(twapKey, JSON.stringify({ price: priceStr, updatedAt: Date.now() }), {
+      expirationTtl: 300,
+    })
+
+    return priceStr
+  } catch (error) {
+    console.error(`[Keeper] On-chain TWAP read failed for pool ${poolId}:`, error)
+    return null
+  }
 }
 
 /**
@@ -50,6 +151,12 @@ export const processQueueBatch = async (batch: MessageBatch<unknown>, env: Queue
         case "trade-archive":
           await handleTradeArchive(msg, env)
           break
+        case "tp-sl-evaluate":
+          await handleTpSlEvaluate(msg, env)
+          break
+        case "auto-recenter-check":
+          await handleAutoRecenterCheck(msg, env)
+          break
         default: {
           const _never: never = msg
           console.warn(`Unknown queue message type: ${JSON.stringify(_never)}`)
@@ -62,6 +169,233 @@ export const processQueueBatch = async (batch: MessageBatch<unknown>, env: Queue
     }
   }
 }
+
+// ─── TP/SL Evaluation Handler ───────────────────────────────────────────────
+
+async function handleTpSlEvaluate(msg: TpSlEvaluateMessage, env: QueueEnv): Promise<void> {
+  console.log(`[Keeper] Evaluating TP/SL order ${msg.orderId} for pool ${msg.poolId}`)
+
+  // 1. Verify order is still pending
+  const order = await env.DB.prepare(
+    "SELECT id, status, deadline FROM tp_sl_orders WHERE id = ? AND chain_id = ? AND status = 'pending'",
+  )
+    .bind(msg.orderId, msg.chainId)
+    .first<{ id: number; status: string; deadline: number }>()
+
+  if (!order) {
+    console.log(`[Keeper] Order ${msg.orderId} no longer pending, skipping`)
+    return
+  }
+
+  // 2. Check if order has expired
+  if (Date.now() > msg.deadline) {
+    await env.DB.prepare("UPDATE tp_sl_orders SET status = 'expired' WHERE id = ? AND chain_id = ?")
+      .bind(msg.orderId, msg.chainId)
+      .run()
+    console.log(`[Keeper] Order ${msg.orderId} expired`)
+    return
+  }
+
+  // 3. Read current spot price from pool state (via KV cache or on-chain)
+  // Prices are stored as price:${tokenAddress} — for pool spot price we need
+  // to read from the pool-specific cache or derive from token prices
+  const spotPriceKey = `poolSpot:${msg.poolId}`
+  const spotPriceData = await env.CACHE.get(spotPriceKey)
+  if (!spotPriceData) {
+    console.log(`[Keeper] No spot price available for pool ${msg.poolId}, skipping`)
+    return
+  }
+
+  const spotPriceX18 = readIntegerCacheValue(spotPriceData, "price")
+  if (spotPriceX18 === null) {
+    console.warn(`[Keeper] Invalid spot price payload for pool ${msg.poolId}, skipping`)
+    return
+  }
+
+  // 4. Read TWAP — populate cache from on-chain AetherHook oracle, then read from KV
+  const twapKey = `twap:${msg.poolId}:${msg.twapWindow}`
+
+  let twapPriceX18: string | null = null
+  const twapData = await env.CACHE.get(twapKey)
+  if (twapData !== null) {
+    twapPriceX18 = readIntegerCacheValue(twapData, "price")
+  }
+
+  if (twapPriceX18 === null) {
+    const chainTwap = await readTwapFromChain(env, msg.poolId, msg.twapWindow)
+    if (chainTwap !== null) {
+      twapPriceX18 = readIntegerCacheValue(JSON.stringify({ price: chainTwap }), "price")
+    }
+  }
+
+  if (twapPriceX18 === null) {
+    console.log(`[Keeper] No valid TWAP available for pool ${msg.poolId}, skipping`)
+    return
+  }
+
+  // 5. Evaluate dual trigger condition
+  const triggerPrice = BigInt(msg.triggerPriceX18)
+  const spotPrice = BigInt(spotPriceX18)
+  const twapPrice = BigInt(twapPriceX18)
+
+  let isTriggered = false
+
+  if (msg.orderType === "take_profit") {
+    if (msg.zeroForOne) {
+      // TP: price must go DOWN
+      isTriggered = spotPrice <= triggerPrice
+      isTriggered = isTriggered && twapPrice <= triggerPrice
+    } else {
+      // TP: price must go UP
+      isTriggered = spotPrice >= triggerPrice
+      isTriggered = isTriggered && twapPrice >= triggerPrice
+    }
+  } else {
+    // STOP_LOSS
+    if (msg.zeroForOne) {
+      // SL: price must go UP
+      isTriggered = spotPrice >= triggerPrice
+      isTriggered = isTriggered && twapPrice >= triggerPrice
+    } else {
+      // SL: price must go DOWN
+      isTriggered = spotPrice <= triggerPrice
+      isTriggered = isTriggered && twapPrice <= triggerPrice
+    }
+  }
+
+  if (!isTriggered) {
+    console.log(
+      `[Keeper] Order ${msg.orderId} trigger not breached (spot: ${spotPriceX18}, twap: ${twapPriceX18}, trigger: ${msg.triggerPriceX18})`,
+    )
+    return
+  }
+
+  // 6. Trigger is breached — mark for execution
+  console.log(`[Keeper] Order ${msg.orderId} trigger BREACHED — marking for execution`)
+
+  // Update order status to 'triggered' and enqueue for on-chain execution
+  await env.DB.prepare(`
+    UPDATE tp_sl_orders
+    SET status = 'triggered', updated_at = ?
+    WHERE id = ? AND chain_id = ? AND status = 'pending'
+  `)
+    .bind(Date.now(), msg.orderId, msg.chainId)
+    .run()
+
+  // In production, this would also submit the transaction via the keeper's funded signer
+  // For now, log the execution intent
+  console.log(
+    JSON.stringify({
+      event: "tp_sl_triggered",
+      orderId: msg.orderId,
+      poolId: msg.poolId,
+      orderType: msg.orderType,
+      spotPriceX18: spotPriceX18,
+      twapPriceX18,
+      triggerPriceX18: msg.triggerPriceX18,
+      userAddress: msg.userAddress,
+      amountIn: msg.amountIn,
+    }),
+  )
+}
+
+// ─── Auto-Recenter Check Handler ────────────────────────────────────────────
+
+async function handleAutoRecenterCheck(msg: AutoRecenterCheckMessage, env: QueueEnv): Promise<void> {
+  console.log(`[Keeper] Checking auto-recenter for position ${msg.positionId}`)
+
+  // 1. Verify policy is still active
+  const policy = await env.DB.prepare(
+    "SELECT id, is_active, last_rebalance_at, cooldown_seconds FROM position_policies WHERE id = ? AND chain_id = ? AND is_active = 1",
+  )
+    .bind(msg.policyId, msg.chainId)
+    .first<{ id: number; is_active: number; last_rebalance_at: number | null; cooldown_seconds: number }>()
+
+  if (!policy) {
+    console.log(`[Keeper] Policy ${msg.policyId} no longer active, skipping`)
+    return
+  }
+
+  // 2. Check cooldown (anti-whipsaw)
+  const now = Date.now()
+  const lastRebalance = policy.last_rebalance_at ?? 0
+  const elapsed = now - lastRebalance
+
+  if (elapsed < policy.cooldown_seconds * 1000) {
+    const remaining = policy.cooldown_seconds - Math.floor(elapsed / 1000)
+    console.log(`[Keeper] Position ${msg.positionId}: cooldown active, ${Math.ceil(remaining)}s remaining`)
+    return
+  }
+
+  // 3. Read current tick from pool state (use same key as tp-sl-evaluate)
+  const spotPriceKey = `poolSpot:${msg.poolId}`
+  const spotPriceData = await env.CACHE.get(spotPriceKey)
+  if (!spotPriceData) {
+    console.log(`[Keeper] No spot price for pool ${msg.poolId}, skipping`)
+    return
+  }
+
+  // Pool spot data stores price (1e18-scaled ratio). Derive tick from price.
+  let spotParsed: { tick?: unknown }
+  try {
+    spotParsed = JSON.parse(spotPriceData) as { tick?: unknown }
+  } catch {
+    console.warn(`[Keeper] Invalid pool state payload for pool ${msg.poolId}, skipping`)
+    return
+  }
+  const currentTick =
+    typeof spotParsed.tick === "number" && Number.isInteger(spotParsed.tick) ? spotParsed.tick : undefined
+
+  if (currentTick === undefined) {
+    console.log(`[Keeper] No tick/price data for pool ${msg.poolId}, skipping`)
+    return
+  }
+
+  // 4. Check if position is out of range
+  const isInRange = currentTick >= msg.tickLower && currentTick <= msg.tickUpper
+
+  if (isInRange) {
+    console.log(
+      `[Keeper] Position ${msg.positionId} is in range [${msg.tickLower}, ${msg.tickUpper}], no rebalance needed`,
+    )
+    return
+  }
+
+  // 5. Compute drift
+  const driftTicks = currentTick < msg.tickLower ? msg.tickLower - currentTick : currentTick - msg.tickUpper
+  const rangeSize = msg.tickUpper - msg.tickLower
+  const driftBps = rangeSize > 0 ? Math.floor((driftTicks * 10_000) / rangeSize) : 10_000
+
+  if (driftBps < msg.minDriftBps) {
+    console.log(`[Keeper] Position ${msg.positionId} drift ${driftBps} bps < threshold ${msg.minDriftBps} bps`)
+    return
+  }
+
+  // 6. Position is out of range and drift exceeds threshold — queue rebalance
+  console.log(
+    JSON.stringify({
+      event: "auto_recenter_triggered",
+      positionId: msg.positionId,
+      poolId: msg.poolId,
+      currentTick,
+      tickLower: msg.tickLower,
+      tickUpper: msg.tickUpper,
+      driftBps,
+      userAddress: msg.userAddress,
+    }),
+  )
+
+  // Update last_rebalance_at
+  await env.DB.prepare(`
+    UPDATE position_policies
+    SET last_rebalance_at = ?, rebalance_count = rebalance_count + 1
+    WHERE id = ? AND chain_id = ?
+  `)
+    .bind(now, msg.policyId, msg.chainId)
+    .run()
+}
+
+// ─── Existing Handlers ──────────────────────────────────────────────────────
 
 async function handlePriceRefresh(
   msg: PriceRefreshMessage,

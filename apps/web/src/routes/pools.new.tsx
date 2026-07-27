@@ -1,36 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { useState } from "react"
-import { encodeFunctionData, getAddress, isAddress } from "viem"
-import { useAccount, usePublicClient, useWalletClient } from "wagmi"
+import { getAddress, isAddress } from "viem"
+import { useAccount } from "wagmi"
 import { Button, Card, CardBody, CardTitle, Input } from "../components/ui"
-import { submitProtectedRawTransaction } from "../lib/protected-submission"
-
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080/api/v1"
-const FACTORY_ABI = [
-  {
-    name: "createPoolWithDeadline",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "token0", type: "address" },
-      { name: "token1", type: "address" },
-      { name: "fee", type: "uint24" },
-      { name: "tickSpacing", type: "int24" },
-      { name: "sqrtPriceX96", type: "uint160" },
-      { name: "deadline", type: "uint256" },
-    ],
-    outputs: [{ name: "poolId", type: "bytes32" }],
-  },
-] as const
-const ERC20_DECIMALS_ABI = [
-  {
-    name: "decimals",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint8" }],
-  },
-] as const
 
 const Q96 = 2n ** 96n
 const MAX_UINT160 = 2n ** 160n - 1n
@@ -42,9 +14,7 @@ type PriceInput =
 
 export interface PoolCreationFormValues {
   readonly token0: string
-  readonly token0Decimals: string
   readonly token1: string
-  readonly token1Decimals: string
   readonly fee: string
   readonly tickSpacing: string
   readonly priceInput: PriceInput
@@ -53,9 +23,7 @@ export interface PoolCreationFormValues {
 
 export interface PoolCreationRequest {
   readonly token0: `0x${string}`
-  readonly token0Decimals: number
   readonly token1: `0x${string}`
-  readonly token1Decimals: number
   readonly fee: number
   readonly tickSpacing: number
   readonly initialPrice: PriceInput
@@ -67,16 +35,6 @@ export interface PoolCreationValidation {
   readonly request: PoolCreationRequest | null
 }
 
-export function assertPoolTokenDecimals(
-  request: Pick<PoolCreationRequest, "token0Decimals" | "token1Decimals">,
-  onChainToken0Decimals: number,
-  onChainToken1Decimals: number,
-): void {
-  if (request.token0Decimals !== onChainToken0Decimals || request.token1Decimals !== onChainToken1Decimals) {
-    throw new Error("Token decimals changed or do not match the on-chain token contracts")
-  }
-}
-
 export function validatePoolCreationForm(
   values: PoolCreationFormValues,
   now = Math.floor(Date.now() / 1000),
@@ -84,8 +42,6 @@ export function validatePoolCreationForm(
   const errors: Partial<Record<keyof PoolCreationFormValues | "pair", string>> = {}
   const token0 = parseAddress(values.token0)
   const token1 = parseAddress(values.token1)
-  const token0Decimals = parseTokenDecimals(values.token0Decimals)
-  const token1Decimals = parseTokenDecimals(values.token1Decimals)
   const fee = parsePositiveInteger(values.fee)
   const tickSpacing = parsePositiveInteger(values.tickSpacing)
   const price = values.priceInput.value.trim()
@@ -93,8 +49,6 @@ export function validatePoolCreationForm(
 
   if (!token0) errors.token0 = "Enter a valid 0x address."
   if (!token1) errors.token1 = "Enter a valid 0x address."
-  if (token0Decimals === null) errors.token0Decimals = "Token0 decimals must be an integer from 0 to 255."
-  if (token1Decimals === null) errors.token1Decimals = "Token1 decimals must be an integer from 0 to 255."
   if (token0 && token1 && token0.toLowerCase() === token1.toLowerCase()) errors.pair = "Tokens must be distinct."
   if (token0 && token1 && token0.toLowerCase() > token1.toLowerCase()) {
     errors.pair = "Token0 must be the lower address."
@@ -111,22 +65,10 @@ export function validatePoolCreationForm(
   if (values.priceInput.kind === "sqrtPriceX96" && isPositiveInteger(price) && BigInt(price) > MAX_UINT160) {
     errors.priceInput = "sqrtPriceX96 must fit in uint160."
   }
-  if (
-    values.priceInput.kind === "price" &&
-    isPositiveDecimal(price) &&
-    token0Decimals !== null &&
-    token1Decimals !== null &&
-    !isDecimalSqrtPriceWithinUint160(price, token0Decimals, token1Decimals)
-  ) {
+  if (values.priceInput.kind === "price" && isPositiveDecimal(price) && !isDecimalSqrtPriceWithinUint160(price)) {
     errors.priceInput = "Initial price is outside the uint160 sqrt-price range."
   }
-  if (
-    values.priceInput.kind === "price" &&
-    isPositiveDecimal(price) &&
-    token0Decimals !== null &&
-    token1Decimals !== null &&
-    decimalToSqrtPriceX96(price, token0Decimals, token1Decimals) === 0n
-  ) {
+  if (values.priceInput.kind === "price" && isPositiveDecimal(price) && decimalToSqrtPriceX96(price) === 0n) {
     errors.priceInput = "Initial price is too small to encode as sqrtPriceX96."
   }
   if (deadline === null || deadline <= now) errors.deadline = "Deadline must be a future date and time."
@@ -135,8 +77,6 @@ export function validatePoolCreationForm(
     Object.keys(errors).length > 0 ||
     !token0 ||
     !token1 ||
-    token0Decimals === null ||
-    token1Decimals === null ||
     fee === null ||
     tickSpacing === null ||
     deadline === null
@@ -148,9 +88,7 @@ export function validatePoolCreationForm(
     errors,
     request: {
       token0,
-      token0Decimals,
       token1,
-      token1Decimals,
       fee,
       tickSpacing,
       initialPrice: values.priceInput,
@@ -163,7 +101,7 @@ export function buildPoolCreationTransactionIntent(request: PoolCreationRequest)
   const sqrtPriceX96 =
     request.initialPrice.kind === "sqrtPriceX96"
       ? BigInt(request.initialPrice.value)
-      : decimalToSqrtPriceX96(request.initialPrice.value, request.token0Decimals, request.token1Decimals)
+      : decimalToSqrtPriceX96(request.initialPrice.value)
   return {
     functionName: "createPoolWithDeadline" as const,
     args: [
@@ -193,12 +131,6 @@ function parsePositiveInteger(value: string): number | null {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null
 }
 
-function parseTokenDecimals(value: string): number | null {
-  if (!/^\d+$/.test(value.trim())) return null
-  const parsed = Number(value)
-  return Number.isSafeInteger(parsed) && parsed >= 0 && parsed <= 255 ? parsed : null
-}
-
 function isPositiveInteger(value: string): boolean {
   return /^\d+$/.test(value.trim()) && BigInt(value) > 0n
 }
@@ -208,10 +140,10 @@ function isPositiveDecimal(value: string): boolean {
   return Number(value) > 0
 }
 
-function isDecimalSqrtPriceWithinUint160(value: string, token0Decimals: number, token1Decimals: number): boolean {
+function isDecimalSqrtPriceWithinUint160(value: string): boolean {
   const [whole = ""] = value.split(".")
   if (whole.length > 40) return false
-  return decimalToSqrtPriceX96(value, token0Decimals, token1Decimals) <= MAX_UINT160
+  return decimalToSqrtPriceX96(value) <= MAX_UINT160
 }
 
 function parseDeadline(value: string): number | null {
@@ -230,17 +162,12 @@ function deploymentConfig(): { readonly address: `0x${string}`; readonly chainId
 export const Route = createFileRoute("/pools/new")({ component: NewPoolPage })
 
 function NewPoolPage() {
-  const { address, isConnected } = useAccount()
-  const publicClient = usePublicClient()
-  const { data: walletClient } = useWalletClient()
+  const { isConnected } = useAccount()
   const config = deploymentConfig()
   const [values, setValues] = useStateWithFormDefaults()
   const [submitted, setSubmitted] = useState(false)
   const [recheckAcknowledged, setRecheckAcknowledged] = useState(false)
   const [intentPrepared, setIntentPrepared] = useState(false)
-  const [guardChecking, setGuardChecking] = useState(false)
-  const [txHash, setTxHash] = useState<`0x${string}` | null>(null)
-  const [executionError, setExecutionError] = useState<string | null>(null)
   const validation = validatePoolCreationForm(values)
   const canPrepare = Boolean(isConnected && validation.request && recheckAcknowledged)
 
@@ -248,83 +175,11 @@ function NewPoolPage() {
     setValues((current) => ({ ...current, [field]: value }))
     setSubmitted(false)
     setIntentPrepared(false)
-    setTxHash(null)
-    setExecutionError(null)
   }
 
-  const submit = async () => {
+  const submit = () => {
     setSubmitted(true)
-    setIntentPrepared(false)
-    setTxHash(null)
-    setExecutionError(null)
-    if (!canPrepare || !validation.request) return
-
-    setGuardChecking(true)
-    try {
-      const guardUrl = new URL(`${API_URL}/price-guard`)
-      guardUrl.searchParams.set("token0", validation.request.token0)
-      guardUrl.searchParams.set("token1", validation.request.token1)
-      guardUrl.searchParams.set(
-        "price",
-        validation.request.initialPrice.kind === "price"
-          ? validation.request.initialPrice.value
-          : sqrtPriceToPrice(
-              validation.request.initialPrice.value,
-              validation.request.token0Decimals,
-              validation.request.token1Decimals,
-            ),
-      )
-      const guardResponse = await fetch(guardUrl)
-      const guardPayload = (await guardResponse.json()) as { readonly error?: string; readonly valid?: boolean }
-      if (!guardResponse.ok || guardPayload.valid !== true) {
-        throw new Error(guardPayload.error ?? "Live price guard rejected this opening price")
-      }
-
-      if (!config) {
-        setIntentPrepared(true)
-        return
-      }
-      if (!address || !walletClient || !publicClient) throw new Error("Wallet client is not ready")
-      if (!import.meta.env.VITE_PRIVATE_RPC_URL) throw new Error("Protected submission is not configured")
-      if (config.chainId !== null && publicClient.chain?.id !== config.chainId) {
-        throw new Error(`Switch to chain ${config.chainId} before creating the pool`)
-      }
-      const [onChainToken0Decimals, onChainToken1Decimals] = await Promise.all([
-        publicClient.readContract({
-          address: validation.request.token0,
-          abi: ERC20_DECIMALS_ABI,
-          functionName: "decimals",
-        }),
-        publicClient.readContract({
-          address: validation.request.token1,
-          abi: ERC20_DECIMALS_ABI,
-          functionName: "decimals",
-        }),
-      ])
-      assertPoolTokenDecimals(validation.request, onChainToken0Decimals, onChainToken1Decimals)
-      const intent = buildPoolCreationTransactionIntent(validation.request)
-      const prepared = await walletClient.prepareTransactionRequest({
-        account: address,
-        to: config.address,
-        data: encodeFunctionData({
-          abi: FACTORY_ABI,
-          functionName: "createPoolWithDeadline",
-          args: intent.args,
-        }),
-        value: 0n,
-      })
-      const signed = await walletClient.signTransaction(prepared)
-      const hash = await submitProtectedRawTransaction({
-        rpcUrl: import.meta.env.VITE_PRIVATE_RPC_URL,
-        signedTransaction: signed,
-      })
-      setTxHash(hash)
-      setIntentPrepared(true)
-    } catch (error: unknown) {
-      setExecutionError(error instanceof Error ? error.message : "Unable to create pool")
-    } finally {
-      setGuardChecking(false)
-    }
+    if (canPrepare && validation.request) setIntentPrepared(true)
   }
 
   const displayError = (field: keyof PoolCreationFormValues | "pair") =>
@@ -362,24 +217,6 @@ function NewPoolPage() {
                 {...inputError(displayError("token1"))}
                 onChange={(e) => update("token1", e.target.value)}
               />
-              <Input
-                id="token0-decimals"
-                label="Token0 decimals"
-                inputMode="numeric"
-                placeholder="18"
-                value={values.token0Decimals}
-                {...inputError(displayError("token0Decimals"))}
-                onChange={(e) => update("token0Decimals", e.target.value)}
-              />
-              <Input
-                id="token1-decimals"
-                label="Token1 decimals"
-                inputMode="numeric"
-                placeholder="6"
-                value={values.token1Decimals}
-                {...inputError(displayError("token1Decimals"))}
-                onChange={(e) => update("token1Decimals", e.target.value)}
-              />
             </div>
             {displayError("pair") ? <p className="mt-2 text-sm text-error">{displayError("pair")}</p> : null}
             <p className="mt-2 text-xs text-base-content/60">
@@ -409,11 +246,10 @@ function NewPoolPage() {
                 onChange={(e) => update("tickSpacing", e.target.value)}
               />
             </div>
-            <fieldset className="mt-4 flex flex-wrap gap-2">
-              <legend className="sr-only">Initial price format</legend>
+            <div className="mt-4 join w-full">
               <button
                 type="button"
-                className={`btn btn-sm ${values.priceInput.kind === "price" ? "btn-primary" : "btn-ghost border border-base-300"}`}
+                className={`join-item btn btn-sm ${values.priceInput.kind === "price" ? "btn-primary" : "btn-ghost"}`}
                 onClick={() =>
                   setValues((current) => ({
                     ...current,
@@ -425,7 +261,7 @@ function NewPoolPage() {
               </button>
               <button
                 type="button"
-                className={`btn btn-sm ${values.priceInput.kind === "sqrtPriceX96" ? "btn-primary" : "btn-ghost border border-base-300"}`}
+                className={`join-item btn btn-sm ${values.priceInput.kind === "sqrtPriceX96" ? "btn-primary" : "btn-ghost"}`}
                 onClick={() =>
                   setValues((current) => ({
                     ...current,
@@ -433,9 +269,9 @@ function NewPoolPage() {
                   }))
                 }
               >
-                Sqrt price
+                sqrtPriceX96
               </button>
-            </fieldset>
+            </div>
             <Input
               id="initial-price"
               label={
@@ -464,7 +300,8 @@ function NewPoolPage() {
             <div>
               <p className="font-semibold">Execution-time price re-check required</p>
               <p>
-                The opening price is checked against fresh API oracle prices immediately before any wallet signature.
+                This acknowledgement is required, but the current UI does not read a live oracle. A deployed factory or
+                API price guard must be added before production submission is enabled.
               </p>
             </div>
           </div>
@@ -475,9 +312,7 @@ function NewPoolPage() {
               checked={recheckAcknowledged}
               onChange={(e) => setRecheckAcknowledged(e.target.checked)}
             />
-            <span className="label-text min-w-0 whitespace-normal break-words">
-              I understand the price will be checked again at execution time.
-            </span>
+            <span className="label-text">I understand the price will be checked again at execution time.</span>
           </label>
 
           {!config ? (
@@ -487,26 +322,20 @@ function NewPoolPage() {
           ) : null}
           {config ? (
             <p className="text-sm text-warning">
-              Factory address detected. A fresh price guard and protected submission are required before signing.
+              Factory address detected, but the live price guard is not configured. No transaction will be submitted.
             </p>
           ) : null}
           {!isConnected ? (
             <p className="text-sm text-base-content/60">Connect a wallet to prepare a protected transaction.</p>
           ) : null}
-          {executionError ? (
-            <p className="alert alert-error text-sm" role="alert">
-              {executionError}
-            </p>
-          ) : null}
           {intentPrepared ? (
             <p className="alert alert-warning text-sm" role="status">
-              {txHash
-                ? `Pool creation submitted privately: ${txHash}`
-                : "Pool creation intent prepared after a fresh price guard."}
+              Pool creation intent prepared locally. No transaction was submitted because the live price guard is not
+              configured.
             </p>
           ) : null}
-          <Button type="button" fullWidth disabled={!canPrepare || guardChecking} onClick={() => void submit()}>
-            {guardChecking ? "Checking live price…" : config ? "Create pool privately" : "Prepare pool creation intent"}
+          <Button type="button" fullWidth disabled={!canPrepare} onClick={submit}>
+            Prepare pool creation intent
           </Button>
         </CardBody>
       </Card>
@@ -517,9 +346,7 @@ function NewPoolPage() {
 function useStateWithFormDefaults() {
   const [values, setValues] = useState<PoolCreationFormValues>({
     token0: "",
-    token0Decimals: "18",
     token1: "",
-    token1Decimals: "18",
     fee: "3000",
     tickSpacing: "60",
     priceInput: { kind: "price", value: "1" },
@@ -532,13 +359,12 @@ function inputError(error: string | undefined): { readonly error: string } | Rec
   return error ? { error } : {}
 }
 
-function decimalToSqrtPriceX96(value: string, token0Decimals: number, token1Decimals: number): bigint {
+function decimalToSqrtPriceX96(value: string): bigint {
   const [whole = "0", fraction = ""] = value.split(".")
-  const valueScale = 10n ** BigInt(fraction.length)
-  const valueNumerator = BigInt(whole) * valueScale + BigInt(fraction || "0")
-  const numerator = valueNumerator * 10n ** BigInt(token1Decimals) * Q96 * Q96
-  const denominator = valueScale * 10n ** BigInt(token0Decimals)
-  return integerSqrt(numerator / denominator)
+  const scale = 10n ** 18n
+  const normalizedFraction = fraction.padEnd(18, "0").slice(0, 18)
+  const scaledPrice = BigInt(whole) * scale + BigInt(normalizedFraction)
+  return (integerSqrt(scaledPrice) * Q96) / 10n ** 9n
 }
 
 function integerSqrt(value: bigint): bigint {
@@ -549,15 +375,4 @@ function integerSqrt(value: bigint): bigint {
     next = (result + value / result) / 2n
   }
   return result
-}
-
-export function sqrtPriceToPrice(value: string, token0Decimals: number, token1Decimals: number): string {
-  const sqrtPriceX96 = BigInt(value)
-  const numerator = sqrtPriceX96 * sqrtPriceX96 * 10n ** BigInt(token0Decimals)
-  const denominator = 2n ** 192n * 10n ** BigInt(token1Decimals)
-  const displayScale = 10n ** 18n
-  const scaled = (numerator * displayScale) / denominator
-  const whole = scaled / displayScale
-  const fraction = (scaled % displayScale).toString().padStart(18, "0").replace(/0+$/, "")
-  return fraction ? `${whole}.${fraction}` : whole.toString()
 }

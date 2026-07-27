@@ -1,14 +1,14 @@
 import { Token } from "@uniswap/sdk-core"
 import { Pool, Position } from "@uniswap/v4-sdk"
-import { encodeFunctionData, encodePacked, keccak256, type Hex } from "viem"
+import { encodeFunctionData, type Hex } from "viem"
 
 const BPS = 10_000n
 const MAX_UINT128 = 2n ** 128n - 1n
 const MAX_INT128 = 2n ** 127n - 1n
 
-const AETHER_POSITION_MANAGER_ABI = [
+const AETHER_ROUTER_ABI = [
   {
-    name: "mintPositionSingleSided",
+    name: "addLiquiditySingleSided",
     type: "function",
     stateMutability: "nonpayable",
     inputs: [
@@ -27,25 +27,29 @@ const AETHER_POSITION_MANAGER_ABI = [
               { name: "hooks", type: "address" },
             ],
           },
-          { name: "tickLower", type: "int24" },
-          { name: "tickUpper", type: "int24" },
-          { name: "liquidity", type: "uint128" },
+          {
+            name: "liquidityParams",
+            type: "tuple",
+            components: [
+              { name: "tickLower", type: "int24" },
+              { name: "tickUpper", type: "int24" },
+              { name: "liquidityDelta", type: "int128" },
+              { name: "salt", type: "bytes32" },
+            ],
+          },
           { name: "zeroForOne", type: "bool" },
           { name: "amountIn", type: "uint128" },
           { name: "swapAmountIn", type: "uint128" },
           { name: "minSwapAmountOut", type: "uint128" },
           { name: "minAmount0", type: "uint256" },
           { name: "minAmount1", type: "uint256" },
-          { name: "recipient", type: "address" },
           { name: "deadline", type: "uint256" },
           { name: "hookData", type: "bytes" },
         ],
       },
     ],
     outputs: [
-      { name: "tokenId", type: "uint256" },
-      { name: "amount0", type: "uint256" },
-      { name: "amount1", type: "uint256" },
+      { name: "delta", type: "int256" },
       { name: "amountOut", type: "uint256" },
     ],
   },
@@ -65,17 +69,6 @@ export type V4LiquidityPoolInput = {
   readonly currentTick: number
 }
 
-export type V4PoolKeyInput = Pick<
-  V4LiquidityPoolInput,
-  "chainId" | "token0" | "token1" | "token0Decimals" | "token1Decimals" | "fee" | "tickSpacing" | "hooks"
->
-
-export function getV4PoolId(input: V4PoolKeyInput): `0x${string}` {
-  const token0 = new Token(input.chainId, input.token0, input.token0Decimals)
-  const token1 = new Token(input.chainId, input.token1, input.token1Decimals)
-  return Pool.getPoolId(token0, token1, input.fee, input.tickSpacing, input.hooks) as `0x${string}`
-}
-
 export type V4SingleSidedCallInput = {
   readonly pool: V4LiquidityPoolInput
   readonly tickLower: number
@@ -87,7 +80,6 @@ export type V4SingleSidedCallInput = {
   readonly minSwapAmountOut: bigint
   readonly slippageBps: number
   readonly deadline: bigint
-  readonly recipient: `0x${string}`
   readonly hookData?: Hex
 }
 
@@ -133,26 +125,24 @@ export function buildV4SingleSidedCall(input: V4SingleSidedCallInput): V4SingleS
       tickSpacing: input.pool.tickSpacing,
       hooks: input.pool.hooks,
     },
-    tickLower: input.tickLower,
-    tickUpper: input.tickUpper,
-    liquidity: liquidityDelta,
+    liquidityParams: {
+      tickLower: input.tickLower,
+      tickUpper: input.tickUpper,
+      liquidityDelta,
+      salt: `0x${"00".repeat(32)}` as `0x${string}`,
+    },
     zeroForOne: input.zeroForOne,
     amountIn: input.amountIn,
     swapAmountIn: input.swapAmountIn,
     minSwapAmountOut: input.minSwapAmountOut,
     minAmount0: (expectedAmount0 * slippageFactor) / BPS,
     minAmount1: (expectedAmount1 * slippageFactor) / BPS,
-    recipient: input.recipient,
     deadline: input.deadline,
     hookData: input.hookData ?? "0x",
   } as const
   return {
     kind: "v4-single-sided-zap",
-    calldata: encodeFunctionData({
-      abi: AETHER_POSITION_MANAGER_ABI,
-      functionName: "mintPositionSingleSided",
-      args: [params],
-    }),
+    calldata: encodeFunctionData({ abi: AETHER_ROUTER_ABI, functionName: "addLiquiditySingleSided", args: [params] }),
     value: "0x0",
     deadline: input.deadline,
     liquidityDelta,
@@ -238,8 +228,4 @@ function validateInput(input: V4SingleSidedCallInput): void {
   if (input.pool.tickSpacing <= 0) throw new Error("V4 tick spacing must be positive")
   if (input.pool.sqrtPriceX96 <= 0n || input.pool.liquidity <= 0n) throw new Error("V4 pool state is invalid")
   if (input.deadline <= 0n) throw new Error("V4 deadline must be positive")
-}
-
-export function deriveV4PositionSalt(owner: `0x${string}`, nonce: bigint): Hex {
-  return keccak256(encodePacked(["address", "uint256"], [owner, nonce]))
 }

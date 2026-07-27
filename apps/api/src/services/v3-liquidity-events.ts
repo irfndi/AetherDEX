@@ -1,7 +1,5 @@
 import { decodeEventLog, getAddress, type Hex } from "viem"
 
-const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
-
 const POSITION_MANAGER_ABI = [
   {
     type: "event",
@@ -28,7 +26,7 @@ const POSITION_MANAGER_ABI = [
     name: "Collect",
     inputs: [
       { indexed: true, name: "tokenId", type: "uint256" },
-      { indexed: false, name: "recipient", type: "address" },
+      { indexed: true, name: "recipient", type: "address" },
       { indexed: false, name: "amount0", type: "uint256" },
       { indexed: false, name: "amount1", type: "uint256" },
     ],
@@ -114,7 +112,7 @@ function parsePositionManagerLog(log: RawLog): V3LiquidityEvent | null {
     const decoded = decodeEventLog({
       abi: POSITION_MANAGER_ABI,
       data: log.data,
-      topics: [...log.topics] as [Hex, ...Hex[]],
+      topics: log.topics as unknown as [] | [signature: `0x${string}`, ...args: `0x${string}`[]],
     })
     const args = decoded.args
     const tokenId = "tokenId" in args ? args.tokenId : null
@@ -155,11 +153,7 @@ function parsePositionManagerLog(log: RawLog): V3LiquidityEvent | null {
     }
     if (decoded.eventName === "Transfer") {
       if (!("to" in args) || typeof args.to !== "string") return null
-      return {
-        ...base,
-        eventType: "transfer",
-        ownerAddress: args.to.toLowerCase() === ZERO_ADDRESS ? null : getAddress(args.to),
-      }
+      return { ...base, eventType: "transfer", ownerAddress: getAddress(args.to) }
     }
     return null
   } catch {
@@ -169,7 +163,11 @@ function parsePositionManagerLog(log: RawLog): V3LiquidityEvent | null {
 
 function parsePoolLog(log: RawLog, poolId: string | null): V3LiquidityEvent | null {
   try {
-    const decoded = decodeEventLog({ abi: POOL_ABI, data: log.data, topics: [...log.topics] as [Hex, ...Hex[]] })
+    const decoded = decodeEventLog({
+      abi: POOL_ABI,
+      data: log.data,
+      topics: log.topics as unknown as [] | [signature: `0x${string}`, ...args: `0x${string}`[]],
+    })
     const args = decoded.args
     if (!("owner" in args) || typeof args.owner !== "string") return null
     if (!("tickLower" in args) || !isIntegerValue(args.tickLower)) return null

@@ -14,7 +14,6 @@ interface IAetherPositionManager {
     error NativeTransferFailed();
     error UnexpectedNativeValue();
     error InsufficientCallBalance();
-    error RebalanceOwnerOnly();
 
     struct MintPositionParams {
         PoolKey poolKey;
@@ -23,22 +22,6 @@ interface IAetherPositionManager {
         uint128 liquidity;
         uint256 amount0Max;
         uint256 amount1Max;
-        address recipient;
-        uint256 deadline;
-        bytes hookData;
-    }
-
-    struct SingleSidedMintParams {
-        PoolKey poolKey;
-        int24 tickLower;
-        int24 tickUpper;
-        uint128 liquidity;
-        bool zeroForOne;
-        uint128 amountIn;
-        uint128 swapAmountIn;
-        uint128 minSwapAmountOut;
-        uint256 minAmount0;
-        uint256 minAmount1;
         address recipient;
         uint256 deadline;
         bytes hookData;
@@ -78,10 +61,6 @@ interface IAetherPositionManager {
         external
         payable
         returns (uint256 tokenId, uint256 amount0, uint256 amount1);
-
-    function mintPositionSingleSided(SingleSidedMintParams calldata params)
-        external
-        returns (uint256 tokenId, uint256 amount0, uint256 amount1, uint256 amountOut);
 
     function removeLiquidity(RemoveLiquidityParams calldata params) external returns (uint256 amount0, uint256 amount1);
 

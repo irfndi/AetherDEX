@@ -1,7 +1,11 @@
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { submitProtectedRawTransaction } from "../../src/lib/protected-submission"
 
 describe("protected submission", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
   it("rejects non-HTTPS endpoints before signing or broadcasting", async () => {
     await expect(
       submitProtectedRawTransaction({ rpcUrl: "http://public-rpc.example", signedTransaction: "0x1234" }),
@@ -19,8 +23,10 @@ describe("protected submission", () => {
     ).resolves.toBe(`0x${"1".repeat(64)}`)
     expect(fetchMock).toHaveBeenCalledWith(
       "https://private-rpc.example",
-      expect.objectContaining({ method: "POST" }),
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"method":"eth_sendRawTransaction"'),
+      }),
     )
-    vi.unstubAllGlobals()
   })
 })

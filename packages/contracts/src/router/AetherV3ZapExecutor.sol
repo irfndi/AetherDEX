@@ -3,6 +3,7 @@ pragma solidity ^0.8.36;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Errors} from "../lib/Errors.sol";
 
@@ -41,7 +42,7 @@ interface IV3PositionManager {
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1);
 }
 
-contract AetherV3ZapExecutor is ReentrancyGuard {
+contract AetherV3ZapExecutor is ReentrancyGuard, Ownable {
     using SafeERC20 for IERC20;
 
     IV3SwapRouter public immutable swapRouter;
@@ -73,12 +74,17 @@ contract AetherV3ZapExecutor is ReentrancyGuard {
         uint256 deadline;
     }
 
-    constructor(IV3SwapRouter _swapRouter, IV3PositionManager _positionManager) {
+    constructor(IV3SwapRouter _swapRouter, IV3PositionManager _positionManager) Ownable(msg.sender) {
         if (address(_swapRouter) == address(0) || address(_positionManager) == address(0)) revert Errors.ZeroAddress();
         swapRouter = _swapRouter;
         positionManager = _positionManager;
     }
 
+    /// @notice Execute a single-sided zap: pull one token, swap part of it, mint a position.
+    /// @dev Dust-tolerant: any token0/token1 balance already held by this contract (e.g. a
+    ///      1-wei donation) is snapshotted up front and left untouched. Only the DELTA this
+    ///      zap introduces is refunded to the caller, so pre-existing dust can never brick
+    ///      the executor. Stranded balances stay recoverable via {rescueTokens}.
     function zap(SingleSidedZapParams calldata params)
         external
         nonReentrant
@@ -88,9 +94,15 @@ contract AetherV3ZapExecutor is ReentrancyGuard {
         IERC20 token0 = IERC20(params.token0);
         IERC20 token1 = IERC20(params.token1);
         IERC20 tokenIn = IERC20(params.tokenIn);
-        uint256 balanceBefore = tokenIn.balanceOf(address(this));
+
+        // Snapshot balances BEFORE the zap so the refund step returns only what this zap
+        // leaves behind — never pre-existing dust, which belongs outside the zap's books.
+        uint256 balance0Before = token0.balanceOf(address(this));
+        uint256 balance1Before = token1.balanceOf(address(this));
+
+        uint256 balanceInBefore = tokenIn == token0 ? balance0Before : balance1Before;
         tokenIn.safeTransferFrom(msg.sender, address(this), params.amountIn);
-        if (tokenIn.balanceOf(address(this)) - balanceBefore != params.amountIn) revert Errors.InvalidAmount();
+        if (tokenIn.balanceOf(address(this)) - balanceInBefore != params.amountIn) revert Errors.InvalidAmount();
 
         tokenIn.forceApprove(address(swapRouter), params.swapAmountIn);
         amountOut = swapRouter.exactInputSingle(
@@ -132,9 +144,20 @@ contract AetherV3ZapExecutor is ReentrancyGuard {
         token0.forceApprove(address(positionManager), 0);
         token1.forceApprove(address(positionManager), 0);
         tokenIn.forceApprove(address(swapRouter), 0);
-        _refund(token0);
-        _refund(token1);
+        _refundDelta(token0, balance0Before);
+        _refundDelta(token1, balance1Before);
         emit ZapExecuted(msg.sender, tokenId, params.tokenIn, params.amountIn, amountOut, amount0, amount1);
+    }
+
+    /// @notice Sweep tokens stranded in this contract (direct donations, abandoned dust).
+    /// @dev Owner-only. `zap` is nonReentrant, so no caller's zap funds can be in flight
+    ///      when a rescue runs — any balance here is outside a zap's accounting.
+    /// @param token The ERC-20 token to sweep
+    /// @param to Recipient of the swept tokens
+    /// @param amount Amount to sweep
+    function rescueTokens(address token, address to, uint256 amount) external onlyOwner {
+        if (to == address(0)) revert Errors.ZeroAddress();
+        IERC20(token).safeTransfer(to, amount);
     }
 
     function _validate(SingleSidedZapParams calldata params) private view {
@@ -150,8 +173,11 @@ contract AetherV3ZapExecutor is ReentrancyGuard {
         if (params.swapAmountIn == 0 || params.swapAmountIn >= params.amountIn) revert Errors.InvalidSwapAmount();
     }
 
-    function _refund(IERC20 token) private {
+    /// @dev Refund the caller only the delta this zap left behind — anything above the
+    ///      pre-zap snapshot. Pre-existing dust stays in the contract (owner-recoverable
+    ///      via {rescueTokens}) and is never swept into a zap caller's refund.
+    function _refundDelta(IERC20 token, uint256 balanceBefore) private {
         uint256 balance = token.balanceOf(address(this));
-        if (balance != 0) token.safeTransfer(msg.sender, balance);
+        if (balance > balanceBefore) token.safeTransfer(msg.sender, balance - balanceBefore);
     }
 }

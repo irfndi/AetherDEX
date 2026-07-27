@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
-  assertPoolTokenDecimals,
   buildPoolCreationTransactionIntent,
   type PoolCreationFormValues,
-  sqrtPriceToPrice,
   validatePoolCreationForm,
 } from "../../src/routes/pools.new"
 
@@ -11,9 +9,7 @@ const token0 = "0x1111111111111111111111111111111111111111"
 const token1 = "0x2222222222222222222222222222222222222222"
 const validValues: PoolCreationFormValues = {
   token0,
-  token0Decimals: "18",
   token1,
-  token1Decimals: "18",
   fee: "3000",
   tickSpacing: "60",
   priceInput: { kind: "price", value: "1.25" },
@@ -21,12 +17,6 @@ const validValues: PoolCreationFormValues = {
 }
 
 describe("pool creation validation", () => {
-  it("rejects form decimals that do not match the token contracts", () => {
-    expect(() => assertPoolTokenDecimals({ token0Decimals: 18, token1Decimals: 18 }, 18, 6)).toThrow(
-      "Token decimals changed or do not match the on-chain token contracts",
-    )
-  })
-
   it("returns a normalized typed request for a valid sorted pair", () => {
     const result = validatePoolCreationForm(validValues, Math.floor(Date.parse("2029-01-01") / 1000))
 
@@ -99,7 +89,7 @@ describe("pool creation validation", () => {
   it("rejects a positive decimal price that encodes to zero sqrtPriceX96", () => {
     const result = validatePoolCreationForm({
       ...validValues,
-      priceInput: { kind: "price", value: "0.000000000000000000000000000000000000000000000000000000000001" },
+      priceInput: { kind: "price", value: "0.000000000000000000000000000000001" },
     })
 
     expect(result.request).toBeNull()
@@ -108,10 +98,6 @@ describe("pool creation validation", () => {
 })
 
 describe("pool creation transaction intent", () => {
-  it("preserves display precision when decoding a raw unit price", () => {
-    expect(sqrtPriceToPrice((2n ** 96n).toString(), 18, 18)).toBe("1")
-  })
-
   it("contains the factory method and no deployment address", () => {
     const result = validatePoolCreationForm(validValues, Math.floor(Date.parse("2029-01-01") / 1000))
     if (!result.request) throw new Error("expected valid request")

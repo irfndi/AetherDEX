@@ -115,11 +115,6 @@ export type V3SingleSidedZapCall = {
   readonly tickUpper: number
 }
 
-export type V3SwapQuote = {
-  readonly amountOut: bigint
-  readonly minAmountOut: bigint
-}
-
 export function buildV3PoolContext(input: V3PoolInput): V3PoolContext {
   const token0 = new Token(input.chainId, input.token0, input.token0Decimals)
   const token1 = new Token(input.chainId, input.token1, input.token1Decimals)
@@ -298,7 +293,7 @@ export function buildV3SingleSidedZapCall(input: V3SingleSidedZapInput): V3Singl
           {
             token0,
             token1,
-            tokenIn: input.tokenIn,
+            tokenIn: input.tokenIn as `0x${string}`,
             fee: input.pool.pool.fee,
             tickLower: input.tickLower,
             tickUpper: input.tickUpper,
@@ -320,46 +315,6 @@ export function buildV3SingleSidedZapCall(input: V3SingleSidedZapInput): V3Singl
     tickLower: input.tickLower,
     tickUpper: input.tickUpper,
   }
-}
-
-export async function findV3SwapAmount(input: {
-  readonly pool: V3PoolContext
-  readonly tickLower: number
-  readonly tickUpper: number
-  readonly amountIn: bigint
-  readonly tokenInIsToken0: boolean
-  readonly quote: (amountIn: bigint) => Promise<V3SwapQuote>
-}): Promise<{ readonly swapAmountIn: bigint; readonly quote: V3SwapQuote }> {
-  if (input.amountIn < 3n) throw new Error("V3 zap amount is too small to split")
-  validateRange(input.tickLower, input.tickUpper, input.pool.pool.tickSpacing)
-  let low = 1n
-  let high = input.amountIn - 1n
-  let best: { readonly swapAmountIn: bigint; readonly quote: V3SwapQuote; readonly error: bigint } | null = null
-
-  for (let iteration = 0; iteration < 32 && low <= high; iteration += 1) {
-    const swapAmountIn = (low + high) / 2n
-    const quote = await input.quote(swapAmountIn)
-    const remainingInput = input.amountIn - swapAmountIn
-    const amount0 = input.tokenInIsToken0 ? remainingInput : quote.amountOut
-    const amount1 = input.tokenInIsToken0 ? quote.amountOut : remainingInput
-    const position = Position.fromAmounts({
-      pool: input.pool.pool,
-      tickLower: input.tickLower,
-      tickUpper: input.tickUpper,
-      amount0: amount0.toString(),
-      amount1: amount1.toString(),
-      useFullPrecision: true,
-    })
-    const consumed = BigInt(
-      (input.tokenInIsToken0 ? position.mintAmounts.amount0 : position.mintAmounts.amount1).toString(),
-    )
-    const error = consumed > remainingInput ? consumed - remainingInput : remainingInput - consumed
-    if (best === null || error < best.error) best = { swapAmountIn, quote, error }
-    if (consumed < remainingInput) low = swapAmountIn + 1n
-    else high = swapAmountIn - 1n
-  }
-  if (best === null) throw new Error("V3 swap quote search produced no result")
-  return { swapAmountIn: best.swapAmountIn, quote: best.quote }
 }
 
 function toSlippage(slippageBps: number): Percent {
