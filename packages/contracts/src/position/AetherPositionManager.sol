@@ -27,6 +27,9 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
     IPoolManager public immutable poolManager;
     uint256 private _nextTokenId = 1;
     mapping(uint256 tokenId => Position position) private _positions;
+    // Reentrancy guard flag: set true before each poolManager.unlock and false after, and read inside
+    // unlockCallback. The true→false pair around every unlock is intentional, not a redundant write.
+    // slither-disable-next-line write-after-write
     bool private _unlockActive;
 
     constructor(IPoolManager _poolManager) ERC721("Aether V4 Position", "AETH-LP") {
@@ -130,6 +133,10 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
         );
 
         _unlockActive = true;
+        // Trusted V4 PoolManager unlock callback: rebalancePosition is nonReentrant and _unlockActive gates
+        // the callback, so the balance snapshots taken before unlock (used for the refund) and the _positions
+        // state write performed after it cannot be corrupted by cross-function reentrancy.
+        // slither-disable-next-line reentrancy-balance,reentrancy-no-eth
         bytes memory result = poolManager.unlock(
             abi.encode(Action.REBALANCE, abi.encode(position, params, balance0Before, balance1Before))
         );
@@ -163,6 +170,8 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
         if (action == Action.MINT) {
             (Position memory position, MintPositionParams memory params) =
                 abi.decode(actionData, (Position, MintPositionParams));
+            // modifyLiquidity's fees-accrued return is intentionally unused — delta settled via _settleOwed.
+            // slither-disable-next-line unused-return
             (BalanceDelta delta,) = poolManager.modifyLiquidity(
                 position.poolKey,
                 ModifyLiquidityParams(
@@ -180,6 +189,8 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
                 uint256 balance0Before,
                 uint256 balance1Before
             ) = abi.decode(actionData, (Position, RebalancePositionParams, uint256, uint256));
+            // modifyLiquidity's fees-accrued return is intentionally unused — closed principal taken below.
+            // slither-disable-next-line unused-return
             (BalanceDelta rebalanceRemoveDelta,) = poolManager.modifyLiquidity(
                 oldPosition.poolKey,
                 ModifyLiquidityParams(
@@ -195,6 +206,8 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
             if (closedAmount0 > 0) poolManager.take(oldPosition.poolKey.currency0, address(this), closedAmount0);
             if (closedAmount1 > 0) poolManager.take(oldPosition.poolKey.currency1, address(this), closedAmount1);
 
+            // modifyLiquidity's fees-accrued return is intentionally unused — re-mint delta settled below.
+            // slither-disable-next-line unused-return
             (BalanceDelta addDelta,) = poolManager.modifyLiquidity(
                 oldPosition.poolKey,
                 ModifyLiquidityParams(
@@ -208,6 +221,8 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
         }
         (Position memory removePosition, uint128 liquidity, bytes memory hookData) =
             abi.decode(actionData, (Position, uint128, bytes));
+        // modifyLiquidity's fees-accrued return is intentionally unused — removed principal is taken directly below.
+        // slither-disable-next-line unused-return
         (BalanceDelta removeDelta,) = poolManager.modifyLiquidity(
             removePosition.poolKey,
             ModifyLiquidityParams(
@@ -251,9 +266,13 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
     function _settle(Currency currency, uint256 amount) internal {
         poolManager.sync(currency);
         if (currency.isAddressZero()) {
+            // settle()'s return (amount settled) is intentionally unused — the PoolManager enforces delta accounting.
+            // slither-disable-next-line unused-return
             poolManager.settle{value: amount}();
         } else {
             IERC20(Currency.unwrap(currency)).safeTransfer(address(poolManager), amount);
+            // settle()'s return (amount settled) is intentionally unused — the PoolManager enforces delta accounting.
+            // slither-disable-next-line unused-return
             poolManager.settle();
         }
     }
@@ -281,6 +300,8 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
     function _refundCurrency(Currency currency, address recipient, uint256 balanceBefore) internal {
         uint256 balanceAfter = _balanceOf(currency);
         uint256 amount = balanceAfter > balanceBefore ? balanceAfter - balanceBefore : 0;
+        // Strict-zero check on a computed refund amount is a deliberate no-op guard, not an exploitable equality.
+        // slither-disable-next-line incorrect-equality
         if (amount == 0) return;
         if (currency.isAddressZero()) {
             (bool success,) = payable(recipient).call{value: amount}("");
@@ -298,6 +319,9 @@ contract AetherPositionManager is IAetherPositionManager, IUnlockCallback, ERC72
     function _payCurrency(Currency currency, address recipient, uint256 amount) internal {
         if (amount == 0) return;
         if (currency.isAddressZero()) {
+            // Safe: recipient is always the position's NFT owner (ownerOf) and only an owner/approved
+            // operator can trigger a payout — native tokens never go to an arbitrary address.
+            // slither-disable-next-line arbitrary-send-eth
             (bool success,) = payable(recipient).call{value: amount}("");
             if (!success) revert NativeTransferFailed();
         } else {
