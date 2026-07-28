@@ -52,6 +52,47 @@ const ORDER_CREATED_ABI = [
   },
 ] as const
 
+const TPSL_ORDER_ABI = [
+  {
+    type: "function",
+    name: "getOrder",
+    stateMutability: "view",
+    inputs: [{ name: "orderId", type: "uint256" }],
+    outputs: [
+      {
+        name: "order",
+        type: "tuple",
+        components: [
+          { name: "id", type: "uint256" },
+          { name: "owner", type: "address" },
+          { name: "orderType", type: "uint8" },
+          {
+            name: "poolKey",
+            type: "tuple",
+            components: [
+              { name: "currency0", type: "address" },
+              { name: "currency1", type: "address" },
+              { name: "fee", type: "uint24" },
+              { name: "tickSpacing", type: "int24" },
+              { name: "hooks", type: "address" },
+            ],
+          },
+          { name: "zeroForOne", type: "bool" },
+          { name: "amountIn", type: "uint128" },
+          { name: "minAmountOut", type: "uint128" },
+          { name: "triggerPriceX18", type: "uint256" },
+          { name: "twapWindow", type: "uint32" },
+          { name: "slippageBps", type: "uint256" },
+          { name: "deadline", type: "uint256" },
+          { name: "status", type: "uint8" },
+          { name: "createdAt", type: "uint256" },
+          { name: "executedAt", type: "uint256" },
+        ],
+      },
+    ],
+  },
+] as const
+
 // ─── POST /api/v1/tp-sl/orders ─────────────────────────────────────────────
 
 tpSl.post("/orders", requireAuth, async (c) => {
@@ -132,7 +173,8 @@ tpSl.post("/orders", requireAuth, async (c) => {
     if (!tpslAddress || !c.env.RPC_URL) {
       return c.json({ error: "TPSL_ADDRESS and RPC_URL are required to verify creationTxHash" }, 503)
     }
-    const receipt = await createPublicClient({ transport: http(c.env.RPC_URL) }).getTransactionReceipt({
+    const publicClient = createPublicClient({ transport: http(c.env.RPC_URL) })
+    const receipt = await publicClient.getTransactionReceipt({
       hash: body.creationTxHash as `0x${string}`,
     })
     if (receipt.status !== "success") return c.json({ error: "creationTxHash transaction reverted" }, 400)
@@ -158,6 +200,27 @@ tpSl.post("/orders", requireAuth, async (c) => {
       eventArgs.triggerPriceX18.toString() !== triggerPriceX18
     ) {
       return c.json({ error: "OrderCreated event does not match the requested TP/SL order" }, 400)
+    }
+    const onchainOrder = await publicClient.readContract({
+      address: tpslAddress,
+      abi: TPSL_ORDER_ABI,
+      functionName: "getOrder",
+      args: [eventArgs.orderId],
+    })
+    if (
+      onchainOrder.id !== eventArgs.orderId ||
+      onchainOrder.owner.toLowerCase() !== session.userAddress.toLowerCase() ||
+      onchainOrder.orderType !== expectedType ||
+      onchainOrder.zeroForOne !== zeroForOne ||
+      onchainOrder.amountIn.toString() !== amountIn ||
+      onchainOrder.minAmountOut.toString() !== minAmountOut ||
+      onchainOrder.triggerPriceX18.toString() !== triggerPriceX18 ||
+      Number(onchainOrder.twapWindow) !== twapWindow ||
+      onchainOrder.slippageBps.toString() !== String(slippageBps) ||
+      onchainOrder.deadline * 1000n !== BigInt(deadline) ||
+      onchainOrder.status !== 0
+    ) {
+      return c.json({ error: "On-chain TP/SL order does not match the requested parameters" }, 400)
     }
     const onchainOrderId = eventArgs.orderId.toString()
     const program = Effect.gen(function* () {
