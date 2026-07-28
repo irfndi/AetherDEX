@@ -23,7 +23,7 @@ jobs:
       - name: Checkout main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: main
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -90,7 +90,7 @@ jobs:
       - name: Checkout release
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: main
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
       - name: Verify tested main commit
@@ -107,7 +107,7 @@ jobs:
       - name: Validate production inputs
         run: |
           set -euo pipefail
-          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID CHAIN_ID RPC_URL SIWE_DOMAIN SIWE_URI STATE_VIEW_ADDRESS V4_POOL_MANAGER_ADDRESS AETHERDEX_HOOK AETHERDEX_TREASURY AETHERDEX_ROUTER AETHERDEX_FACTORY AETHERDEX_POSITION_MANAGER AETHERDEX_POOL_MANAGER VITE_REOWN_PROJECT_ID VITE_API_URL VITE_WS_URL; do
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID CHAIN_ID RPC_URL SIWE_DOMAIN SIWE_URI STATE_VIEW_ADDRESS V4_POOL_MANAGER_ADDRESS AETHERDEX_HOOK AETHERDEX_TREASURY AETHERDEX_ROUTER AETHERDEX_FACTORY AETHERDEX_POSITION_MANAGER AETHERDEX_POOL_MANAGER VITE_REOWN_PROJECT_ID VITE_API_URL; do
             test -n "${!name:-}" || { echo "Missing production secret: $name" >&2; exit 1; }
           done
 
@@ -135,4 +135,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: gh release create "${{ needs.version-guard.outputs.release_tag }}" --verify-tag --generate-notes
+          RELEASE_TAG: ${{ needs.version-guard.outputs.release_tag }}
+        run: gh release create "$RELEASE_TAG" --verify-tag --generate-notes
