@@ -9,7 +9,7 @@ export const Route = createRootRoute({
 
 function RootComponent() {
   return (
-    <div className="min-h-screen bg-base-100">
+    <div className="min-h-screen min-w-0 overflow-x-clip bg-base-100">
       <header className="navbar border-b border-base-300 bg-base-200">
         <div className="container mx-auto flex flex-wrap items-center justify-between gap-4 px-4">
           <Link to="/" className="text-xl font-bold text-primary">
@@ -42,7 +42,7 @@ function RootComponent() {
           </div>
         </div>
       </header>
-      <main className="container mx-auto px-4 py-6">
+      <main className="container mx-auto min-w-0 px-4 py-6">
         <Outlet />
       </main>
       {import.meta.env.DEV && import.meta.env.VITE_SHOW_ROUTER_DEVTOOLS === "true" ? (
