@@ -13,6 +13,9 @@ gas_reports = ["AetherRouter", "AetherFactory", "AetherHook"]
 auto_detect_solc = true
 revert_strings = "strip"
 
+[rpc_endpoints]
+sepolia = "${SEPOLIA_RPC_URL}"
+
 [profile.default.fuzz]
 runs = 1000
 

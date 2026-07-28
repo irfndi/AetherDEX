@@ -11,6 +11,11 @@ contract AetherHookAddressMinerTest is Test {
         assertTrue(AetherHookAddressMiner.hasValidFlags(candidate));
     }
 
+    function test_hasValidFlags_rejectsAdditionalHookFlags() public pure {
+        address candidate = address(uint160(AetherHookAddressMiner.REQUIRED_FLAGS | Hooks.BEFORE_INITIALIZE_FLAG));
+        assertFalse(AetherHookAddressMiner.hasValidFlags(candidate));
+    }
+
     function test_hasValidFlags_rejectsMissingFlags() public pure {
         assertFalse(AetherHookAddressMiner.hasValidFlags(address(uint160(Hooks.BEFORE_SWAP_FLAG))));
         assertFalse(AetherHookAddressMiner.hasValidFlags(address(1)));
