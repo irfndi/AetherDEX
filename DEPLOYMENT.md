@@ -41,69 +41,51 @@ There are three different environments:
 
 - `wrangler dev` is local development. It uses local D1/KV emulation and does not
   deploy anything or execute against a public chain unless `RPC_URL` is configured.
-- `--env staging` is a real Cloudflare Worker with separate D1/KV/R2/Queue/DO
-  resources. Point its `CHAIN_ID`, `RPC_URL`, and contract-address vars at Sepolia
-  to use it as the shared crypto test environment.
-- `--env production` is the production Worker. Do not point it at a test wallet or
-  test contracts.
+- `bun run plan:dev` in `infra/alchemy/` previews the development stack.
+- `bun run deploy:dev` and `bun run deploy:staging` in `infra/alchemy/` deploy
+  separate Cloudflare Workers with separate D1/KV/R2/Queue/DO resources.
+- `--adopt` allows Alchemy to take ownership of matching existing resources; it
+  does not select unrelated resources by type.
+- Set `CHAIN_ID`, `RPC_URL`, and the deployed contract-address variables in
+  `infra/alchemy/.env` to use Sepolia as the shared crypto test environment.
+- Production deployment is not enabled by the current Alchemy script. Do not
+  point a test wallet or test contracts at production.
 
-The repository currently has no deployed staging resource IDs or contract addresses:
-`wrangler.jsonc` still contains `REPLACE_WITH_OUTPUT...` placeholders and empty
-address/RPC vars. Deployment is therefore not yet reproducible from CI until an
-operator provisions those resources and records the IDs in the environment config.
+`infra/alchemy/alchemy.run.ts` is the deployment source of truth. The legacy
+`apps/api/wrangler.jsonc` remains useful for local Wrangler commands and type
+generation, but its placeholder resource IDs are not used by the Alchemy
+deployment path.
 
 ### First-time setup
 
 ```bash
-cd apps/api
-
-# Create default development resources
-bun run d1:create
-bun run kv:create
-bun run r2:create
-
-# Create isolated staging resources
-bun run d1:create:staging
-bun run kv:create:staging
-bun run r2:create:staging
-bun run queues:create:staging
-
-# Create isolated production resources
-bun run d1:create:production
-bun run kv:create:production
-bun run r2:create:production
-bun run queues:create:production
-
-# Copy each command's returned D1 database_id and KV id into the matching
-# staging/production blocks in wrangler.jsonc. Do not reuse IDs across environments.
-
-# Run migrations
-bun run d1:migrate:local
-bun run d1:migrate:remote
-bun run d1:migrate:staging
-bun run d1:migrate:production
-
-# Apply staging migrations, then deploy the Worker
+cd infra/alchemy
+cp .env.example .env
+# Edit .env with the Sepolia RPC URL and deployed contract addresses.
+bun install
+bun run plan:dev
+bun run deploy:dev
 bun run deploy:staging
-
-# Deploy to production
-bun run deploy:production
 ```
 
 ### Secrets to set
 
 ```bash
-# Production secrets
-bunx wrangler secret put KEEPER_PRIVATE_KEY --env staging
-bunx wrangler secret put KEEPER_RPC_URL --env staging
+# Secrets are added to the Worker through the chosen Alchemy/Cloudflare secret
+# workflow after the non-secret stack has been deployed.
+# Do not commit private keys or RPC API keys.
 # Optional: Telegram alert secrets and private relay secrets, only when enabled.
 
-# Alchemy is an RPC/provider option, not the infrastructure owner. Set its URL/API
-# key as a Worker secret or RPC_URL value if selected; Cloudflare still owns the
-# Worker, D1, KV, R2, DO, and Queue resources.
+# Alchemy provisions the Cloudflare resources in this repository. Alchemy's RPC
+# endpoint is a network dependency, so its URL/API key belongs in the uncommitted
+# Alchemy environment or a Worker secret.
 ```
 
 ## Frontend (Cloudflare Pages)
+
+No Pages project currently exists in the account. Frontend Pages provisioning is
+not part of the current API stack; add it to Alchemy before deploying the web
+application so the API and frontend remain under one deployment source of truth.
 
 ### First-time setup
 

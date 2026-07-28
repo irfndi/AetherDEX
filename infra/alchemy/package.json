@@ -3,6 +3,13 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "plan:dev": "alchemy plan --stage dev_$USER",
+    "deploy:dev": "alchemy deploy --stage dev_$USER --adopt --yes",
+    "deploy:staging": "alchemy deploy --stage staging --adopt --yes",
+    "destroy:dev": "alchemy destroy --stage dev_$USER"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
