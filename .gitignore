@@ -28,6 +28,9 @@ packages/contracts/broadcast/
 # Cloudflare
 .cloudflare/
 
+# Alchemy IaC local state/bundles (infra/alchemy deploys)
+.alchemy/
+
 # Environment
 .env
 .env.local

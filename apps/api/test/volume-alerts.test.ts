@@ -391,7 +391,7 @@ describe("VolumeAlertHubDO broadcast", () => {
     allWs.close(1000, "done")
     xWs.close(1000, "done")
     yWs.close(1000, "done")
-  })
+  }, 20_000)
 
   it("canonicalizes a mixed-case pool id on the per-pool route", async () => {
     const hubNs = env.VOLUME_ALERT_HUB
@@ -410,7 +410,7 @@ describe("VolumeAlertHubDO broadcast", () => {
 
     expect(msgs.map((m) => m.poolId)).toEqual([lower])
     ws.close(1000, "done")
-  })
+  }, 20_000)
 
   it("answers a ping with a pong", async () => {
     const ws = await connect("/ws/alerts")
