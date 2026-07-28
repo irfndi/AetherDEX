@@ -119,7 +119,7 @@ jobs:
 
   github-release:
     name: Create GitHub release
-    needs: deploy
+    needs: [version-guard, deploy]
     runs-on: ubuntu-latest
     permissions:
       contents: write
