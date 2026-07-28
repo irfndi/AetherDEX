@@ -148,6 +148,15 @@
     "INDEXER_BATCH_SIZE": "2000",
     "V4_POOL_MANAGER_ADDRESS": "",
     "V3_INDEXED_POOL_ADDRESSES": "",
+    // Phase 2/3 keeper relayer (src/lib/keeper-signer.ts). Submission stays
+    // EVALUATION-ONLY until PRIVATE_TX_RELAY_URL is set (https MEV Tier-B relay;
+    // preferred) or KEEPER_ALLOW_PUBLIC_SUBMISSION is explicitly "true".
+    // Secrets KEEPER_PRIVATE_KEY + KEEPER_RPC_URL go via `wrangler secret put`.
+    "TPSL_ADDRESS": "",
+    "AETHER_TPSL_ADDRESS": "",
+    "KEEPER_ALLOW_PUBLIC_SUBMISSION": "false",
+    "KEEPER_MIN_BALANCE_ETH": "0.05",
+    "KEEPER_MAX_GAS_PRICE_GWEI": "",
     // "auto" = V4 tick-math when STATE_VIEW_ADDRESS+RPC_URL are set, else legacy D1 approximation.
     "QUOTE_ENGINE_MODE": "auto",
     // Canonical Uniswap default token list (Phase-0 G4) — the only token list AetherDEX serves.
@@ -170,9 +179,11 @@
     "ENVIRONMENT": "development"
   },
 
-  // Phase 2 keeper secrets (set via `wrangler secret put`):
-  //   KEEPER_PRIVATE_KEY — hex-encoded private key for keeper transaction signing
-  //   KEEPER_RPC_URL — RPC endpoint used by the keeper to submit transactions
+  // Phase 2/3 keeper relayer secrets (set via `wrangler secret put`):
+  //   KEEPER_PRIVATE_KEY — hex-encoded private key; loaded for local signing only, never logged
+  //   KEEPER_RPC_URL — RPC endpoint used for preflight reads + public submission when enabled
+  // Submission stays evaluation-only unless PRIVATE_TX_RELAY_URL (https-only,
+  // MEV Tier-B private relay; preferred) or KEEPER_ALLOW_PUBLIC_SUBMISSION="true".
   //
   // Phase 3 volume-alert Telegram notifications (set via `wrangler secret put`):
   //   TELEGRAM_BOT_TOKEN — bot API token; alerts stay off until this is set
@@ -204,6 +215,11 @@
         "INDEXER_BATCH_SIZE": "2000",
         "V4_POOL_MANAGER_ADDRESS": "",
         "V3_INDEXED_POOL_ADDRESSES": "",
+        "TPSL_ADDRESS": "",
+        "AETHER_TPSL_ADDRESS": "",
+        "KEEPER_ALLOW_PUBLIC_SUBMISSION": "false",
+        "KEEPER_MIN_BALANCE_ETH": "0.05",
+        "KEEPER_MAX_GAS_PRICE_GWEI": "",
         "QUOTE_ENGINE_MODE": "auto",
         "TOKEN_LIST_URL": "https://tokens.uniswap.org",
         "RATE_LIMIT_MAX": "60",
@@ -301,6 +317,11 @@
         "INDEXER_BATCH_SIZE": "2000",
         "V4_POOL_MANAGER_ADDRESS": "",
         "V3_INDEXED_POOL_ADDRESSES": "",
+        "TPSL_ADDRESS": "",
+        "AETHER_TPSL_ADDRESS": "",
+        "KEEPER_ALLOW_PUBLIC_SUBMISSION": "false",
+        "KEEPER_MIN_BALANCE_ETH": "0.05",
+        "KEEPER_MAX_GAS_PRICE_GWEI": "",
         "QUOTE_ENGINE_MODE": "auto",
         "TOKEN_LIST_URL": "https://tokens.uniswap.org",
         "RATE_LIMIT_MAX": "60",

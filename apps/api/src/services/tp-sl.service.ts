@@ -15,6 +15,7 @@ export type OrderStatus = "pending" | "triggered" | "executed" | "cancelled" | "
 
 export interface TpSlOrder {
   readonly id: number
+  readonly onchainOrderId: string | null
   readonly userAddress: string
   readonly poolId: string
   readonly orderType: OrderType
@@ -44,6 +45,7 @@ export interface CreateOrderInput {
   readonly twapWindow: number
   readonly slippageBps: number
   readonly deadline: number
+  readonly onchainOrderId: string
   readonly chainId?: number
 }
 
@@ -137,6 +139,7 @@ export const TpSlService = Context.Service<TpSlService>("@aetherdex/TpSlService"
 function rowToOrder(row: Record<string, unknown>): TpSlOrder {
   return {
     id: row.id as number,
+    onchainOrderId: (row.onchain_order_id as string | null) ?? null,
     userAddress: row.user_address as string,
     poolId: row.pool_id as string,
     orderType: row.order_type as OrderType,
@@ -169,10 +172,10 @@ const makeTpSlService = Effect.gen(function* () {
       const rows = (yield* sql`
         INSERT INTO tp_sl_orders
           (user_address, pool_id, order_type, zero_for_one, amount_in, min_amount_out,
-           trigger_price_x18, twap_window, slippage_bps, deadline, status, created_at, chain_id)
+           trigger_price_x18, twap_window, slippage_bps, deadline, status, created_at, chain_id, onchain_order_id)
         VALUES (${input.userAddress}, ${input.poolId}, ${input.orderType}, ${input.zeroForOne ? 1 : 0},
                 ${input.amountIn}, ${input.minAmountOut}, ${input.triggerPriceX18}, ${input.twapWindow},
-                ${input.slippageBps}, ${input.deadline}, 'pending', ${now}, ${chainId})
+                ${input.slippageBps}, ${input.deadline}, 'pending', ${now}, ${chainId}, ${input.onchainOrderId})
         RETURNING id
       `) as unknown as readonly Record<string, unknown>[]
 

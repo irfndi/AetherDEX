@@ -180,7 +180,7 @@ async function runKeeperTick(env: CronEnv): Promise<void> {
   console.log(`[Keeper] Tick started for chain ${chainId}`)
 
   const pendingOrders = await env.DB.prepare(`
-    SELECT id, pool_id, order_type, zero_for_one, amount_in, min_amount_out,
+    SELECT id, onchain_order_id, pool_id, order_type, zero_for_one, amount_in, min_amount_out,
            trigger_price_x18, twap_window, slippage_bps, deadline, user_address
     FROM tp_sl_orders
     WHERE chain_id = ? AND status = 'pending' AND deadline > ?
@@ -190,6 +190,7 @@ async function runKeeperTick(env: CronEnv): Promise<void> {
     .bind(chainId, now)
     .all<{
       id: number
+      onchain_order_id: string | null
       pool_id: string
       order_type: string
       zero_for_one: number
@@ -211,9 +212,14 @@ async function runKeeperTick(env: CronEnv): Promise<void> {
 
   for (const order of pendingOrders.results) {
     try {
+      if (typeof order.onchain_order_id !== "string" || !/^[0-9]+$/.test(order.onchain_order_id)) {
+        console.warn(`[Keeper] Order ${order.id} has no valid on-chain order ID, skipping enqueue`)
+        continue
+      }
       await env.KEEPER_QUEUE.send({
         type: "tp-sl-evaluate",
         orderId: order.id,
+        onchainOrderId: order.onchain_order_id,
         poolId: order.pool_id,
         orderType: order.order_type,
         zeroForOne: Boolean(order.zero_for_one),

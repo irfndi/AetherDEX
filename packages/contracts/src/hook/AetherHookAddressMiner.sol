@@ -14,7 +14,7 @@ library AetherHookAddressMiner {
     /// @param hookAddress The deployed hook address to validate
     /// @return True if the address has BEFORE_SWAP_FLAG | AFTER_SWAP_FLAG set
     function hasValidFlags(address hookAddress) internal pure returns (bool) {
-        return uint160(hookAddress) & REQUIRED_FLAGS == REQUIRED_FLAGS;
+        return uint160(hookAddress) & Hooks.ALL_HOOK_MASK == REQUIRED_FLAGS;
     }
 
     /// @notice Find a CREATE2 salt that produces a hook address with the correct flags
@@ -34,7 +34,7 @@ library AetherHookAddressMiner {
             bytes32 hash = keccak256(abi.encodePacked(bytes1(0xff), deployer, currentSalt, initCodeHash));
             address candidate = address(uint160(uint256(hash)));
 
-            if (uint160(candidate) & REQUIRED_FLAGS == REQUIRED_FLAGS) {
+            if (uint160(candidate) & Hooks.ALL_HOOK_MASK == REQUIRED_FLAGS) {
                 return (true, currentSalt, candidate);
             }
         }

@@ -48,6 +48,7 @@ tpSl.post("/orders", requireAuth, async (c) => {
     twapWindow?: number
     slippageBps?: number
     deadline?: number
+    onchainOrderId?: string
   }>()
 
   if (
@@ -59,12 +60,13 @@ tpSl.post("/orders", requireAuth, async (c) => {
     !body.triggerPriceX18 ||
     !body.twapWindow ||
     body.slippageBps === undefined ||
-    !body.deadline
+    !body.deadline ||
+    !body.onchainOrderId
   ) {
     return c.json(
       {
         error:
-          "poolId, orderType, zeroForOne, amountIn, minAmountOut, triggerPriceX18, twapWindow, slippageBps, deadline required",
+          "poolId, orderType, zeroForOne, amountIn, minAmountOut, triggerPriceX18, twapWindow, slippageBps, deadline, onchainOrderId required",
       },
       400,
     )
@@ -83,7 +85,8 @@ tpSl.post("/orders", requireAuth, async (c) => {
     body.slippageBps < 0 ||
     !Number.isFinite(body.deadline) ||
     !Number.isInteger(body.deadline) ||
-    body.deadline <= Date.now()
+    body.deadline <= Date.now() ||
+    !uintPattern.test(body.onchainOrderId)
   ) {
     return c.json({ error: "Invalid TP/SL order values" }, 400)
   }
@@ -101,8 +104,18 @@ tpSl.post("/orders", requireAuth, async (c) => {
   }
 
   // At this point all fields are validated as present
-  const { poolId, orderType, zeroForOne, amountIn, minAmountOut, triggerPriceX18, twapWindow, slippageBps, deadline } =
-    body
+  const {
+    poolId,
+    orderType,
+    zeroForOne,
+    amountIn,
+    minAmountOut,
+    triggerPriceX18,
+    twapWindow,
+    slippageBps,
+    deadline,
+    onchainOrderId,
+  } = body
 
   try {
     const program = Effect.gen(function* () {
@@ -118,6 +131,7 @@ tpSl.post("/orders", requireAuth, async (c) => {
         twapWindow,
         slippageBps,
         deadline,
+        onchainOrderId,
         chainId: chainIdFor(c),
       })
     })
