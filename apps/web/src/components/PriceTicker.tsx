@@ -50,7 +50,12 @@ export function PriceTicker({
   className = "",
   showVolume = false,
 }: PriceTickerProps) {
-  const defaultWs = `${import.meta.env.VITE_WS_URL ?? "ws://localhost:8080"}/ws/prices/${tokenAddress}?chainId=${chainId}`
+  const configuredWsOrigin = import.meta.env.VITE_WS_URL ?? import.meta.env.VITE_API_URL ?? "ws://localhost:8080"
+  const wsOrigin = configuredWsOrigin
+    .replace(/^http:/, "ws:")
+    .replace(/^https:/, "wss:")
+    .replace(/\/api\/v1\/?$/, "")
+  const defaultWs = `${wsOrigin}/ws/prices/${tokenAddress}?chainId=${chainId}`
   const url = wsUrl ?? defaultWs
 
   const { data: envelope, isConnected, error } = useWebSocket<PriceEnvelope>({ url })

@@ -21,6 +21,7 @@ forge script script/Deploy.s.sol --rpc-url sepolia --broadcast --verify
 
 # Verify before wiring the addresses into Workers
 AETHERDEX_ROUTER=0x... AETHERDEX_HOOK=0x... AETHERDEX_TREASURY=0x... \
+  AETHERDEX_HOOK_CODE_HASH=0x... \
   forge script script/Verify.s.sol --rpc-url sepolia
 
 # Verify on Etherscan (automatic with --verify)
@@ -46,7 +47,8 @@ There are three different environments:
   separate Cloudflare Workers with separate D1/KV/R2/Queue/DO resources.
 - `--adopt` allows Alchemy to take ownership of matching existing resources; it
   does not select unrelated resources by type.
-- Set `CHAIN_ID`, `RPC_URL`, and the deployed contract-address variables in
+- Set `CHAIN_ID`, `RPC_URL`, `AETHERDEX_*` contract-address variables,
+  `STATE_VIEW_ADDRESS`, `V3_FACTORY_ADDRESS`, and `V3_QUOTER_ADDRESS` in
   `infra/alchemy/.env` to use Sepolia as the shared crypto test environment.
 - Production deployment is not enabled by the current Alchemy script. Do not
   point a test wallet or test contracts at production.
@@ -61,7 +63,8 @@ deployment path.
 ```bash
 cd infra/alchemy
 cp .env.example .env
-# Edit .env with the Sepolia RPC URL and deployed contract addresses.
+# Edit .env with the Sepolia RPC URL, deployed contract addresses, and
+# VITE_API_URL/VITE_REOWN_PROJECT_ID for the local Pages upload.
 bun install
 bun run plan:dev
 bun run deploy:dev
@@ -93,9 +96,11 @@ provider does not currently upload Pages assets.
 ```bash
 cd apps/web
 
-# Set env vars in Cloudflare Pages dashboard:
-#   VITE_API_URL = https://api.aetherdex.io/api/v1
+# `web:deploy:*` injects these at Vite build time; Pages dashboard variables
+# cannot change an already-built bundle.
+#   VITE_API_URL = https://<worker>/api/v1
 #   VITE_REOWN_PROJECT_ID = your_actual_project_id
+#   VITE_WS_URL = https://<worker> (optional; derived from VITE_API_URL)
 
 # Build
 bun run build
@@ -104,6 +109,9 @@ bun run build
 cd ../../infra/alchemy
 bun run web:deploy:staging
 ```
+
+The dev upload targets the `dev` Pages production branch and staging targets
+`main`; this keeps the stable `pages.dev` URLs distinct from previews.
 
 ## Post-deployment checklist
 

@@ -34,6 +34,7 @@ type Bindings = {
   KEEPER_QUEUE: Queue
   CHAIN_ID: string
   ENVIRONMENT: string
+  CORS_ORIGINS?: string
   // Cron/indexer chain config — optional; absent values keep ticks as no-ops.
   RPC_URL?: string
   V3_POSITION_MANAGER_ADDRESS?: string
@@ -75,7 +76,13 @@ app.use("*", logger())
 app.use(
   "*",
   cors({
-    origin: ["http://localhost:3000", "https://aetherdex.io"],
+    origin: (origin, c) => {
+      const allowedOrigins = (c.env.CORS_ORIGINS ?? "http://localhost:3000,https://aetherdex.io")
+        .split(",")
+        .map((value: string) => value.trim())
+        .filter((value: string) => value.length > 0)
+      return allowedOrigins.includes(origin) ? origin : ""
+    },
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
     credentials: true,

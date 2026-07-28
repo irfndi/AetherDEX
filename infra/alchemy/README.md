@@ -44,9 +44,15 @@ bun run web:deploy:dev
 bun run web:deploy:staging
 ```
 
-Set `VITE_REOWN_PROJECT_ID` before the web upload. Without it, the deployed SPA
-loads but the wallet provider intentionally throws its required-configuration
-error.
+Set `VITE_API_URL` and `VITE_REOWN_PROJECT_ID` before the web upload. These are
+Vite build-time values, so Pages deployment variables cannot repair a bundle
+that was already built locally. `VITE_WS_URL` is optional and is derived from
+the API URL when absent.
+
+Use `AETHERDEX_HOOK`, `AETHERDEX_TREASURY`, `AETHERDEX_ROUTER`,
+`AETHERDEX_FACTORY`, `AETHERDEX_POSITION_MANAGER`, and
+`AETHERDEX_POOL_MANAGER` for contract addresses. The stack maps these names to
+the Worker binding names while retaining legacy aliases for existing operators.
 
 For the current account, the dev deployment uses the existing
 `aetherdexcloudflare-tradehistory-dev-irfandi-nfwtu3epiocsqpii` bucket by
