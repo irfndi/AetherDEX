@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test"
+import { expect, test } from "./fixtures"
 
 test.describe("Navigation", () => {
   test("home redirects to swap", async ({ page }) => {
