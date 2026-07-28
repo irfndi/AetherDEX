@@ -50,7 +50,8 @@ export function PriceTicker({
   className = "",
   showVolume = false,
 }: PriceTickerProps) {
-  const configuredWsOrigin = import.meta.env.VITE_WS_URL ?? import.meta.env.VITE_API_URL ?? "ws://localhost:8080"
+  const configuredWsOrigin =
+    import.meta.env.VITE_WS_URL?.trim() || import.meta.env.VITE_API_URL?.trim() || "ws://localhost:8080"
   const wsOrigin = configuredWsOrigin
     .replace(/^http:/, "ws:")
     .replace(/^https:/, "wss:")

@@ -187,7 +187,7 @@ function NewPoolPage() {
     submitted ? validation.errors[field] : undefined
 
   return (
-    <div className="mx-auto max-w-3xl py-8">
+    <div className="mx-auto min-w-0 max-w-3xl py-8">
       <div className="mb-6">
         <p className="mb-2 text-sm font-medium uppercase tracking-wide text-primary">Phase 1 · Pool creation</p>
         <h1 className="text-3xl font-bold">Create a new pool</h1>
@@ -309,8 +309,8 @@ function NewPoolPage() {
             onChange={(e) => update("deadline", e.target.value)}
           />
 
-          <div className="alert alert-warning items-start text-sm">
-            <div>
+          <div className="alert alert-warning min-w-0 items-start text-sm">
+            <div className="min-w-0">
               <p className="font-semibold">Execution-time price re-check required</p>
               <p>
                 This acknowledgement is required, but the current UI does not read a live oracle. A deployed factory or
