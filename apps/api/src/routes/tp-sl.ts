@@ -220,7 +220,7 @@ tpSl.post("/orders", requireAuth, async (c) => {
       onchainOrder.triggerPriceX18.toString() !== triggerPriceX18 ||
       Number(onchainOrder.twapWindow) !== twapWindow ||
       onchainOrder.slippageBps.toString() !== String(slippageBps) ||
-      onchainOrder.deadline * 1000n !== BigInt(deadline) ||
+      onchainOrder.deadline !== BigInt(Math.floor(deadline / 1000)) ||
       onchainOrder.status !== 0
     ) {
       return c.json({ error: "On-chain TP/SL order does not match the requested parameters" }, 400)
