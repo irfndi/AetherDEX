@@ -10,9 +10,10 @@ import "forge-std/Script.sol";
 ///
 /// @dev Checks performed:
 ///   1. AetherRouter.PROTOCOL_FEE_BPS() == 10  (flat 0.1% entry fee, immutable post-#315)
-///   2. AetherRouter.treasury() != address(0)  (fee destination wired)
-///   3. AetherHook runtime bytecode contains NO `setProtocolFee(uint24)` selector - the hook
+///   2. AetherRouter.treasury() == AETHERDEX_TREASURY (the intended multisig)
+///   3. AetherHook has deployed code and runtime bytecode contains NO `setProtocolFee(uint24)` selector - the hook
 ///      is oracle-only after #315, so the fee-admin setter must be absent from its code.
+///   4. Router, factory, hook, and PoolManager immutable wiring is internally consistent.
 ///
 /// @dev Why these are robust across contract surfaces:
 ///   - The router value probes (1)(2) use plain `staticcall` on no-arg view getters, which
@@ -28,6 +29,7 @@ import "forge-std/Script.sol";
 /// @dev Environment variables:
 ///   AETHERDEX_ROUTER  (required) deployed AetherRouter to verify
 ///   AETHERDEX_HOOK    (required) deployed AetherHook to verify
+///   AETHERDEX_TREASURY (required) expected fee treasury multisig
 ///
 ///   Read-only, no broadcast:
 ///     AETHERDEX_ROUTER=0x.. AETHERDEX_HOOK=0x.. \
@@ -43,6 +45,9 @@ contract Verify is Script {
     // Function selectors probed via raw staticcall / bytecode scan (no typed-interface dependency).
     bytes4 constant SEL_PROTOCOL_FEE_BPS = bytes4(keccak256("PROTOCOL_FEE_BPS()"));
     bytes4 constant SEL_TREASURY = bytes4(keccak256("treasury()"));
+    bytes4 constant SEL_FACTORY = bytes4(keccak256("factory()"));
+    bytes4 constant SEL_POOL_MANAGER = bytes4(keccak256("poolManager()"));
+    bytes4 constant SEL_HOOK = bytes4(keccak256("hook()"));
     bytes4 constant SEL_SET_PROTOCOL_FEE = bytes4(keccak256("setProtocolFee(uint24)"));
     bytes4 constant SEL_OWNER = bytes4(keccak256("owner()"));
 
@@ -78,8 +83,12 @@ contract Verify is Script {
     function run() external view {
         address router = vm.envAddress("AETHERDEX_ROUTER");
         address hook = vm.envAddress("AETHERDEX_HOOK");
+        address expectedTreasury = vm.envAddress("AETHERDEX_TREASURY");
         require(router != address(0), "Verify: AETHERDEX_ROUTER must be set");
         require(hook != address(0), "Verify: AETHER_HOOK (AETHERDEX_HOOK) must be set");
+        require(expectedTreasury != address(0), "Verify: AETHERDEX_TREASURY must be set");
+        require(router.code.length != 0, "Verify: router address must contain deployed code");
+        require(hook.code.length != 0, "Verify: hook address must contain deployed code");
 
         console.log("\n=== AetherDEX Phase-4 Verification (#314) ===");
         console.log("Router:", router);
@@ -100,8 +109,21 @@ contract Verify is Script {
         (bool treasuryOk, bytes memory treasuryRet) = router.staticcall(abi.encodeWithSelector(SEL_TREASURY));
         require(treasuryOk, "Verify: router does not expose treasury() - deploy the Phase-4 router (PR #315)");
         address routerTreasury = abi.decode(treasuryRet, (address));
-        require(routerTreasury != address(0), "Verify: router treasury() is the zero address");
+        require(routerTreasury == expectedTreasury, "Verify: router treasury does not match AETHERDEX_TREASURY");
         console.log("Router treasury OK:        ", routerTreasury);
+
+        // --- Immutable deployment wiring ----------------------------------------
+        address routerFactory = _readAddress(router, SEL_FACTORY, "router factory()");
+        address routerPoolManager = _readAddress(router, SEL_POOL_MANAGER, "router poolManager()");
+        require(routerFactory.code.length != 0, "Verify: router factory must contain deployed code");
+        require(routerPoolManager.code.length != 0, "Verify: router PoolManager must contain deployed code");
+        address factoryHook = _readAddress(routerFactory, SEL_HOOK, "factory hook()");
+        address factoryPoolManager = _readAddress(routerFactory, SEL_POOL_MANAGER, "factory poolManager()");
+        address hookPoolManager = _readAddress(hook, SEL_POOL_MANAGER, "hook poolManager()");
+        require(factoryHook == hook, "Verify: factory hook does not match AETHERDEX_HOOK");
+        require(routerPoolManager == factoryPoolManager, "Verify: router and factory PoolManager mismatch");
+        require(routerPoolManager == hookPoolManager, "Verify: hook PoolManager does not match suite");
+        console.log("Immutable wiring OK:        router/factory/hook/PoolManager");
 
         // --- Hook: no fee-admin selector in bytecode ------------------------------
         require(
@@ -120,5 +142,11 @@ contract Verify is Script {
         console.log("=== Verification PASSED ===\n");
         console.log("TODO(#314): wire the verified addresses into apps/api wrangler.jsonc:");
         console.log("  ROUTER_ADDRESS, FACTORY_ADDRESS, AETHER_HOOK_ADDRESS, POOL_MANAGER_ADDRESS, TREASURY_ADDRESS");
+    }
+
+    function _readAddress(address target, bytes4 selector, string memory label) internal view returns (address value) {
+        (bool ok, bytes memory result) = target.staticcall(abi.encodeWithSelector(selector));
+        require(ok && result.length >= 32, label);
+        value = abi.decode(result, (address));
     }
 }

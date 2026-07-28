@@ -16,8 +16,12 @@ cd packages/contracts
 cp .env.example .env
 # Edit .env: set DEPLOYER_PRIVATE_KEY, AETHERDEX_TREASURY, ETHERSCAN_API_KEY
 
-# Deploy
+# Deploy to Sepolia (the current supported crypto test network)
 forge script script/Deploy.s.sol --rpc-url sepolia --broadcast --verify
+
+# Verify before wiring the addresses into Workers
+AETHERDEX_ROUTER=0x... AETHERDEX_HOOK=0x... AETHERDEX_TREASURY=0x... \
+  forge script script/Verify.s.sol --rpc-url sepolia
 
 # Verify on Etherscan (automatic with --verify)
 ```
@@ -32,6 +36,21 @@ forge script script/Deploy.s.sol --rpc-url sepolia --broadcast --verify
 | AetherRouter | (deployed) |
 
 ## Backend (Cloudflare Workers)
+
+There are three different environments:
+
+- `wrangler dev` is local development. It uses local D1/KV emulation and does not
+  deploy anything or execute against a public chain unless `RPC_URL` is configured.
+- `--env staging` is a real Cloudflare Worker with separate D1/KV/R2/Queue/DO
+  resources. Point its `CHAIN_ID`, `RPC_URL`, and contract-address vars at Sepolia
+  to use it as the shared crypto test environment.
+- `--env production` is the production Worker. Do not point it at a test wallet or
+  test contracts.
+
+The repository currently has no deployed staging resource IDs or contract addresses:
+`wrangler.jsonc` still contains `REPLACE_WITH_OUTPUT...` placeholders and empty
+address/RPC vars. Deployment is therefore not yet reproducible from CI until an
+operator provisions those resources and records the IDs in the environment config.
 
 ### First-time setup
 
@@ -64,7 +83,7 @@ bun run d1:migrate:remote
 bun run d1:migrate:staging
 bun run d1:migrate:production
 
-# Deploy to staging
+# Apply staging migrations, then deploy the Worker
 bun run deploy:staging
 
 # Deploy to production
@@ -75,8 +94,13 @@ bun run deploy:production
 
 ```bash
 # Production secrets
-bunx wrangler secret put ALCHEMY_API_KEY --env production
-bunx wrangler secret put CLOUDFLARE_API_TOKEN --env production
+bunx wrangler secret put KEEPER_PRIVATE_KEY --env staging
+bunx wrangler secret put KEEPER_RPC_URL --env staging
+# Optional: Telegram alert secrets and private relay secrets, only when enabled.
+
+# Alchemy is an RPC/provider option, not the infrastructure owner. Set its URL/API
+# key as a Worker secret or RPC_URL value if selected; Cloudflare still owns the
+# Worker, D1, KV, R2, DO, and Queue resources.
 ```
 
 ## Frontend (Cloudflare Pages)
