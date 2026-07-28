@@ -535,7 +535,7 @@ jobs:
   ci-status:
     name: CI Status
     runs-on: ubuntu-latest
-    needs: [detect-changes, quality, contracts, backend, frontend, e2e]
+    needs: [release-version-guard, detect-changes, quality, contracts, backend, frontend, e2e]
     if: ${{ github.event_name != 'schedule' && always() }}
     permissions:
       contents: read
@@ -543,6 +543,7 @@ jobs:
       - name: Evaluate required jobs
         env:
           DETECT: ${{ needs.detect-changes.result }}
+          RELEASE_GUARD: ${{ needs.release-version-guard.result }}
           QUALITY: ${{ needs.quality.result }}
           CONTRACTS: ${{ needs.contracts.result }}
           BACKEND: ${{ needs.backend.result }}
@@ -565,6 +566,7 @@ jobs:
             esac
           }
           check "detect-changes" "${DETECT}"
+          check "release-version-guard" "${RELEASE_GUARD}"
           check "quality" "${QUALITY}"
           check "contracts" "${CONTRACTS}"
           check "backend" "${BACKEND}"
