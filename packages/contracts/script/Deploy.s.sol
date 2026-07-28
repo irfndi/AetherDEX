@@ -120,13 +120,15 @@ contract Deploy is Script {
         // 1. AetherHook — deployed via CREATE2 with a mined salt (V4 reads hook permissions
         //    from the hook ADDRESS itself). Reused as-is when AETHERDEX_HOOK is provided.
         //    Phase 4: the hook is oracle-only — constructor takes ONLY the PoolManager (no
-        //    treasury/fee args).
+        //    treasury/fee args). The salt is mined for `deployer` because `new {salt}` below
+        //    deploys from the broadcast EOA (not a create2 factory); mining for any other
+        //    deployer would place the hook at an address missing BEFORE_SWAP|AFTER_SWAP.
         address hookAddr = existingHook;
         if (hookAddr == address(0)) {
             bytes memory hookCtorArgs = abi.encode(IPoolManager(poolManager));
             bytes32 hookInitCodeHash = keccak256(abi.encodePacked(type(AetherHook).creationCode, hookCtorArgs));
             (bool saltFound, bytes32 hookSalt,) =
-                AetherHookAddressMiner.findSalt(CREATE2_FACTORY, hookInitCodeHash, HOOK_SALT_MAX_ITERATIONS);
+                AetherHookAddressMiner.findSalt(deployer, hookInitCodeHash, HOOK_SALT_MAX_ITERATIONS);
             require(saltFound, "Deploy: no CREATE2 salt satisfies BEFORE_SWAP|AFTER_SWAP flags");
             hookAddr = address(new AetherHook{salt: hookSalt}(IPoolManager(poolManager)));
             // Fail loudly if the deployed address does not encode exactly the implemented permissions.
