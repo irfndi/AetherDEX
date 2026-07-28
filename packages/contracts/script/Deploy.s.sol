@@ -126,7 +126,7 @@ contract Deploy is Script {
             bytes memory hookCtorArgs = abi.encode(IPoolManager(poolManager));
             bytes32 hookInitCodeHash = keccak256(abi.encodePacked(type(AetherHook).creationCode, hookCtorArgs));
             (bool saltFound, bytes32 hookSalt,) =
-                AetherHookAddressMiner.findSalt(deployer, hookInitCodeHash, HOOK_SALT_MAX_ITERATIONS);
+                AetherHookAddressMiner.findSalt(CREATE2_FACTORY, hookInitCodeHash, HOOK_SALT_MAX_ITERATIONS);
             require(saltFound, "Deploy: no CREATE2 salt satisfies BEFORE_SWAP|AFTER_SWAP flags");
             hookAddr = address(new AetherHook{salt: hookSalt}(IPoolManager(poolManager)));
             // Fail loudly if the deployed address does not encode exactly the implemented permissions.
