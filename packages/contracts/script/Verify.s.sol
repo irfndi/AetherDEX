@@ -57,6 +57,7 @@ contract Verify is Script {
         require(expectedTreasury != address(0), "Verify: AETHERDEX_TREASURY must be set");
         require(router.code.length != 0, "Verify: router address must contain deployed code");
         require(hook.code.length != 0, "Verify: hook address must contain deployed code");
+        require(expectedTreasury.code.length != 0, "Verify: treasury address must contain deployed multisig code");
 
         console.log("\n=== AetherDEX Phase-4 Verification (#314) ===");
         console.log("Router:", router);

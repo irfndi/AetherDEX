@@ -4,6 +4,7 @@ import * as Output from "alchemy/Output"
 import * as Effect from "effect/Effect"
 
 const configured = (primary: string, legacy: string): string => process.env[primary] ?? process.env[legacy] ?? ""
+const configuredNonEmpty = (name: string, fallback: string): string => process.env[name]?.trim() || fallback
 
 const environmentForStage = (stage: string): string => {
   if (stage === "dev" || stage.startsWith("dev_")) return "development"
@@ -32,9 +33,12 @@ export default Alchemy.Stack(
       CHAIN_ID: process.env.CHAIN_ID ?? "11155111",
       ENVIRONMENT: process.env.ENVIRONMENT ?? environmentForStage(stage),
       RPC_URL: process.env.RPC_URL ?? "",
-      SIWE_DOMAIN: process.env.SIWE_DOMAIN ?? new URL(webOrigin).host,
-      SIWE_URI: process.env.SIWE_URI ?? webOrigin,
-      CORS_ORIGINS: process.env.CORS_ORIGINS ?? ["http://localhost:3000", "https://aetherdex.io", webOrigin].join(","),
+      SIWE_DOMAIN: configuredNonEmpty("SIWE_DOMAIN", new URL(webOrigin).host),
+      SIWE_URI: configuredNonEmpty("SIWE_URI", webOrigin),
+      CORS_ORIGINS: configuredNonEmpty(
+        "CORS_ORIGINS",
+        ["http://localhost:3000", "https://aetherdex.io", webOrigin].join(","),
+      ),
       AETHER_HOOK_ADDRESS: configured("AETHERDEX_HOOK", "AETHER_HOOK_ADDRESS"),
       TREASURY_ADDRESS: configured("AETHERDEX_TREASURY", "TREASURY_ADDRESS"),
       ROUTER_ADDRESS: configured("AETHERDEX_ROUTER", "ROUTER_ADDRESS"),
