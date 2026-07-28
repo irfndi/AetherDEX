@@ -174,6 +174,9 @@ tpSl.post("/orders", requireAuth, async (c) => {
       return c.json({ error: "TPSL_ADDRESS and RPC_URL are required to verify creationTxHash" }, 503)
     }
     const publicClient = createPublicClient({ transport: http(c.env.RPC_URL) })
+    if ((await publicClient.getChainId()) !== chainIdFor(c)) {
+      return c.json({ error: "RPC_URL chain does not match CHAIN_ID" }, 503)
+    }
     const receipt = await publicClient.getTransactionReceipt({
       hash: body.creationTxHash as `0x${string}`,
     })
