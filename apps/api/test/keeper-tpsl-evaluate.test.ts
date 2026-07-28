@@ -17,6 +17,7 @@ import m0005PoolKeys from "../migrations/0005_chain_qualified_pool_keys.sql?raw"
 import m0005TpSl from "../migrations/0005_tp_sl_orders.sql?raw"
 import m0006 from "../migrations/0006_chain_qualified_price_cache.sql?raw"
 import m0007 from "../migrations/0007_v3_indexer_cursor.sql?raw"
+import m0008 from "../migrations/0008_tp_sl_onchain_order_id.sql?raw"
 import {
   encodeExecuteOrder,
   InsufficientKeeperBalanceError,
@@ -31,7 +32,7 @@ import {
   type TpSlEvaluateMessage,
 } from "../src/workers/queue-handler"
 
-const MIGRATIONS = [m0001, m0002, m0003, m0004, m0005PoolKeys, m0005TpSl, m0006, m0007]
+const MIGRATIONS = [m0001, m0002, m0003, m0004, m0005PoolKeys, m0005TpSl, m0006, m0007, m0008]
 
 const splitStatements = (script: string): string[] =>
   script
@@ -68,7 +69,8 @@ const makeQueueEnv = (vars: Record<string, string> = { TPSL_ADDRESS }): QueueEnv
 
 const makeMessage = (overrides: Partial<TpSlEvaluateMessage> = {}): TpSlEvaluateMessage => ({
   type: "tp-sl-evaluate",
-  orderId: 1,
+  orderId: overrides.orderId ?? 1,
+  onchainOrderId: String((overrides.orderId ?? 1) - 1),
   poolId: poolIdFor(1),
   orderType: "take_profit",
   zeroForOne: false,
@@ -86,13 +88,13 @@ const makeMessage = (overrides: Partial<TpSlEvaluateMessage> = {}): TpSlEvaluate
 const seedOrder = async (
   orderId: number,
   poolId: string,
-  overrides: { deadline?: number; status?: string } = {},
+  overrides: { deadline?: number; status?: string; onchainOrderId?: string } = {},
 ): Promise<void> => {
   await env.DB.prepare(
     `INSERT INTO tp_sl_orders
        (id, user_address, pool_id, order_type, zero_for_one, amount_in, min_amount_out,
-        trigger_price_x18, twap_window, slippage_bps, deadline, status, created_at, chain_id)
-     VALUES (?, ?, ?, 'take_profit', 0, '1000000', '1', ?, 300, 500, ?, ?, ?, 11155111)`,
+        trigger_price_x18, twap_window, slippage_bps, deadline, status, created_at, chain_id, onchain_order_id)
+     VALUES (?, ?, ?, 'take_profit', 0, '1000000', '1', ?, 300, 500, ?, ?, ?, 11155111, ?)`,
   )
     .bind(
       orderId,
@@ -102,6 +104,7 @@ const seedOrder = async (
       overrides.deadline ?? Date.now() + 600_000,
       overrides.status ?? "pending",
       Date.now(),
+      overrides.onchainOrderId ?? String(orderId - 1),
     )
     .run()
 }
@@ -151,17 +154,17 @@ describe("processQueueBatch (tp-sl-evaluate)", () => {
     await seedOrder(1, poolId)
     await primePrices(poolId)
 
-    const signer = makeFakeSigner({ kind: "submitted", channel: "private-relay", txHash: TX_HASH })
+    const signer = makeFakeSigner({ kind: "submitted", channel: "private-relay", txHash: TX_HASH, confirmed: true })
     const { batch, ack, retry } = makeBatch(makeMessage({ orderId: 1, poolId }))
 
     await processQueueBatch(batch, makeQueueEnv(), undefined, signer.factory)
 
     expect(signer.sentInputs).toHaveLength(1)
     expect(signer.received()).toMatchObject({ to: TPSL_ADDRESS, chainId: 11155111 })
-    expect(signer.received()?.data).toBe(encodeExecuteOrder(1))
+    expect(signer.received()?.data).toBe(encodeExecuteOrder("0"))
 
     const order = await readOrder(1)
-    expect(order).toEqual({ status: "triggered", execution_tx_hash: TX_HASH })
+    expect(order).toEqual({ status: "executed", execution_tx_hash: TX_HASH })
     expect(ack).toHaveBeenCalledTimes(1)
     expect(retry).not.toHaveBeenCalled()
   })

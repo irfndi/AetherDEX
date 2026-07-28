@@ -57,6 +57,7 @@ export interface TradeArchiveMessage {
 export interface TpSlEvaluateMessage {
   type: "tp-sl-evaluate"
   orderId: number
+  onchainOrderId: string
   poolId: string
   orderType: string
   zeroForOne: boolean
@@ -295,10 +296,10 @@ async function handleTpSlEvaluate(
 
   // 1. Verify order is still pending
   const order = await env.DB.prepare(
-    "SELECT id, status, deadline FROM tp_sl_orders WHERE id = ? AND chain_id = ? AND status = 'pending'",
+    "SELECT id, onchain_order_id, status, deadline FROM tp_sl_orders WHERE id = ? AND chain_id = ? AND status = 'pending'",
   )
     .bind(msg.orderId, msg.chainId)
-    .first<{ id: number; status: string; deadline: number }>()
+    .first<{ id: number; onchain_order_id: string | null; status: string; deadline: number }>()
 
   if (!order) {
     console.log(`[Keeper] Order ${msg.orderId} no longer pending, skipping`)
@@ -311,6 +312,11 @@ async function handleTpSlEvaluate(
       .bind(msg.orderId, msg.chainId)
       .run()
     console.log(`[Keeper] Order ${msg.orderId} expired`)
+    return
+  }
+
+  if (typeof order.onchain_order_id !== "string" || !/^[0-9]+$/.test(order.onchain_order_id)) {
+    console.warn(`[Keeper] Order ${msg.orderId} has no valid on-chain order ID, skipping submission`)
     return
   }
 
@@ -437,7 +443,7 @@ async function handleTpSlEvaluate(
   try {
     submission = await signer.sendTransaction({
       to: tpslAddress,
-      data: encodeExecuteOrder(msg.orderId),
+      data: encodeExecuteOrder(order.onchain_order_id),
       chainId: msg.chainId,
     })
   } catch (error) {
@@ -459,12 +465,23 @@ async function handleTpSlEvaluate(
     return
   }
 
-  // Submitted — mark triggered + record the tx hash. On-chain reconciliation
-  // (verification service / indexer) advances the order to 'executed' later.
+  if (submission.confirmed !== true) {
+    await env.DB.prepare(
+      "UPDATE tp_sl_orders SET execution_tx_hash = ?, updated_at = ? WHERE id = ? AND chain_id = ? AND status = 'pending'",
+    )
+      .bind(submission.txHash, Date.now(), msg.orderId, msg.chainId)
+      .run()
+    console.log(
+      JSON.stringify({ event: "tp_sl_execution_unconfirmed", ...executionContext, txHash: submission.txHash }),
+    )
+    return
+  }
+
+  const confirmedAt = Date.now()
   await env.DB.prepare(
-    "UPDATE tp_sl_orders SET status = 'triggered', execution_tx_hash = ?, updated_at = ? WHERE id = ? AND chain_id = ? AND status = 'pending'",
+    "UPDATE tp_sl_orders SET status = 'executed', execution_tx_hash = ?, executed_at = ?, updated_at = ? WHERE id = ? AND chain_id = ? AND status = 'pending'",
   )
-    .bind(submission.txHash, Date.now(), msg.orderId, msg.chainId)
+    .bind(submission.txHash, confirmedAt, confirmedAt, msg.orderId, msg.chainId)
     .run()
 
   console.log(

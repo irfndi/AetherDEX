@@ -5,7 +5,7 @@
  * balance / gas / chain preflight guards. No network access.
  */
 
-import { parseEther, parseGwei, toFunctionSelector } from "viem"
+import { keccak256, parseEther, parseGwei, toBytes, toFunctionSelector } from "viem"
 import { describe, expect, it, vi } from "vitest"
 import {
   canExecuteRecenter,
@@ -296,6 +296,48 @@ describe("private relay submission (mocked fetch)", () => {
       signer.sendTransaction({ to: "0x1111111111111111111111111111111111111111", data: "0x", chainId: 11155111 }),
     ).rejects.toThrow(/transaction hash/)
   })
+
+  it("confirms a relay transaction only after the execution event is mined", async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () => new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: TX_HASH })),
+    )
+    const signer = createKeeperSigner(readKeeperSignerConfig({ ...baseEnv, PRIVATE_TX_RELAY_URL: RELAY_URL }), {
+      publicClient: {
+        ...makeChainStub(),
+        waitForTransactionReceipt: async () => ({
+          status: "success" as const,
+          logs: [
+            {
+              address: "0x1111111111111111111111111111111111111111",
+              topics: [keccak256(toBytes("OrderExecuted(uint256,address,uint256,uint256)"))],
+            },
+          ],
+        }),
+      },
+      fetchFn: fetchMock,
+    })
+
+    await expect(
+      signer.sendTransaction({ to: "0x1111111111111111111111111111111111111111", data: "0x" }),
+    ).resolves.toEqual({ kind: "submitted", channel: "private-relay", txHash: TX_HASH, confirmed: true })
+  })
+
+  it("rejects a mined transaction that reverted", async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () => new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: TX_HASH })),
+    )
+    const signer = createKeeperSigner(readKeeperSignerConfig({ ...baseEnv, PRIVATE_TX_RELAY_URL: RELAY_URL }), {
+      publicClient: {
+        ...makeChainStub(),
+        waitForTransactionReceipt: async () => ({ status: "reverted" as const, logs: [] }),
+      },
+      fetchFn: fetchMock,
+    })
+
+    await expect(
+      signer.sendTransaction({ to: "0x1111111111111111111111111111111111111111", data: "0x" }),
+    ).rejects.toThrow(/reverted/)
+  })
 })
 
 describe("preflight guards", () => {
@@ -375,6 +417,29 @@ describe("explicit public submission", () => {
     const signer = createKeeperSigner(readKeeperSignerConfig(baseEnv), { walletClient: { sendTransaction } })
     await signer.sendTransaction({ to: "0x1111111111111111111111111111111111111111", data: "0x" })
     expect(sendTransaction).not.toHaveBeenCalled()
+  })
+
+  it("serializes concurrent submissions and allocates distinct pending nonces", async () => {
+    const sendTransaction = vi.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      return TX_HASH
+    })
+    const signer = createKeeperSigner(readKeeperSignerConfig({ ...baseEnv, KEEPER_ALLOW_PUBLIC_SUBMISSION: "true" }), {
+      publicClient: {
+        getBalance: async () => parseEther("1"),
+        getTransactionCount: async () => 7,
+        estimateGas: async () => 120_000n,
+        getGasPrice: async () => parseGwei("2"),
+      },
+      walletClient: { sendTransaction },
+    })
+
+    await Promise.all([
+      signer.sendTransaction({ to: "0x1111111111111111111111111111111111111111", data: "0x" }),
+      signer.sendTransaction({ to: "0x1111111111111111111111111111111111111111", data: "0x" }),
+    ])
+
+    expect(sendTransaction.mock.calls.map(([args]) => args.nonce)).toEqual([7, 8])
   })
 })
 

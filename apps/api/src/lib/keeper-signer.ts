@@ -23,9 +23,11 @@ import {
   encodeFunctionData,
   http,
   isAddress,
+  keccak256,
   parseAbi,
   parseEther,
   parseGwei,
+  toBytes,
 } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
 import { parseChainId } from "./chain-id"
@@ -177,6 +179,13 @@ export class KeeperRelayError extends Error {
   }
 }
 
+export class KeeperTransactionError extends Error {
+  readonly _tag = "KeeperTransactionError"
+  constructor(readonly txHash: string, message: string) {
+    super(message)
+  }
+}
+
 /** True for errors where a queue retry can plausibly succeed (network/RPC/5xx). */
 export const isTransientKeeperError = (error: unknown): boolean => {
   if (error instanceof KeeperRpcError) return true
@@ -189,7 +198,12 @@ export const isTransientKeeperError = (error: unknown): boolean => {
 export type SubmissionChannel = "private-relay" | "public" | "evaluation-only"
 
 export type SubmissionResult =
-  | { readonly kind: "submitted"; readonly channel: SubmissionChannel; readonly txHash: `0x${string}` }
+  | {
+      readonly kind: "submitted"
+      readonly channel: SubmissionChannel
+      readonly txHash: `0x${string}`
+      readonly confirmed?: boolean
+    }
   | { readonly kind: "submission-disabled"; readonly reason: string }
 
 export interface SendTransactionInput {
@@ -213,7 +227,7 @@ export interface KeeperSigner {
 /** Minimal surface of the viem public client the relayer drives (test seam). */
 interface KeeperChainClient {
   getBalance(args: { address: `0x${string}` }): Promise<bigint>
-  getTransactionCount(args: { address: `0x${string}` }): Promise<number>
+  getTransactionCount(args: { address: `0x${string}`; blockTag?: "pending" }): Promise<number>
   estimateGas(args: {
     account: { address: `0x${string}` }
     to: `0x${string}`
@@ -221,6 +235,12 @@ interface KeeperChainClient {
     value?: bigint
   }): Promise<bigint>
   getGasPrice(): Promise<bigint>
+  waitForTransactionReceipt?(args: { hash: `0x${string}` }): Promise<KeeperTransactionReceipt>
+}
+
+interface KeeperTransactionReceipt {
+  readonly status: "success" | "reverted"
+  readonly logs: readonly { readonly address: string; readonly topics: readonly string[] }[]
 }
 
 // Minimal viem wallet surface. account is deliberately NOT a per-call arg: a
@@ -244,6 +264,8 @@ export interface KeeperSignerDeps {
   readonly fetchFn?: typeof fetch
 }
 
+const ORDER_EXECUTED_TOPIC = keccak256(toBytes("OrderExecuted(uint256,address,uint256,uint256)"))
+
 // ─── AetherTPSL encoding ────────────────────────────────────────────────────
 
 export const AETHER_TPSL_ABI = parseAbi([
@@ -255,7 +277,7 @@ export const AETHER_TPSL_ABI = parseAbi([
  * AetherTPSL.executeOrder re-verifies the dual trigger on-chain from the order's
  * own stored parameters before moving funds, so no hook payload is required.
  */
-export function encodeExecuteOrder(orderId: number | bigint, hookData: `0x${string}` = "0x"): `0x${string}` {
+export function encodeExecuteOrder(orderId: string | number | bigint, hookData: `0x${string}` = "0x"): `0x${string}` {
   const id = BigInt(orderId)
   if (id < 0n) throw new RangeError(`orderId must be non-negative, got ${orderId}`)
   return encodeFunctionData({ abi: AETHER_TPSL_ABI, functionName: "executeOrder", args: [id, hookData] })
@@ -347,6 +369,40 @@ export function createKeeperSigner(config: KeeperSignerConfig, deps: KeeperSigne
 
   const transport = http(config.rpcUrl)
   const publicClient: KeeperChainClient = (deps.publicClient ?? createPublicClient({ transport })) as KeeperChainClient
+  let nextNonce: number | undefined
+  let submissionTail = Promise.resolve()
+
+  const withSubmissionLock = async <T>(operation: () => Promise<T>): Promise<T> => {
+    const previous = submissionTail
+    let release: (() => void) | undefined
+    submissionTail = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await previous
+    try {
+      return await operation()
+    } finally {
+      release?.()
+    }
+  }
+
+  const awaitConfirmation = async (txHash: `0x${string}`, target: `0x${string}`): Promise<boolean | undefined> => {
+    if (publicClient.waitForTransactionReceipt === undefined) return undefined
+    let receipt: KeeperTransactionReceipt
+    try {
+      receipt = await publicClient.waitForTransactionReceipt({ hash: txHash })
+    } catch (error) {
+      throw new KeeperRpcError(`Keeper receipt wait failed: ${String(error)}`)
+    }
+    if (receipt.status === "reverted") {
+      throw new KeeperTransactionError(txHash, "Keeper transaction reverted")
+    }
+    return receipt.logs.some(
+      (log) =>
+        log.address.toLowerCase() === target.toLowerCase() &&
+        log.topics[0]?.toLowerCase() === ORDER_EXECUTED_TOPIC.toLowerCase(),
+    )
+  }
 
   const preflight = async (
     input: SendTransactionInput,
@@ -359,7 +415,8 @@ export function createKeeperSigner(config: KeeperSignerConfig, deps: KeeperSigne
     let gas: bigint
     let gasPrice: bigint
     try {
-      nonce = await publicClient.getTransactionCount({ address: account.address })
+      const pendingNonce = await publicClient.getTransactionCount({ address: account.address, blockTag: "pending" })
+      nonce = Math.max(pendingNonce, nextNonce ?? pendingNonce)
       balance = await publicClient.getBalance({ address: account.address })
       gasPrice = await publicClient.getGasPrice()
       gas =
@@ -389,8 +446,9 @@ export function createKeeperSigner(config: KeeperSignerConfig, deps: KeeperSigne
     return {
       address: account.address,
       channel: "private-relay",
-      sendTransaction: async (input: SendTransactionInput): Promise<SubmissionResult> => {
-        const { nonce, gas, gasPrice } = await preflight(input)
+      sendTransaction: async (input: SendTransactionInput): Promise<SubmissionResult> =>
+        withSubmissionLock(async () => {
+          const { nonce, gas, gasPrice } = await preflight(input)
 
         let signed: `0x${string}`
         try {
@@ -464,8 +522,13 @@ export function createKeeperSigner(config: KeeperSignerConfig, deps: KeeperSigne
           throw new KeeperRelayError("Private relay response is missing a valid transaction hash", false)
         }
 
-        return { kind: "submitted", channel: "private-relay", txHash: payload.result as `0x${string}` }
-      },
+          const txHash = payload.result as `0x${string}`
+          nextNonce = nonce + 1
+          const confirmed = await awaitConfirmation(txHash, input.to)
+          return confirmed === undefined
+            ? { kind: "submitted", channel: "private-relay", txHash }
+            : { kind: "submitted", channel: "private-relay", txHash, confirmed }
+        }),
     }
   }
 
@@ -479,8 +542,9 @@ export function createKeeperSigner(config: KeeperSignerConfig, deps: KeeperSigne
   return {
     address: account.address,
     channel: "public",
-    sendTransaction: async (input: SendTransactionInput): Promise<SubmissionResult> => {
-      const { nonce, gas, gasPrice } = await preflight(input)
+    sendTransaction: async (input: SendTransactionInput): Promise<SubmissionResult> =>
+      withSubmissionLock(async () => {
+        const { nonce, gas, gasPrice } = await preflight(input)
       let txHash: `0x${string}`
       try {
         txHash = await walletClient.sendTransaction({
@@ -497,7 +561,11 @@ export function createKeeperSigner(config: KeeperSignerConfig, deps: KeeperSigne
       } catch (error) {
         throw new KeeperRpcError(`Public submission failed: ${String(error)}`)
       }
-      return { kind: "submitted", channel: "public", txHash }
-    },
+        nextNonce = nonce + 1
+        const confirmed = await awaitConfirmation(txHash, input.to)
+        return confirmed === undefined
+          ? { kind: "submitted", channel: "public", txHash }
+          : { kind: "submitted", channel: "public", txHash, confirmed }
+      }),
   }
 }
