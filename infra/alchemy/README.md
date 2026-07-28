@@ -1,7 +1,7 @@
 # AetherDEX Alchemy infrastructure
 
 This Alchemy Stack is the source of truth for the AetherDEX Cloudflare runtime:
-the API Worker, D1, KV, R2, Durable Objects, Queues, and queue consumers. It
+the API Worker, Pages projects, D1, KV, R2, Durable Objects, Queues, and queue consumers. It
 uses explicit physical names matching the Wrangler environments so an existing
 resource can be imported with Alchemy's adoption flow.
 
@@ -34,6 +34,19 @@ The same flow applies to staging:
 ```bash
 bun run deploy:staging
 ```
+
+Alchemy also provisions the Pages project and build configuration. The current
+Alchemy Pages provider does not upload static assets, so upload the built SPA
+after provisioning:
+
+```bash
+bun run web:deploy:dev
+bun run web:deploy:staging
+```
+
+Set `VITE_REOWN_PROJECT_ID` before the web upload. Without it, the deployed SPA
+loads but the wallet provider intentionally throws its required-configuration
+error.
 
 For the current account, the dev deployment uses the existing
 `aetherdexcloudflare-tradehistory-dev-irfandi-nfwtu3epiocsqpii` bucket by

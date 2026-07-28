@@ -1,5 +1,6 @@
 import * as Alchemy from "alchemy"
 import * as Cloudflare from "alchemy/Cloudflare"
+import * as Output from "alchemy/Output"
 import * as Effect from "effect/Effect"
 
 const apiConfig = {
@@ -103,6 +104,30 @@ export default Alchemy.Stack(
       },
     })
 
+    const webProject = yield* Cloudflare.Pages.Project("Web", {
+      name: `aetherdex-web-${suffix}`,
+      productionBranch: stage.startsWith("dev") ? "dev" : "main",
+      buildConfig: {
+        buildCommand: "bun run build",
+        destinationDir: "dist",
+        rootDir: "apps/web",
+      },
+      deploymentConfigs: {
+        preview: {
+          envVars: {
+            VITE_API_URL: { value: Output.interpolate`${worker.url}/api/v1` },
+            VITE_REOWN_PROJECT_ID: { value: process.env.VITE_REOWN_PROJECT_ID ?? "" },
+          },
+        },
+        production: {
+          envVars: {
+            VITE_API_URL: { value: Output.interpolate`${worker.url}/api/v1` },
+            VITE_REOWN_PROJECT_ID: { value: process.env.VITE_REOWN_PROJECT_ID ?? "" },
+          },
+        },
+      },
+    })
+
     yield* Cloudflare.Queues.Consumer("PriceConsumer", {
       queueId: priceQueue.queueId,
       scriptName: worker.workerName,
@@ -128,6 +153,8 @@ export default Alchemy.Stack(
       workerUrl: worker.url,
       databaseId: database.databaseId,
       cacheId: cache.namespaceId,
+      webProjectName: webProject.name,
+      webProjectSubdomain: webProject.subdomain,
       storageBucketName: storage.bucketName,
       queues: {
         price: priceQueue.queueName,

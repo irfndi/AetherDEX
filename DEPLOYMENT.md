@@ -83,9 +83,10 @@ bun run deploy:staging
 
 ## Frontend (Cloudflare Pages)
 
-No Pages project currently exists in the account. Frontend Pages provisioning is
-not part of the current API stack; add it to Alchemy before deploying the web
-application so the API and frontend remain under one deployment source of truth.
+Alchemy provisions the `aetherdex-web-dev` and `aetherdex-web-staging` Pages
+projects. The Alchemy Pages provider manages the project/build configuration;
+the static asset upload uses the documented Wrangler command because the
+provider does not currently upload Pages assets.
 
 ### First-time setup
 
@@ -99,8 +100,9 @@ cd apps/web
 # Build
 bun run build
 
-# Deploy
-bun run deploy
+# Deploy the asset bundle to the Alchemy-provisioned project
+cd ../../infra/alchemy
+bun run web:deploy:staging
 ```
 
 ## Post-deployment checklist

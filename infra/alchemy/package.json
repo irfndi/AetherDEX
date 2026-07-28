@@ -8,6 +8,9 @@
     "plan:dev": "alchemy plan --stage dev_$USER",
     "deploy:dev": "alchemy deploy --stage dev_$USER --adopt --yes",
     "deploy:staging": "alchemy deploy --stage staging --adopt --yes",
+    "web:build": "cd ../../apps/web && bun run build",
+    "web:deploy:dev": "cd ../../apps/web && bun run build && bunx wrangler pages deploy dist --project-name aetherdex-web-dev --commit-dirty=true",
+    "web:deploy:staging": "cd ../../apps/web && bun run build && bunx wrangler pages deploy dist --project-name aetherdex-web-staging --commit-dirty=true",
     "destroy:dev": "alchemy destroy --stage dev_$USER"
   },
   "devDependencies": {
