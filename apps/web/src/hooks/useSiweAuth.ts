@@ -1,6 +1,8 @@
 import { useCallback, useState } from "react"
 import { useAccount, useDisconnect, useSignMessage } from "wagmi"
 
+const API_URL = (import.meta.env.VITE_API_URL ?? "http://localhost:8080/api/v1").replace(/\/$/, "")
+
 export interface AuthState {
   isAuthenticated: boolean
   userAddress?: string
@@ -28,7 +30,7 @@ export function useSiweAuth() {
 
     try {
       // 1. Get nonce from server
-      const nonceRes = await fetch(`${import.meta.env.VITE_API_URL ?? "http://localhost:8080"}/api/v1/auth/nonce`)
+      const nonceRes = await fetch(`${API_URL}/auth/nonce`)
       if (!nonceRes.ok) throw new Error("Failed to fetch nonce")
       const { nonce } = (await nonceRes.json()) as { nonce: string }
 
@@ -49,7 +51,7 @@ export function useSiweAuth() {
       const signature = await signMessageAsync({ message })
 
       // 4. Send to server for verification
-      const verifyRes = await fetch(`${import.meta.env.VITE_API_URL ?? "http://localhost:8080"}/api/v1/auth/verify`, {
+      const verifyRes = await fetch(`${API_URL}/auth/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message, signature }),
@@ -83,7 +85,7 @@ export function useSiweAuth() {
     const token = localStorage.getItem("aetherdex-auth-token")
     if (token) {
       try {
-        await fetch(`${import.meta.env.VITE_API_URL ?? "http://localhost:8080"}/api/v1/auth/logout`, {
+        await fetch(`${API_URL}/auth/logout`, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
         })

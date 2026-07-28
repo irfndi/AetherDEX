@@ -16,8 +16,13 @@ cd packages/contracts
 cp .env.example .env
 # Edit .env: set DEPLOYER_PRIVATE_KEY, AETHERDEX_TREASURY, ETHERSCAN_API_KEY
 
-# Deploy
+# Deploy to Sepolia (the current supported crypto test network)
 forge script script/Deploy.s.sol --rpc-url sepolia --broadcast --verify
+
+# Verify before wiring the addresses into Workers
+AETHERDEX_ROUTER=0x... AETHERDEX_HOOK=0x... AETHERDEX_TREASURY=0x... \
+  AETHERDEX_HOOK_CODE_HASH=0x... \
+  forge script script/Verify.s.sol --rpc-url sepolia
 
 # Verify on Etherscan (automatic with --verify)
 ```
@@ -33,69 +38,80 @@ forge script script/Deploy.s.sol --rpc-url sepolia --broadcast --verify
 
 ## Backend (Cloudflare Workers)
 
+There are three different environments:
+
+- `wrangler dev` is local development. It uses local D1/KV emulation and does not
+  deploy anything or execute against a public chain unless `RPC_URL` is configured.
+- `bun run plan:dev` in `infra/alchemy/` previews the development stack.
+- `bun run deploy:dev` and `bun run deploy:staging` in `infra/alchemy/` deploy
+  separate Cloudflare Workers with separate D1/KV/R2/Queue/DO resources.
+- `--adopt` allows Alchemy to take ownership of matching existing resources; it
+  does not select unrelated resources by type.
+- Set `CHAIN_ID`, `RPC_URL`, `AETHERDEX_*` contract-address variables,
+  `STATE_VIEW_ADDRESS`, `V3_FACTORY_ADDRESS`, and `V3_QUOTER_ADDRESS` in
+  `infra/alchemy/.env` to use Sepolia as the shared crypto test environment.
+- Production deployment is not enabled by the current Alchemy script. Do not
+  point a test wallet or test contracts at production.
+
+`infra/alchemy/alchemy.run.ts` is the deployment source of truth. The legacy
+`apps/api/wrangler.jsonc` remains useful for local Wrangler commands and type
+generation, but its placeholder resource IDs are not used by the Alchemy
+deployment path.
+
 ### First-time setup
 
 ```bash
-cd apps/api
-
-# Create default development resources
-bun run d1:create
-bun run kv:create
-bun run r2:create
-
-# Create isolated staging resources
-bun run d1:create:staging
-bun run kv:create:staging
-bun run r2:create:staging
-bun run queues:create:staging
-
-# Create isolated production resources
-bun run d1:create:production
-bun run kv:create:production
-bun run r2:create:production
-bun run queues:create:production
-
-# Copy each command's returned D1 database_id and KV id into the matching
-# staging/production blocks in wrangler.jsonc. Do not reuse IDs across environments.
-
-# Run migrations
-bun run d1:migrate:local
-bun run d1:migrate:remote
-bun run d1:migrate:staging
-bun run d1:migrate:production
-
-# Deploy to staging
+cd infra/alchemy
+cp .env.example .env
+# Edit .env with the Sepolia RPC URL, deployed contract addresses, and
+# VITE_API_URL/VITE_REOWN_PROJECT_ID for the local Pages upload.
+bun install
+bun run plan:dev
+bun run deploy:dev
 bun run deploy:staging
-
-# Deploy to production
-bun run deploy:production
 ```
 
 ### Secrets to set
 
 ```bash
-# Production secrets
-bunx wrangler secret put ALCHEMY_API_KEY --env production
-bunx wrangler secret put CLOUDFLARE_API_TOKEN --env production
+# Secrets are added to the Worker through the chosen Alchemy/Cloudflare secret
+# workflow after the non-secret stack has been deployed.
+# Do not commit private keys or RPC API keys.
+# Optional: Telegram alert secrets and private relay secrets, only when enabled.
+
+# Alchemy provisions the Cloudflare resources in this repository. Alchemy's RPC
+# endpoint is a network dependency, so its URL/API key belongs in the uncommitted
+# Alchemy environment or a Worker secret.
 ```
 
 ## Frontend (Cloudflare Pages)
+
+Alchemy provisions the `aetherdex-web-dev` and `aetherdex-web-staging` Pages
+projects. The Alchemy Pages provider manages the project/build configuration;
+the static asset upload uses the documented Wrangler command because the
+provider does not currently upload Pages assets.
 
 ### First-time setup
 
 ```bash
 cd apps/web
 
-# Set env vars in Cloudflare Pages dashboard:
-#   VITE_API_URL = https://api.aetherdex.io/api/v1
+# `web:deploy:*` injects these at Vite build time; Pages dashboard variables
+# cannot change an already-built bundle.
+#   VITE_API_URL = https://<worker>/api/v1
 #   VITE_REOWN_PROJECT_ID = your_actual_project_id
+#   VITE_WS_URL = https://<worker> (optional; derived from VITE_API_URL)
 
 # Build
 bun run build
 
-# Deploy
-bun run deploy
+# Deploy the asset bundle to the Alchemy-provisioned project
+cd ../../infra/alchemy
+bun run web:deploy:staging
 ```
+
+The dev upload targets the `dev` Pages production branch and staging targets
+`main`; this keeps the stable `pages.dev` URLs distinct from previews.
 
 ## Post-deployment checklist
 

@@ -51,8 +51,9 @@ DEPLOYER_PRIVATE_KEY=0x.. AETHERDEX_TREASURY=0x.. POOL_MANAGER=0x.. NETWORK_NAME
   forge script script/Deploy.s.sol --rpc-url <robinhood-rpc> --broadcast --verify
 
 # Verify the deployed immutable shape (read-only): asserts router PROTOCOL_FEE_BPS()==10,
-# router treasury()!=0, and that the hook bytecode exposes no setProtocolFee(uint24) selector.
-AETHERDEX_ROUTER=0x.. AETHERDEX_HOOK=0x.. \
+# treasury/wiring, and the audited oracle-only hook runtime code hash.
+AETHERDEX_ROUTER=0x.. AETHERDEX_HOOK=0x.. AETHERDEX_TREASURY=0x.. \
+  AETHERDEX_HOOK_CODE_HASH=0x.. \
   forge script script/Verify.s.sol --rpc-url <target>
 ```
 

@@ -247,7 +247,7 @@ function NewPoolPage() {
                 onChange={(e) => update("tickSpacing", e.target.value)}
               />
             </div>
-            <div className="mt-4 join w-full">
+            <div className="join join-vertical mt-4 w-full sm:join-horizontal">
               <button
                 type="button"
                 className={`join-item btn btn-sm ${values.priceInput.kind === "price" ? "btn-primary" : "btn-ghost"}`}

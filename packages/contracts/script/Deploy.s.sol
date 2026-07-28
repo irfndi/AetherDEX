@@ -110,13 +110,19 @@ contract Deploy is Script {
         address existingRouter = vm.envOr("AETHERDEX_ROUTER", address(0));
         address existingPositionManager = vm.envOr("AETHERDEX_POSITION_MANAGER", address(0));
 
+        // PoolManager is immutable in every deployed contract. A missing or EOA address
+        // would produce a deployment that can never initialize or operate a pool.
+        require(poolManager.code.length != 0, "Deploy: POOL_MANAGER must contain deployed code");
+
         vm.startBroadcast(deployerPrivateKey);
         address deployer = vm.addr(deployerPrivateKey);
 
         // 1. AetherHook — deployed via CREATE2 with a mined salt (V4 reads hook permissions
         //    from the hook ADDRESS itself). Reused as-is when AETHERDEX_HOOK is provided.
         //    Phase 4: the hook is oracle-only — constructor takes ONLY the PoolManager (no
-        //    treasury/fee args).
+        //    treasury/fee args). The salt is mined for `deployer` because `new {salt}` below
+        //    deploys from the broadcast EOA (not a create2 factory); mining for any other
+        //    deployer would place the hook at an address missing BEFORE_SWAP|AFTER_SWAP.
         address hookAddr = existingHook;
         if (hookAddr == address(0)) {
             bytes memory hookCtorArgs = abi.encode(IPoolManager(poolManager));
@@ -129,6 +135,8 @@ contract Deploy is Script {
             Hooks.validateHookPermissions(IHooks(hookAddr), _hookPermissions());
         }
         AetherHook hook = AetherHook(hookAddr);
+        require(hookAddr.code.length != 0, "Deploy: hook address must contain deployed code");
+        require(address(hook.poolManager()) == poolManager, "Deploy: hook PoolManager mismatch");
         console.log("AetherHook deployed at:", hookAddr);
 
         // 2. AetherFactory (reused when AETHERDEX_FACTORY is set)
@@ -137,6 +145,9 @@ contract Deploy is Script {
             factoryAddr = address(new AetherFactory(IPoolManager(poolManager), IHooks(hookAddr), deployer));
         }
         AetherFactory factory = AetherFactory(factoryAddr);
+        require(factoryAddr.code.length != 0, "Deploy: factory address must contain deployed code");
+        require(address(factory.poolManager()) == poolManager, "Deploy: factory PoolManager mismatch");
+        require(address(factory.hook()) == hookAddr, "Deploy: factory hook mismatch");
         console.log("AetherFactory deployed at:", factoryAddr);
 
         // 3. AetherRouter (reused when AETHERDEX_ROUTER is set). Phase 4: the router takes the
@@ -148,6 +159,9 @@ contract Deploy is Script {
             routerAddr = address(new AetherRouter(IPoolManager(poolManager), factory, treasury, deployer));
         }
         AetherRouter router = AetherRouter(payable(routerAddr));
+        require(routerAddr.code.length != 0, "Deploy: router address must contain deployed code");
+        require(address(router.poolManager()) == poolManager, "Deploy: router PoolManager mismatch");
+        require(address(router.factory()) == factoryAddr, "Deploy: router factory mismatch");
         console.log("AetherRouter deployed at:", routerAddr);
 
         // 4. AetherPositionManager — canonical transferable receipt-position manager
@@ -157,6 +171,11 @@ contract Deploy is Script {
         if (positionManagerAddr == address(0)) {
             positionManagerAddr = address(new AetherPositionManager(IPoolManager(poolManager)));
         }
+        require(positionManagerAddr.code.length != 0, "Deploy: position manager address must contain deployed code");
+        require(
+            AetherPositionManager(payable(positionManagerAddr)).poolManager() == IPoolManager(poolManager),
+            "Deploy: position manager PoolManager mismatch"
+        );
         console.log("AetherPositionManager deployed at:", positionManagerAddr);
 
         vm.stopBroadcast();
