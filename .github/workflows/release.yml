@@ -1,8 +1,9 @@
 name: Production release
 
 on:
-  push:
-    tags: ["v*.*.*"]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
 
 concurrency:
   group: production-release
@@ -14,21 +15,31 @@ permissions:
 jobs:
   version-guard:
     name: Validate release version
+    if: ${{ github.event.workflow_run.conclusion == 'success' && startsWith(github.event.workflow_run.head_branch, 'v') }}
     runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.release-tag.outputs.release_tag }}
     steps:
-      - name: Checkout tagged commit
+      - name: Checkout main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: main
           fetch-depth: 0
 
-      - name: Require a main branch tag with matching package versions
+      - name: Require the tested main commit
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: test "$(git rev-parse HEAD)" = "$TESTED_SHA"
+
+      - name: Require a main branch tag with matching package versions
+        id: release-tag
+        env:
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
+          RELEASE_TAG="$(git tag --points-at "$TESTED_SHA" 'v*.*.*' | head -n 1)"
+          test -n "$RELEASE_TAG"
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          git fetch origin main --no-tags
-          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
           node - "$RELEASE_TAG" <<'NODE'
           const fs = require("node:fs")
 
@@ -47,6 +58,7 @@ jobs:
             }
           }
           NODE
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
 
   deploy:
     name: Deploy production
@@ -70,6 +82,14 @@ jobs:
     steps:
       - name: Checkout release
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Verify tested main commit
+        env:
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: test "$(git rev-parse HEAD)" = "$TESTED_SHA"
 
       - name: Setup workspace
         uses: ./.github/actions/setup
@@ -107,4 +127,4 @@ jobs:
       - name: Create release notes
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
+        run: gh release create "${{ needs.version-guard.outputs.release_tag }}" --verify-tag --generate-notes
