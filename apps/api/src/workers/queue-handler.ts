@@ -10,7 +10,18 @@
 import { Effect, Layer } from "effect"
 import { createPublicClient, http, type PublicClient } from "viem"
 import { makeDbLayer } from "../db/client"
+import { parseChainId } from "../lib/chain-id"
 import { runEffect } from "../lib/effect-bridge"
+import {
+  canExecuteTpSlOrder,
+  createKeeperSigner,
+  encodeExecuteOrder,
+  isTransientKeeperError,
+  type KeeperSigner,
+  readKeeperSignerConfig,
+  resolveTpslAddress,
+  type SubmissionResult,
+} from "../lib/keeper-signer"
 import { IndexerService, IndexerServiceLive, type IndexerSource } from "../services/indexer.service"
 import { buildIndexerChainConfig, isIndexerEnabled } from "./indexer-config"
 
@@ -100,7 +111,24 @@ export interface QueueEnv {
   V3_POSITION_MANAGER_ADDRESS?: string
   V3_INDEXED_POOL_ADDRESSES?: string
   V4_POOL_MANAGER_ADDRESS?: string
+  // Phase 2/3 keeper relayer — secrets (KEEPER_PRIVATE_KEY, KEEPER_RPC_URL) via
+  // `wrangler secret put`; the rest are non-secret knobs parsed with safe
+  // defaults in src/lib/keeper-signer.ts. Absent config = evaluation-only.
+  TPSL_ADDRESS?: string
+  AETHER_TPSL_ADDRESS?: string
+  KEEPER_PRIVATE_KEY?: string
+  KEEPER_RPC_URL?: string
+  KEEPER_MAX_GAS_PRICE_GWEI?: string
+  KEEPER_MIN_BALANCE_ETH?: string
+  KEEPER_ALLOW_PUBLIC_SUBMISSION?: string
+  PRIVATE_TX_RELAY_URL?: string
 }
+
+/**
+ * Test seam for the keeper relayer. Production omits it for the env-derived
+ * viem signer; tests inject a fake to verify execution orchestration offline.
+ */
+export type KeeperSignerFactory = (env: QueueEnv) => KeeperSigner
 
 const INDEXER_SOURCES: readonly IndexerSource[] = ["v3_position_manager", "v3_pool", "v4_pool_manager"]
 
@@ -155,12 +183,14 @@ async function readTwapFromChain(
 
 /**
  * Process a batch of queue messages. `clientFactory` is a test seam forwarded
- * to the indexer backfill handler; production omits it for the default viem client.
+ * to the indexer backfill handler; `signerFactory` is a test seam for the
+ * keeper relayer. Production omits both for the default viem clients.
  */
 export const processQueueBatch = async (
   batch: MessageBatch<unknown>,
   env: QueueEnv,
   clientFactory?: (rpcUrl: string) => PublicClient,
+  signerFactory?: KeeperSignerFactory,
 ): Promise<void> => {
   console.log(`Processing ${batch.messages.length} queue messages`)
 
@@ -178,7 +208,7 @@ export const processQueueBatch = async (
           await handleTradeArchive(msg, env)
           break
         case "tp-sl-evaluate":
-          await handleTpSlEvaluate(msg, env)
+          await handleTpSlEvaluate(msg, env, signerFactory)
           break
         case "auto-recenter-check":
           await handleAutoRecenterCheck(msg, env)
@@ -256,7 +286,11 @@ async function handleIndexerBackfill(
 
 // ─── TP/SL Evaluation Handler ───────────────────────────────────────────────
 
-async function handleTpSlEvaluate(msg: TpSlEvaluateMessage, env: QueueEnv): Promise<void> {
+async function handleTpSlEvaluate(
+  msg: TpSlEvaluateMessage,
+  env: QueueEnv,
+  signerFactory?: KeeperSignerFactory,
+): Promise<void> {
   console.log(`[Keeper] Evaluating TP/SL order ${msg.orderId} for pool ${msg.poolId}`)
 
   // 1. Verify order is still pending
@@ -354,31 +388,94 @@ async function handleTpSlEvaluate(msg: TpSlEvaluateMessage, env: QueueEnv): Prom
     return
   }
 
-  // 6. Trigger is breached — mark for execution
-  console.log(`[Keeper] Order ${msg.orderId} trigger BREACHED — marking for execution`)
+  // 6. Trigger is breached — run the authorization gate before spending gas.
+  const expectedChainId = parseChainId(env.CHAIN_ID)
+  if (expectedChainId === null) {
+    console.warn(`[Keeper] CHAIN_ID '${env.CHAIN_ID}' is invalid — cannot authorize execution, keeping order pending`)
+    return
+  }
 
-  // Update order status to 'triggered' and enqueue for on-chain execution
-  await env.DB.prepare(`
-    UPDATE tp_sl_orders
-    SET status = 'triggered', updated_at = ?
-    WHERE id = ? AND chain_id = ? AND status = 'pending'
-  `)
-    .bind(Date.now(), msg.orderId, msg.chainId)
+  const executionContext = {
+    orderId: msg.orderId,
+    poolId: msg.poolId,
+    orderType: msg.orderType,
+    chainId: msg.chainId,
+    userAddress: msg.userAddress,
+    amountIn: msg.amountIn,
+  }
+
+  if (
+    !canExecuteTpSlOrder(
+      { status: order.status, deadline: msg.deadline, chainId: msg.chainId, amountIn: msg.amountIn },
+      { expectedChainId },
+      Date.now(),
+    )
+  ) {
+    console.log(
+      JSON.stringify({
+        event: "tp_sl_execution_unauthorized",
+        ...executionContext,
+        reason: "authorization gate rejected (status, deadline, or chain mismatch)",
+      }),
+    )
+    return
+  }
+
+  const tpslAddress = resolveTpslAddress(env)
+  if (tpslAddress === null) {
+    console.warn("[Keeper] TPSL_ADDRESS not configured — TP/SL execution stays evaluation-only, keeping order pending")
+    return
+  }
+
+  console.log(`[Keeper] Order ${msg.orderId} trigger BREACHED — submitting execution`)
+
+  // 7. Submit the on-chain execution via the keeper relayer. The AetherTPSL
+  // contract re-verifies the dual trigger itself before moving funds, so a
+  // duplicate submission at worst reverts on-chain — never double-executes.
+  const signer = signerFactory !== undefined ? signerFactory(env) : createKeeperSigner(readKeeperSignerConfig(env))
+  let submission: SubmissionResult
+  try {
+    submission = await signer.sendTransaction({
+      to: tpslAddress,
+      data: encodeExecuteOrder(msg.orderId),
+      chainId: msg.chainId,
+    })
+  } catch (error) {
+    // Transient failures (RPC / relay 5xx) re-throw so the queue retries;
+    // deterministic failures are logged and the order stays pending.
+    if (isTransientKeeperError(error)) throw error
+    console.error(
+      JSON.stringify({
+        event: "tp_sl_execution_failed",
+        ...executionContext,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    )
+    return
+  }
+
+  if (submission.kind === "submission-disabled") {
+    console.log(JSON.stringify({ event: "tp_sl_submission_disabled", ...executionContext, reason: submission.reason }))
+    return
+  }
+
+  // Submitted — mark triggered + record the tx hash. On-chain reconciliation
+  // (verification service / indexer) advances the order to 'executed' later.
+  await env.DB.prepare(
+    "UPDATE tp_sl_orders SET status = 'triggered', execution_tx_hash = ?, updated_at = ? WHERE id = ? AND chain_id = ? AND status = 'pending'",
+  )
+    .bind(submission.txHash, Date.now(), msg.orderId, msg.chainId)
     .run()
 
-  // In production, this would also submit the transaction via the keeper's funded signer
-  // For now, log the execution intent
   console.log(
     JSON.stringify({
       event: "tp_sl_triggered",
-      orderId: msg.orderId,
-      poolId: msg.poolId,
-      orderType: msg.orderType,
-      spotPriceX18: spotPriceX18,
+      ...executionContext,
+      txHash: submission.txHash,
+      channel: submission.channel,
+      spotPriceX18,
       twapPriceX18,
       triggerPriceX18: msg.triggerPriceX18,
-      userAddress: msg.userAddress,
-      amountIn: msg.amountIn,
     }),
   )
 }

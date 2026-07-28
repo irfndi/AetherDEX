@@ -50,6 +50,16 @@ type Bindings = {
   AETHER_HOOK_ADDRESS?: string
   V3_EXECUTOR_ADDRESS?: string
   TREASURY_ADDRESS?: string
+  // Phase 2/3 keeper relayer — secrets (KEEPER_PRIVATE_KEY, KEEPER_RPC_URL) via
+  // `wrangler secret put`; non-secret knobs default to evaluation-only in
+  // src/lib/keeper-signer.ts.
+  TPSL_ADDRESS?: string
+  AETHER_TPSL_ADDRESS?: string
+  KEEPER_RPC_URL?: string
+  KEEPER_MAX_GAS_PRICE_GWEI?: string
+  KEEPER_MIN_BALANCE_ETH?: string
+  KEEPER_ALLOW_PUBLIC_SUBMISSION?: string
+  KEEPER_PRIVATE_KEY?: string
   // Phase-3 API safety knobs — optional; safe defaults live in src/lib/safety-config.ts.
   RATE_LIMIT_MAX?: string
   RATE_LIMIT_WINDOW_SECONDS?: string
@@ -246,9 +256,15 @@ const worker = {
       WEBSOCKET_HUB: env.WEBSOCKET_HUB,
       CHAIN_ID: env.CHAIN_ID,
       RPC_URL: env.RPC_URL,
-      // Phase 4 (#314): keeper queue needs the AetherHook oracle for on-chain TP/SL TWAP reads
-      // (queue-handler.readTwapFromChain). Undefined is safe — it falls back to KV-cached prices.
       AETHER_HOOK_ADDRESS: env.AETHER_HOOK_ADDRESS,
+      TPSL_ADDRESS: env.TPSL_ADDRESS,
+      AETHER_TPSL_ADDRESS: env.AETHER_TPSL_ADDRESS,
+      KEEPER_PRIVATE_KEY: env.KEEPER_PRIVATE_KEY,
+      KEEPER_RPC_URL: env.KEEPER_RPC_URL,
+      KEEPER_MAX_GAS_PRICE_GWEI: env.KEEPER_MAX_GAS_PRICE_GWEI,
+      KEEPER_MIN_BALANCE_ETH: env.KEEPER_MIN_BALANCE_ETH,
+      KEEPER_ALLOW_PUBLIC_SUBMISSION: env.KEEPER_ALLOW_PUBLIC_SUBMISSION,
+      PRIVATE_TX_RELAY_URL: env.PRIVATE_TX_RELAY_URL,
       INDEXER_ENABLED: env.INDEXER_ENABLED,
       INDEXER_BATCH_SIZE: env.INDEXER_BATCH_SIZE,
       V3_POSITION_MANAGER_ADDRESS: env.V3_POSITION_MANAGER_ADDRESS,
