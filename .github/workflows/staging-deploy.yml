@@ -37,7 +37,12 @@ jobs:
       - name: Checkout tested commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: main
+
+      - name: Verify tested commit
+        env:
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: test "$(git rev-parse HEAD)" = "$TESTED_SHA"
 
       - name: Setup workspace
         uses: ./.github/actions/setup
