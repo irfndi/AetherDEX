@@ -11,6 +11,7 @@
 
 import { Effect, Layer } from "effect"
 import { Hono } from "hono"
+import { createPublicClient, decodeEventLog, getAddress, http, isAddress } from "viem"
 import { type AuthVariables, requireAuth } from "../auth/middleware"
 import { makeDbLayer } from "../db/client"
 import { runEffect } from "../lib/effect-bridge"
@@ -23,6 +24,9 @@ type Bindings = {
   STORAGE: R2Bucket
   CHAIN_ID: string
   ENVIRONMENT: string
+  RPC_URL?: string
+  TPSL_ADDRESS?: string
+  AETHER_TPSL_ADDRESS?: string
 }
 
 const tpSl = new Hono<{ Bindings: Bindings; Variables: AuthVariables }>()
@@ -31,6 +35,22 @@ const tpSlLayer = (db: D1Database) => TpSlServiceLive.pipe(Layer.provide(makeDbL
 const chainIdFor = (c: { env: Bindings }) => Number.parseInt(c.env.CHAIN_ID, 10) || 11155111
 const poolIdPattern = /^0x[a-fA-F0-9]{64}$/
 const uintPattern = /^[0-9]+$/
+const transactionHashPattern = /^0x[a-fA-F0-9]{64}$/
+const ORDER_CREATED_ABI = [
+  {
+    type: "event",
+    name: "OrderCreated",
+    inputs: [
+      { indexed: true, name: "orderId", type: "uint256" },
+      { indexed: true, name: "owner", type: "address" },
+      { indexed: false, name: "orderType", type: "uint8" },
+      { indexed: true, name: "poolId", type: "bytes32" },
+      { indexed: false, name: "zeroForOne", type: "bool" },
+      { indexed: false, name: "amountIn", type: "uint128" },
+      { indexed: false, name: "triggerPriceX18", type: "uint256" },
+    ],
+  },
+] as const
 
 // ─── POST /api/v1/tp-sl/orders ─────────────────────────────────────────────
 
@@ -48,7 +68,7 @@ tpSl.post("/orders", requireAuth, async (c) => {
     twapWindow?: number
     slippageBps?: number
     deadline?: number
-    onchainOrderId?: string
+    creationTxHash?: string
   }>()
 
   if (
@@ -61,12 +81,12 @@ tpSl.post("/orders", requireAuth, async (c) => {
     !body.twapWindow ||
     body.slippageBps === undefined ||
     !body.deadline ||
-    !body.onchainOrderId
+    !body.creationTxHash
   ) {
     return c.json(
       {
         error:
-          "poolId, orderType, zeroForOne, amountIn, minAmountOut, triggerPriceX18, twapWindow, slippageBps, deadline, onchainOrderId required",
+          "poolId, orderType, zeroForOne, amountIn, minAmountOut, triggerPriceX18, twapWindow, slippageBps, deadline, creationTxHash required",
       },
       400,
     )
@@ -86,7 +106,7 @@ tpSl.post("/orders", requireAuth, async (c) => {
     !Number.isFinite(body.deadline) ||
     !Number.isInteger(body.deadline) ||
     body.deadline <= Date.now() ||
-    !uintPattern.test(body.onchainOrderId)
+    !transactionHashPattern.test(body.creationTxHash)
   ) {
     return c.json({ error: "Invalid TP/SL order values" }, 400)
   }
@@ -104,20 +124,42 @@ tpSl.post("/orders", requireAuth, async (c) => {
   }
 
   // At this point all fields are validated as present
-  const {
-    poolId,
-    orderType,
-    zeroForOne,
-    amountIn,
-    minAmountOut,
-    triggerPriceX18,
-    twapWindow,
-    slippageBps,
-    deadline,
-    onchainOrderId,
-  } = body
+  const { poolId, orderType, zeroForOne, amountIn, minAmountOut, triggerPriceX18, twapWindow, slippageBps, deadline } =
+    body
 
   try {
+    const tpslAddress = bodyAddress(c.env.TPSL_ADDRESS) ?? bodyAddress(c.env.AETHER_TPSL_ADDRESS)
+    if (!tpslAddress || !c.env.RPC_URL) {
+      return c.json({ error: "TPSL_ADDRESS and RPC_URL are required to verify creationTxHash" }, 503)
+    }
+    const receipt = await createPublicClient({ transport: http(c.env.RPC_URL) }).getTransactionReceipt({
+      hash: body.creationTxHash as `0x${string}`,
+    })
+    if (receipt.status !== "success") return c.json({ error: "creationTxHash transaction reverted" }, 400)
+    const event = receipt.logs
+      .filter((log) => log.address.toLowerCase() === tpslAddress.toLowerCase())
+      .map((log) => {
+        try {
+          return decodeEventLog({ abi: ORDER_CREATED_ABI, data: log.data, topics: log.topics })
+        } catch {
+          return null
+        }
+      })
+      .find((decoded) => decoded?.eventName === "OrderCreated")
+    if (!event || event.eventName !== "OrderCreated") return c.json({ error: "No valid OrderCreated event found" }, 400)
+    const eventArgs = event.args
+    const expectedType = orderType === "take_profit" ? 0 : 1
+    if (
+      eventArgs.owner.toLowerCase() !== session.userAddress.toLowerCase() ||
+      eventArgs.poolId.toLowerCase() !== poolId.toLowerCase() ||
+      eventArgs.orderType !== expectedType ||
+      eventArgs.zeroForOne !== zeroForOne ||
+      eventArgs.amountIn.toString() !== amountIn ||
+      eventArgs.triggerPriceX18.toString() !== triggerPriceX18
+    ) {
+      return c.json({ error: "OrderCreated event does not match the requested TP/SL order" }, 400)
+    }
+    const onchainOrderId = eventArgs.orderId.toString()
     const program = Effect.gen(function* () {
       const tpSlService = yield* TpSlService
       return yield* tpSlService.createOrder({
@@ -142,6 +184,11 @@ tpSl.post("/orders", requireAuth, async (c) => {
     return c.json({ error: String(err) }, 500)
   }
 })
+
+function bodyAddress(value: string | undefined): `0x${string}` | null {
+  if (!value || !isAddress(value)) return null
+  return getAddress(value)
+}
 
 // ─── GET /api/v1/tp-sl/orders/:id ───────────────────────────────────────────
 
