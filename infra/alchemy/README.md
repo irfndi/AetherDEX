@@ -84,3 +84,15 @@ After deployment, Alchemy prints the Worker URL. A successful smoke test should
 return JSON from `/health` and `/api/v1/ping`; a Cloudflare `404 Not Found`
 without a corresponding Worker tail event means the request did not reach the
 Worker and is a workers.dev routing/deployment problem, not an API route error.
+
+## CI deployment flow
+
+Every successful CI run on `main` triggers the `Deploy staging canary` workflow.
+It deploys the `staging` Alchemy stage, uploads the `aetherdex-web-staging`
+Pages project, and checks both `/api/v1/ping` and `/health`.
+
+Production is released only by a tag such as `v0.2.0`. The release guard
+requires the tag commit to be on `main` and requires `0.2.0` in the root,
+API, web, and shared package manifests. The production GitHub environment
+must approve the deployment and provide the Cloudflare, RPC, contract-address,
+and Vite secrets used by the workflow.
