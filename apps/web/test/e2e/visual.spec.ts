@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test"
+import { expect, test } from "./fixtures"
 
 test.describe("Visual QA", () => {
   test("swap page has no AI slop classes", async ({ page }) => {

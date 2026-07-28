@@ -318,14 +318,16 @@ function NewPoolPage() {
               </p>
             </div>
           </div>
-          <label className="label cursor-pointer justify-start gap-3">
+          <label className="label min-w-0 cursor-pointer justify-start gap-3">
             <input
               type="checkbox"
-              className="checkbox checkbox-primary"
+              className="checkbox flex-none checkbox-primary"
               checked={recheckAcknowledged}
               onChange={(e) => setRecheckAcknowledged(e.target.checked)}
             />
-            <span className="label-text">I understand the price will be checked again at execution time.</span>
+            <span className="label-text min-w-0 max-w-full whitespace-normal break-words">
+              I understand the price will be checked again at execution time.
+            </span>
           </label>
 
           {!config ? (

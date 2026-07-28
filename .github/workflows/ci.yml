@@ -358,11 +358,13 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
   # ---------------------------------------------------------------------------
-  # Playwright E2E (apps/web test:e2e). Advisory for now: real failures show red on
-  # this job, but it is NOT wired into the ci-status gate until the suite stabilises.
+  # Playwright E2E (apps/web test:e2e). Stabilised in fix/e2e-stabilization: the suite
+  # runs against the Vite dev server with a one-time dev-server warm-up (globalSetup) and
+  # a fixture that aborts third-party WalletConnect/Reown + API requests, so first-mount
+  # latency and external-network variance no longer flake it. GATED by ci-status below.
   # ---------------------------------------------------------------------------
   e2e:
-    name: E2E (Playwright) — advisory
+    name: E2E (Playwright)
     runs-on: ubuntu-latest
     needs: detect-changes
     if: ${{ github.event_name != 'schedule' && needs.detect-changes.outputs.frontend == 'true' }}
@@ -507,7 +509,7 @@ jobs:
   ci-status:
     name: CI Status
     runs-on: ubuntu-latest
-    needs: [detect-changes, quality, contracts, backend, frontend]
+    needs: [detect-changes, quality, contracts, backend, frontend, e2e]
     if: ${{ github.event_name != 'schedule' && always() }}
     permissions:
       contents: read
@@ -519,6 +521,7 @@ jobs:
           CONTRACTS: ${{ needs.contracts.result }}
           BACKEND: ${{ needs.backend.result }}
           FRONTEND: ${{ needs.frontend.result }}
+          E2E: ${{ needs.e2e.result }}
         run: |
           set -euo pipefail
           fail=0
@@ -540,6 +543,7 @@ jobs:
           check "contracts" "${CONTRACTS}"
           check "backend" "${BACKEND}"
           check "frontend" "${FRONTEND}"
+          check "e2e" "${E2E}"
 
           if [ "${fail}" -ne 0 ]; then
             echo "One or more required jobs did not pass."
