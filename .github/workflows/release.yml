@@ -1,0 +1,140 @@
+name: Production release
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+concurrency:
+  group: production-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  version-guard:
+    name: Validate release version
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository && startsWith(github.event.workflow_run.head_branch, 'v') }}
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.release-tag.outputs.release_tag }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ${{ github.repository }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require the tested main commit
+        env:
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: test "$(git rev-parse HEAD)" = "$TESTED_SHA"
+
+      - name: Require a main branch tag with matching package versions
+        id: release-tag
+        env:
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(git rev-parse "${RELEASE_TAG}^{commit}")" = "$TESTED_SHA"
+          node - "$RELEASE_TAG" <<'NODE'
+          const fs = require("node:fs")
+
+          const tag = process.argv[2]
+          const expected = tag.slice(1)
+          const files = [
+            "package.json",
+            "apps/api/package.json",
+            "apps/web/package.json",
+            "packages/shared/package.json",
+          ]
+          for (const file of files) {
+            const version = JSON.parse(fs.readFileSync(file, "utf8")).version
+            if (version !== expected) {
+              throw new Error(`${file} is ${version}; expected ${expected}`)
+            }
+          }
+          NODE
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    name: Deploy production
+    needs: version-guard
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CHAIN_ID: ${{ secrets.CHAIN_ID }}
+      RPC_URL: ${{ secrets.RPC_URL }}
+      SIWE_DOMAIN: "aetherdex.io"
+      SIWE_URI: "https://aetherdex.io"
+      STATE_VIEW_ADDRESS: ${{ secrets.STATE_VIEW_ADDRESS }}
+      V4_POOL_MANAGER_ADDRESS: ${{ secrets.AETHERDEX_POOL_MANAGER }}
+      INDEXER_ENABLED: "true"
+      QUOTE_ENGINE_MODE: "v4"
+      AETHERDEX_HOOK: ${{ secrets.AETHERDEX_HOOK }}
+      AETHERDEX_TREASURY: ${{ secrets.AETHERDEX_TREASURY }}
+      AETHERDEX_ROUTER: ${{ secrets.AETHERDEX_ROUTER }}
+      AETHERDEX_FACTORY: ${{ secrets.AETHERDEX_FACTORY }}
+      AETHERDEX_POSITION_MANAGER: ${{ secrets.AETHERDEX_POSITION_MANAGER }}
+      AETHERDEX_POOL_MANAGER: ${{ secrets.AETHERDEX_POOL_MANAGER }}
+      VITE_REOWN_PROJECT_ID: ${{ secrets.VITE_REOWN_PROJECT_ID }}
+      VITE_API_URL: ${{ secrets.VITE_API_URL }}
+      VITE_WS_URL: ${{ secrets.VITE_WS_URL }}
+    steps:
+      - name: Checkout release
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ${{ github.repository }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify tested main commit
+        env:
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: test "$(git rev-parse HEAD)" = "$TESTED_SHA"
+
+      - name: Setup workspace
+        uses: ./.github/actions/setup
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Validate production inputs
+        run: |
+          set -euo pipefail
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID CHAIN_ID RPC_URL SIWE_DOMAIN SIWE_URI STATE_VIEW_ADDRESS V4_POOL_MANAGER_ADDRESS AETHERDEX_HOOK AETHERDEX_TREASURY AETHERDEX_ROUTER AETHERDEX_FACTORY AETHERDEX_POSITION_MANAGER AETHERDEX_POOL_MANAGER VITE_REOWN_PROJECT_ID VITE_API_URL VITE_WS_URL; do
+            test -n "${!name:-}" || { echo "Missing production secret: $name" >&2; exit 1; }
+          done
+
+      - name: Deploy Cloudflare production infrastructure
+        working-directory: infra/alchemy
+        run: bun run deploy:production -- --yes
+
+      - name: Deploy production Pages
+        working-directory: infra/alchemy
+        run: bun run web:deploy:production
+
+      - name: Smoke test production API
+        run: |
+          curl --fail --connect-timeout 10 --max-time 30 --retry 5 --retry-delay 3 --retry-max-time 60 "$VITE_API_URL/ping"
+          curl --fail --connect-timeout 10 --max-time 30 --retry 5 --retry-delay 3 --retry-max-time 60 "${VITE_API_URL%/api/v1}/health"
+
+  github-release:
+    name: Create GitHub release
+    needs: [version-guard, deploy]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.version-guard.outputs.release_tag }}
+        run: gh release create "$RELEASE_TAG" --verify-tag --generate-notes

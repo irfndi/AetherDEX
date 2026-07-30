@@ -6,11 +6,13 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "plan:dev": "alchemy plan --stage dev_$USER",
-    "deploy:dev": "alchemy deploy --stage dev_$USER --adopt --yes",
-    "deploy:staging": "alchemy deploy --stage staging --adopt --yes",
+    "deploy:dev": "alchemy deploy --stage dev_$USER --adopt",
+    "deploy:staging": "alchemy deploy --stage staging --adopt",
+    "deploy:production": "alchemy deploy --stage production",
     "web:build": "cd ../../apps/web && bun run build",
-    "web:deploy:dev": "test -n \"$VITE_API_URL\" && test -n \"$VITE_REOWN_PROJECT_ID\" && test -n \"$USER\" && STAGE_SUFFIX=$(printf '%s' \"dev_$USER\" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]/-/g; s/^-+|-+$//g') && STAGE_SUFFIX=\"${STAGE_SUFFIX:0:45}\" && cd ../../apps/web && VITE_API_URL=\"$VITE_API_URL\" VITE_REOWN_PROJECT_ID=\"$VITE_REOWN_PROJECT_ID\" VITE_WS_URL=\"$VITE_WS_URL\" bun run build && bunx wrangler pages deploy dist --project-name \"aetherdex-web-$STAGE_SUFFIX\" --branch dev --commit-dirty=true",
+    "web:deploy:dev": "test -n \"$VITE_API_URL\" && test -n \"$VITE_REOWN_PROJECT_ID\" && test -n \"$USER\" && STAGE_SUFFIX=$(printf '%s' \"dev_$USER\" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]/-/g; s/^-+|-+$//g' | cut -c1-44 | sed -E 's/-+$//') && cd ../../apps/web && VITE_API_URL=\"$VITE_API_URL\" VITE_REOWN_PROJECT_ID=\"$VITE_REOWN_PROJECT_ID\" VITE_WS_URL=\"$VITE_WS_URL\" bun run build && bunx wrangler pages deploy dist --project-name \"aetherdex-web-$STAGE_SUFFIX\" --branch dev --commit-dirty=true",
     "web:deploy:staging": "test -n \"$VITE_API_URL\" && test -n \"$VITE_REOWN_PROJECT_ID\" && cd ../../apps/web && VITE_API_URL=\"$VITE_API_URL\" VITE_REOWN_PROJECT_ID=\"$VITE_REOWN_PROJECT_ID\" VITE_WS_URL=\"$VITE_WS_URL\" bun run build && bunx wrangler pages deploy dist --project-name aetherdex-web-staging --branch main --commit-dirty=true",
+    "web:deploy:production": "test -n \"$VITE_API_URL\" && test -n \"$VITE_REOWN_PROJECT_ID\" && cd ../../apps/web && VITE_API_URL=\"$VITE_API_URL\" VITE_REOWN_PROJECT_ID=\"$VITE_REOWN_PROJECT_ID\" VITE_WS_URL=\"$VITE_WS_URL\" bun run build && bunx wrangler pages deploy dist --project-name aetherdex-web-production --branch main --commit-dirty=true",
     "destroy:dev": "alchemy destroy --stage dev_$USER"
   },
   "devDependencies": {
