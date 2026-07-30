@@ -1,5 +1,7 @@
 # AetherDEX
 
+<!-- trigger CI to test staging secrets after GitHub env update -->
+
 A non-custodial **autonomous concentrated-liquidity platform** on Uniswap V4 — visual-range LP, single-sided zaps, one-click rebalance, and V4-native TP/SL (via the `AetherHook` oracle — *planned, gated on the Phase-0 TWAP fix*). Robinhood-Chain-first, multi-chain (Ethereum + L2s), targeting the Cloudflare stack (**pre-deployment** — the first deployment is validated on Sepolia in Phase 0).
 
 ## Architecture
