@@ -65,6 +65,14 @@ jobs:
       - name: Verify Cloudflare credentials with Wrangler
         run: bunx wrangler whoami
 
+      - name: Verify Cloudflare resource access with Wrangler
+        run: |
+          bunx wrangler pages project list
+          bunx wrangler d1 list
+          bunx wrangler kv namespace list
+          bunx wrangler r2 bucket list
+          bunx wrangler queues list
+
       - name: Deploy Cloudflare staging infrastructure
         working-directory: infra/alchemy
         run: bun run deploy:staging -- --yes
