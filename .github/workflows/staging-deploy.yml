@@ -75,7 +75,18 @@ jobs:
 
       - name: Deploy Cloudflare staging infrastructure
         working-directory: infra/alchemy
-        run: bun run deploy:staging -- --yes
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if bun run deploy:staging -- --yes; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Alchemy staging deploy failed on attempt $attempt; retrying after Cloudflare auth backoff"
+              sleep 30
+            fi
+          done
+          exit 1
 
       - name: Deploy staging Pages canary
         working-directory: infra/alchemy
