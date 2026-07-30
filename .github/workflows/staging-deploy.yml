@@ -62,6 +62,9 @@ jobs:
             test -n "${!name:-}" || { echo "Missing staging secret: $name" >&2; exit 1; }
           done
 
+      - name: Verify Cloudflare credentials with Wrangler
+        run: bunx wrangler whoami
+
       - name: Deploy Cloudflare staging infrastructure
         working-directory: infra/alchemy
         run: bun run deploy:staging -- --yes
