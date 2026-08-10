@@ -82,7 +82,7 @@ function PoolsIndexPage() {
     <div className="mx-auto max-w-6xl py-8">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-3xl font-bold">Pools</h1>
-        <Link to="/swap" className="btn btn-primary btn-sm">
+        <Link to="/pools/new" search={{ sortBy: "tvl", filterToken: "" }} className="btn btn-primary btn-sm">
           New Position
         </Link>
       </div>

@@ -17,6 +17,7 @@ import { positions } from "./routes/positions"
 import { priceGuard } from "./routes/price-guard"
 import { swap } from "./routes/swap"
 import { tokens } from "./routes/tokens"
+import { tpSl } from "./routes/tp-sl"
 import { v3Quote } from "./routes/v3-quote"
 import { handleScheduled } from "./workers/cron-handler"
 import { processQueueBatch, type QueueMessage } from "./workers/queue-handler"
@@ -247,6 +248,7 @@ app.route("/api/v1/pools", pools)
 app.route("/api/v1/tokens", tokens)
 app.route("/api/v1", positions)
 app.route("/api/v1", priceGuard)
+app.route("/api/v1/tp-sl", tpSl)
 app.route("/api/v1", v3Quote)
 app.get("/api/v1/ping", (c) => c.json({ pong: true }))
 

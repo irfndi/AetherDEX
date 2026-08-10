@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router"
 import { AnimatePresence, motion } from "framer-motion"
 import { AlertCircle, ArrowDown, CheckCircle2, Settings2 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useAccount, useWaitForTransactionReceipt, useWalletClient } from "wagmi"
+import { useAccount, usePublicClient, useWaitForTransactionReceipt, useWalletClient } from "wagmi"
 import { TokenChip } from "../components/TokenChip"
 import { type Token, TokenSearch } from "../components/TokenSearch"
 import { Button } from "../components/ui/Button"
@@ -69,6 +69,7 @@ function SwapPage() {
   const recordPayloadRef = useRef<RecordSwapPayload | null>(null)
 
   const { data: walletClient } = useWalletClient()
+  const publicClient = usePublicClient()
   const {
     isLoading: isConfirming,
     isSuccess: isConfirmed,
@@ -219,18 +220,32 @@ function SwapPage() {
     setSwapState("success")
 
     if (authToken) {
-      recordPayloadRef.current = {
-        txHash,
-        poolId: quote.poolId,
-        tokenIn: tokenIn.address,
-        tokenOut: tokenOut.address,
-        amountIn: quote.amountIn,
-        amountOut: quote.amountOut,
-        ...(receipt?.blockNumber ? { blockNumber: Number(receipt.blockNumber) } : {}),
-        ...(receipt?.blockTimestamp ? { blockTimestamp: Number(receipt.blockTimestamp) } : {}),
-        authToken,
+      const blockNumber = receipt?.blockNumber ? Number(receipt.blockNumber) : undefined
+      // viem's TransactionReceipt has no blockTimestamp — fetch it from the chain.
+      const fetchTimestamp = async () => {
+        let blockTimestamp: number | undefined
+        if (blockNumber && publicClient) {
+          try {
+            const block = await publicClient.getBlock({ blockNumber: BigInt(blockNumber) })
+            blockTimestamp = Number(block.timestamp)
+          } catch {
+            blockTimestamp = Math.floor(Date.now() / 1000)
+          }
+        }
+        recordPayloadRef.current = {
+          txHash,
+          poolId: quote.poolId,
+          tokenIn: tokenIn.address,
+          tokenOut: tokenOut.address,
+          amountIn: quote.amountIn,
+          amountOut: quote.amountOut,
+          ...(blockNumber ? { blockNumber } : {}),
+          ...(blockTimestamp ? { blockTimestamp } : {}),
+          authToken,
+        }
+        recordSwap()
       }
-      recordSwap()
+      fetchTimestamp()
     }
 
     const timer = setTimeout(() => {
@@ -240,7 +255,7 @@ function SwapPage() {
     }, 3000)
 
     return () => clearTimeout(timer)
-  }, [isConfirmed, swapState, txHash, quote, tokenIn, tokenOut, authToken, receipt, recordSwap])
+  }, [isConfirmed, swapState, txHash, quote, tokenIn, tokenOut, authToken, receipt, publicClient, recordSwap])
 
   const isQuoteValid = quote !== null && quoteError === null && !quoteLoading
   const needsAuth = isConnected && !isAuthenticated
@@ -263,13 +278,13 @@ function SwapPage() {
   })()
 
   return (
-    <div className="mx-auto max-w-md py-8 px-4">
-      <Card>
+    <div className="mx-auto max-w-md py-10 px-4">
+      <Card className="surf-aurora">
         <CardBody>
           <div className="flex flex-col gap-4">
             {/* Header */}
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold">Swap</h2>
+              <h2 className="font-display text-xl font-bold tracking-tight text-aurora">Swap</h2>
               <div className="dropdown dropdown-end">
                 <button type="button" tabIndex={0} className="btn btn-ghost btn-sm btn-circle" aria-label="Settings">
                   <Settings2 className="h-4 w-4" />
