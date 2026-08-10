@@ -29,8 +29,13 @@ export class SiweNonceDO implements DurableObject {
   }
 
   private async issue(input: NonceRequest): Promise<Response> {
-    await this.ctx.storage.put<NonceRecord>("record", { expiresAt: input.expiresAt })
-    await this.ctx.storage.setAlarm(input.expiresAt)
+    // Serialize against consume(): without a concurrency block a consume could
+    // observe (and delete) the freshly-written record between the put and the
+    // setAlarm below, leaving a 201-issued nonce that is no longer consumable.
+    await this.ctx.blockConcurrencyWhile(async () => {
+      await this.ctx.storage.put<NonceRecord>("record", { expiresAt: input.expiresAt })
+      await this.ctx.storage.setAlarm(input.expiresAt)
+    })
     return Response.json({ consumed: false }, { status: 201 })
   }
 

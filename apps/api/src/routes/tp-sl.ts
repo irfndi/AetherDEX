@@ -14,6 +14,7 @@ import { Hono } from "hono"
 import { createPublicClient, decodeEventLog, getAddress, http, isAddress } from "viem"
 import { type AuthVariables, requireAuth } from "../auth/middleware"
 import { makeDbLayer } from "../db/client"
+import { parseChainId } from "../lib/chain-id"
 import { runEffect } from "../lib/effect-bridge"
 import { ZERO_PROTOCOL_FEE_BREAKDOWN } from "../lib/protocol-fee"
 import { TpSlService, TpSlServiceLive } from "../services/tp-sl.service"
@@ -32,7 +33,7 @@ type Bindings = {
 const tpSl = new Hono<{ Bindings: Bindings; Variables: AuthVariables }>()
 
 const tpSlLayer = (db: D1Database) => TpSlServiceLive.pipe(Layer.provide(makeDbLayer(db)))
-const chainIdFor = (c: { env: Bindings }) => Number.parseInt(c.env.CHAIN_ID, 10) || 11155111
+const chainIdFor = (c: { env: Bindings }): number | null => parseChainId(c.env.CHAIN_ID)
 const poolIdPattern = /^0x[a-fA-F0-9]{64}$/
 const uintPattern = /^[0-9]+$/
 const transactionHashPattern = /^0x[a-fA-F0-9]{64}$/
@@ -168,13 +169,16 @@ tpSl.post("/orders", requireAuth, async (c) => {
   const { poolId, orderType, zeroForOne, amountIn, minAmountOut, triggerPriceX18, twapWindow, slippageBps, deadline } =
     body
 
+  const chainId = chainIdFor(c)
+  if (chainId === null) return c.json({ error: "Invalid chain configuration" }, 500)
+
   try {
     const tpslAddress = bodyAddress(c.env.TPSL_ADDRESS) ?? bodyAddress(c.env.AETHER_TPSL_ADDRESS)
     if (!tpslAddress || !c.env.RPC_URL) {
       return c.json({ error: "TPSL_ADDRESS and RPC_URL are required to verify creationTxHash" }, 503)
     }
     const publicClient = createPublicClient({ transport: http(c.env.RPC_URL) })
-    if ((await publicClient.getChainId()) !== chainIdFor(c)) {
+    if ((await publicClient.getChainId()) !== chainId) {
       return c.json({ error: "RPC_URL chain does not match CHAIN_ID" }, 503)
     }
     const receipt = await publicClient.getTransactionReceipt({
@@ -240,7 +244,7 @@ tpSl.post("/orders", requireAuth, async (c) => {
         slippageBps,
         deadline,
         onchainOrderId,
-        chainId: chainIdFor(c),
+        chainId,
       })
     })
     const orderId = await runEffect(program.pipe(Effect.provide(tpSlLayer(c.env.DB))))
@@ -259,15 +263,21 @@ function bodyAddress(value: string | undefined): `0x${string}` | null {
 // ─── GET /api/v1/tp-sl/orders/:id ───────────────────────────────────────────
 
 tpSl.get("/orders/:id", async (c) => {
-  const id = Number.parseInt(c.req.param("id") ?? "", 10)
-  if (Number.isNaN(id) || id < 0) {
+  // Digits-only + safe-integer: Number.parseInt silently accepted trailing garbage
+  // ("12abc" → 12) and lost precision above 2^53; both must be rejected explicitly.
+  const idRaw = c.req.param("id") ?? ""
+  if (!uintPattern.test(idRaw) || !Number.isSafeInteger(Number(idRaw))) {
     return c.json({ error: "Invalid order id" }, 400)
   }
+  const id = Number(idRaw)
+
+  const chainId = chainIdFor(c)
+  if (chainId === null) return c.json({ error: "Invalid chain configuration" }, 500)
 
   try {
     const program = Effect.gen(function* () {
       const tpSlService = yield* TpSlService
-      return yield* tpSlService.getOrder(id, chainIdFor(c))
+      return yield* tpSlService.getOrder(id, chainId)
     })
     const order = await runEffect(program.pipe(Effect.provide(tpSlLayer(c.env.DB))))
     if (!order) {
@@ -285,15 +295,19 @@ tpSl.delete("/orders/:id", requireAuth, async (c) => {
   const session = c.get("session")
   if (!session) return c.json({ error: "Unauthorized" }, 401)
 
-  const id = Number.parseInt(c.req.param("id") ?? "", 10)
-  if (Number.isNaN(id) || id < 0) {
+  const idRaw = c.req.param("id") ?? ""
+  if (!uintPattern.test(idRaw) || !Number.isSafeInteger(Number(idRaw))) {
     return c.json({ error: "Invalid order id" }, 400)
   }
+  const id = Number(idRaw)
+
+  const chainId = chainIdFor(c)
+  if (chainId === null) return c.json({ error: "Invalid chain configuration" }, 500)
 
   try {
     const program = Effect.gen(function* () {
       const tpSlService = yield* TpSlService
-      return yield* tpSlService.cancelOrder(id, session.userAddress, chainIdFor(c))
+      return yield* tpSlService.cancelOrder(id, session.userAddress, chainId)
     })
     await runEffect(program.pipe(Effect.provide(tpSlLayer(c.env.DB))))
     return c.json({ ok: true })
@@ -301,6 +315,9 @@ tpSl.delete("/orders/:id", requireAuth, async (c) => {
     const error = err as { _tag?: string }
     if (error._tag === "OrderNotFoundError") {
       return c.json({ error: "Order not found or not owned by you" }, 404)
+    }
+    if (error._tag === "OrderStateConflictError") {
+      return c.json({ error: "Order is no longer pending" }, 409)
     }
     return c.json({ error: String(err) }, 500)
   }
@@ -320,10 +337,13 @@ tpSl.get("/pools/:poolId", async (c) => {
   const validatedStatus =
     status !== undefined && validStatuses.includes(status as ValidStatus) ? (status as ValidStatus) : undefined
 
+  const chainId = chainIdFor(c)
+  if (chainId === null) return c.json({ error: "Invalid chain configuration" }, 500)
+
   try {
     const program = Effect.gen(function* () {
       const tpSlService = yield* TpSlService
-      return yield* tpSlService.listByPool(poolId.toLowerCase(), chainIdFor(c), validatedStatus)
+      return yield* tpSlService.listByPool(poolId.toLowerCase(), chainId, validatedStatus)
     })
     const orders = await runEffect(program.pipe(Effect.provide(tpSlLayer(c.env.DB))))
     return c.json({ orders, count: orders.length })
@@ -340,10 +360,13 @@ tpSl.get("/users/:address", async (c) => {
     return c.json({ error: "Invalid address" }, 400)
   }
 
+  const chainId = chainIdFor(c)
+  if (chainId === null) return c.json({ error: "Invalid chain configuration" }, 500)
+
   try {
     const program = Effect.gen(function* () {
       const tpSlService = yield* TpSlService
-      return yield* tpSlService.listByUser(address, chainIdFor(c), 100)
+      return yield* tpSlService.listByUser(address, chainId, 100)
     })
     const orders = await runEffect(program.pipe(Effect.provide(tpSlLayer(c.env.DB))))
     return c.json({ orders, count: orders.length })
@@ -360,10 +383,13 @@ tpSl.get("/triggerable/:poolId", async (c) => {
     return c.json({ error: "Invalid poolId (must be 0x + 64 hex chars)" }, 400)
   }
 
+  const chainId = chainIdFor(c)
+  if (chainId === null) return c.json({ error: "Invalid chain configuration" }, 500)
+
   try {
     const program = Effect.gen(function* () {
       const tpSlService = yield* TpSlService
-      return yield* tpSlService.getTriggerableOrders(poolId.toLowerCase(), chainIdFor(c))
+      return yield* tpSlService.getTriggerableOrders(poolId.toLowerCase(), chainId)
     })
     const orders = await runEffect(program.pipe(Effect.provide(tpSlLayer(c.env.DB))))
     return c.json({ orders, count: orders.length })

@@ -1,4 +1,4 @@
-import { isAddress, getAddress } from "viem"
+import { getAddress, isAddress } from "viem"
 
 /**
  * Validate an Ethereum address using viem's built-in checksum validation.

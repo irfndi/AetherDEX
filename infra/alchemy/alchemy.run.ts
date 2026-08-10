@@ -7,7 +7,7 @@ const configured = (primary: string, legacy: string): string => process.env[prim
 const configuredNonEmpty = (name: string, fallback: string): string => process.env[name]?.trim() || fallback
 
 const environmentForStage = (stage: string): string => {
-  if (stage === "dev" || stage.startsWith("dev_")) return "development"
+  if (stage === "dev" || stage.startsWith("dev_") || stage.startsWith("dev-")) return "development"
   return stage
 }
 

@@ -47,15 +47,29 @@ jobs:
       #   Workflows: read and write       -> required: the github-actions manager rewrites
       #                                       .github/workflows/*.yml; without it, action
       #                                       SHA bumps silently fail to open PRs.
+      # SECURITY: this write-scoped long-lived PAT is present in a scheduled job that
+      # executes dependency-update code. Mitigations: rotate RENOVATE_TOKEN on a schedule
+      # (e.g. quarterly), keep postUpgradeTasks disabled, and treat every Renovate PR
+      # that touches .github/ as high-risk (review the diff, don't auto-merge).
+      # RENOVATE_DRY_RUN must be *unset* (not an empty string) when a dry run is not
+      # requested: `inputs` is absent on scheduled runs, so an env expression like
+      # `inputs.dryRun && 'full' || ''` would export a defined-but-empty var every
+      # week. Export it from a guarded step instead so it only exists when needed.
+      - name: Enable dry run
+        if: ${{ inputs.dryRun }}
+        run: echo "RENOVATE_DRY_RUN=full" >> "$GITHUB_ENV"
+
       - name: Self-hosted Renovate
         uses: renovatebot/github-action@3064367f740a1a91cca218698a63902689cce200 # v46.1.20
         with:
           configurationFile: renovate.json
           # Pin the Renovate container to a specific FULL image (includes bun, needed to
           # regenerate the bun.lock). The action SHA above pins the wrapper.
+          # MANUAL BUMP PROCEDURE: the github-actions manager only auto-bumps the action
+          # SHA (there is no renovateVersion packageRule in Renovate), so bump BOTH pins
+          # together on every Renovate upgrade or the container silently lags the wrapper.
           renovate-version: 46.1.20-full
           token: ${{ secrets.RENOVATE_TOKEN }}
         env:
           LOG_LEVEL: ${{ inputs.logLevel || 'info' }}
           RENOVATE_REPOSITORIES: ${{ github.repository }}
-          RENOVATE_DRY_RUN: ${{ inputs.dryRun && 'full' || '' }}

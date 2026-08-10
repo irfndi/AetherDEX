@@ -10,11 +10,11 @@ A non-custodial **autonomous concentrated-liquidity platform** on Uniswap V4 —
 - **Backend** (`apps/api/`): Cloudflare Workers + Hono + Effect TS v4 + `@effect/rpc` + D1/R2/KV/Durable Objects
 - **Contracts** (`packages/contracts/`): Solidity hooks on Uniswap V4-core + Foundry
 
-> **Architecture note — Effect v4 + `@effect/rpc` are the *target* (planned) architecture, not what is installed on this branch.** This branch is **pre-migration**: `apps/api/package.json` still pins **`effect@^3`** and has **no `@effect/rpc` dependency** yet, so the backend currently runs on Effect v3 and the client has no `@effect/rpc` resolver. The upgrade to **Effect v4** and the **end-to-end `@effect/rpc`** contract (server via `@hono/effect`, client via the TanStack-Query resolver) is delivered by **Workstream P (PR #302)**; the "Effect TS v4 + `@effect/rpc`" entries above describe where the architecture is heading, not the current dependency state. **The same applies to TypeScript:** the stack line below says "TypeScript 7 (native `tsc`)", but this branch still pins **`typescript@7.0.1-rc`** + `@typescript/native-preview` (`tsgo`); the **stable native `tsc`** (`typescript@^7.0.x`) is likewise delivered by **Workstream P (PR #302)**.
+> **Architecture note — Effect v4 + `@effect/rpc` are the *target* (planned) architecture, not what is installed on this branch.** This branch is **pre-migration**: `apps/api/package.json` still pins **`effect@^3`** and has **no `@effect/rpc` dependency** yet, so the backend currently runs on Effect v3 and the client has no `@effect/rpc` resolver. The upgrade to **Effect v4** and the **end-to-end `@effect/rpc`** contract (server via `@hono/effect`, client via the TanStack-Query resolver) is delivered by **Workstream P (PR #302)**; the "Effect TS v4 + `@effect/rpc`" entries above describe where the architecture is heading, not the current dependency state. **TypeScript:** the stack line below ("TypeScript 7 (native `tsc`)") is current on this branch — it installs **`typescript@^7.0.2`**, the stable native `tsc` (`@typescript/native-preview`/`tsgo` are superseded).
 
 ## Stack
 
-- Bun (canary) + TypeScript 7 (native `tsc` — *target*; this branch is pre-migration, see the note above)
+- Bun (canary) + TypeScript 7 (native `tsc`)
 - Biome for linting/formatting
 - Vitest for unit tests, Playwright for E2E
 - Cloudflare: Workers, D1, R2, KV, Durable Objects, Queues, Pages

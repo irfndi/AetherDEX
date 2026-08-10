@@ -255,3 +255,129 @@ describe("TokenListService", () => {
     expect(miss).toBeNull()
   })
 })
+
+// ─── D1 fallback: source marker + uncapped getToken (write-through cache contract) ──
+
+/**
+ * Statement-aware SqlClient for the fallback tests: routes on fragments of the
+ * joined template text (values arrive as bound params). The `source = 'token-list'`
+ * fragment only exists in the FIXED queries, so an unfiltered route simulates the
+ * old behavior and a filtered route simulates the new contract.
+ */
+const sqlRouterLayer = (routes: Record<string, (params: readonly unknown[]) => Effect.Effect<readonly unknown[]>>) => {
+  const fn = Object.assign(
+    (strings: TemplateStringsArray, ...values: unknown[]) => {
+      const text = strings.reduce((acc, part, i) => acc + part + (i < strings.length - 1 ? `$${i + 1}` : ""), "")
+      const handler = Object.entries(routes).find(([fragment]) => text.includes(fragment))?.[1]
+      return handler ? handler(values) : Effect.succeed([] as readonly unknown[])
+    },
+    { unsafe: (s: string) => s },
+  )
+  return Layer.succeed(SqlClient.SqlClient, fn as unknown as SqlClient.SqlClient)
+}
+
+const fallbackServiceLayer = (
+  routes: Record<string, (params: readonly unknown[]) => Effect.Effect<readonly unknown[]>>,
+  kv: KVNamespace,
+) =>
+  TokenListServiceLive.pipe(
+    Layer.provide(failingFetcherLayer()),
+    Layer.provide(sqlRouterLayer(routes)),
+    Layer.provide(Layer.succeed(DepsTag, { kv, chainId: 1, cacheTtlSeconds: 3600 })),
+  )
+
+describe("TokenListService D1 fallback (write-through cache contract)", () => {
+  const baseRow = {
+    chain_id: 1,
+    symbol: "T0",
+    name: "Token 0",
+    decimals: 18,
+    logo_url: null,
+    is_verified: 1,
+    is_native: 0,
+    total_supply: null,
+    created_at: 1,
+    updated_at: 1,
+  }
+
+  it("serves only canonical (source='token-list') rows from the fallback — never user-curated rows", async () => {
+    const { kv } = fakeKv()
+    const table = [
+      { ...baseRow, address: USDC, symbol: "USDC", source: "token-list" },
+      { ...baseRow, address: WETH, symbol: "WETH", source: "user" }, // upsertToken row, is_verified = 1
+    ]
+    const layer = fallbackServiceLayer(
+      {
+        // FIXED query (has the source clause) → filtered; the OLD query text
+        // (no source fragment) matches only the unfiltered route below.
+        "source = 'token-list'": () => Effect.succeed(table.filter((r) => r.source === "token-list")),
+        "ORDER BY symbol ASC": () => Effect.succeed(table),
+      },
+      kv,
+    )
+    const tokens = await Effect.runPromise(listTokens(layer))
+    expect(tokens.map((t) => t.symbol)).toEqual(["USDC"])
+  })
+
+  it("getToken fallback resolves a canonical token beyond the 500-row cap via a direct D1 lookup", async () => {
+    const { kv } = fakeKv()
+    const targetAddress = `0x${"f".repeat(40)}`
+    const table = [
+      ...Array.from({ length: 600 }, (_, i) => ({
+        ...baseRow,
+        address: `0x${(i + 1).toString(16).padStart(40, "0")}`,
+        symbol: `T${i}`,
+        source: "token-list",
+      })),
+      { ...baseRow, address: targetAddress, symbol: "ZZZ", source: "token-list" }, // sorts beyond the 500th row
+    ]
+    const layer = fallbackServiceLayer(
+      {
+        // Capped materialization (old behavior): only the first 500 rows.
+        "ORDER BY symbol ASC": () => Effect.succeed(table.slice(0, 500)),
+        // Uncapped direct lookup by address (fixed behavior). The query binds
+        // chain_id first, then the address: params = [chainId, address].
+        "LOWER(address)": (params) => {
+          const addr = String(params[1]).toLowerCase()
+          const hit = table.find((r) => r.address.toLowerCase() === addr)
+          return Effect.succeed(hit ? [hit] : [])
+        },
+      },
+      kv,
+    )
+    const token = await Effect.runPromise(
+      Effect.gen(function* () {
+        const svc = yield* TokenListService
+        return yield* svc.getToken(targetAddress.toLowerCase())
+      }).pipe(Effect.provide(layer)),
+    )
+    expect(token?.symbol).toBe("ZZZ")
+  })
+
+  it("getToken fallback never serves a user-curated (source='user') row as canonical", async () => {
+    const { kv } = fakeKv()
+    const userRow = { ...baseRow, address: WETH, symbol: "WETH", source: "user" }
+    const layer = fallbackServiceLayer(
+      {
+        // OLD query (no source clause) would serve the user row from the capped list.
+        "ORDER BY symbol ASC": () => Effect.succeed([userRow]),
+        // FIXED query applies the source clause before matching the address
+        // (params = [chainId, address]).
+        "LOWER(address)": (params) => {
+          const addr = String(params[1]).toLowerCase()
+          return Effect.succeed(
+            userRow.address.toLowerCase() === addr && userRow.source === "token-list" ? [userRow] : [],
+          )
+        },
+      },
+      kv,
+    )
+    const token = await Effect.runPromise(
+      Effect.gen(function* () {
+        const svc = yield* TokenListService
+        return yield* svc.getToken(WETH)
+      }).pipe(Effect.provide(layer)),
+    )
+    expect(token).toBeNull()
+  })
+})

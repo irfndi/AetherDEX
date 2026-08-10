@@ -29,6 +29,7 @@ jobs:
     name: Release version guard
     if: ${{ startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -45,10 +46,30 @@ jobs:
           git fetch origin main --no-tags
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main
           expected="${RELEASE_TAG#v}"
-          for file in package.json apps/api/package.json apps/web/package.json packages/shared/package.json; do
-            actual="$(node -p "require('./$file').version")"
-            test "$actual" = "$expected" || { echo "$file is $actual; expected $expected" >&2; exit 1; }
-          done
+          node - "$expected" <<'NODE'
+          const fs = require("node:fs")
+          const path = require("node:path")
+
+          const expected = process.argv[2]
+          // Derive the guard from the workspace instead of a hardcoded list so new
+          // apps/packages are covered automatically. Packages without a version field
+          // (e.g. packages/contracts) are not versioned with the tag and are skipped.
+          const files = ["package.json"]
+          for (const dir of ["apps", "packages"]) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              if (!entry.isDirectory()) continue
+              const file = path.join(dir, entry.name, "package.json")
+              if (fs.existsSync(file)) files.push(file)
+            }
+          }
+          for (const file of files) {
+            const pkg = JSON.parse(fs.readFileSync(file, "utf8"))
+            if (typeof pkg.version !== "string") continue
+            if (pkg.version !== expected) {
+              throw new Error(`${file} is ${pkg.version}; expected ${expected}`)
+            }
+          }
+          NODE
 
   # ---------------------------------------------------------------------------
   # Change detection (path filters). Speeds CI by skipping untouched workspaces.
@@ -56,6 +77,7 @@ jobs:
   detect-changes:
     name: Detect changes
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       pull-requests: read # dorny/paths-filter reads PR file lists on pull_request
@@ -64,6 +86,7 @@ jobs:
       contracts: ${{ steps.filter.outputs.contracts }}
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      workflows: ${{ steps.filter.outputs.workflows }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -88,7 +111,7 @@ jobs:
               - 'biome.json'
               - 'vitest.config.ts'
               - '.github/actions/**'
-              - '.github/workflows/ci.yml'
+              - '.github/workflows/*.yml'
             contracts:
               - 'packages/contracts/**'
               - 'package.json'
@@ -113,6 +136,8 @@ jobs:
               - 'vitest.config.ts'
               - '.github/actions/**'
               - '.github/workflows/ci.yml'
+            workflows:
+              - '.github/**'
 
   # ---------------------------------------------------------------------------
   # Fast quality gate: workspace typecheck + repo-wide Biome lint.
@@ -122,6 +147,7 @@ jobs:
   quality:
     name: Typecheck + Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: detect-changes
     if: ${{ github.event_name != 'schedule' && (needs.detect-changes.outputs.code == 'true' || startsWith(github.ref, 'refs/tags/v')) }}
     permissions:
@@ -135,6 +161,31 @@ jobs:
         run: bun run typecheck
       - name: Lint
         run: bun run lint
+      - name: Validate workflow YAML and CodeQL config
+        run: |
+          set -euo pipefail
+          ruby -ryaml -e 'ARGV.each { |f| YAML.load_stream(File.read(f)); puts "ok: #{f}" }' .github/workflows/*.yml
+          test -f .github/codeql-config.yml
+
+  # ---------------------------------------------------------------------------
+  # Workflow lint: actionlint catches invalid YAML/expressions in .github/ at PR
+  # time. renovate.yml only runs on a weekly schedule and release.yml only on
+  # version tags, so without this a broken workflow would go unnoticed for days.
+  # Image pinned 1.7.12 (matches the local brew actionlint). The official image
+  # bundles shellcheck, so inline scripts are checked too.
+  # ---------------------------------------------------------------------------
+  actionlint:
+    name: Workflow lint (actionlint)
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: ${{ github.event_name != 'schedule' && needs.detect-changes.outputs.workflows == 'true' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Run actionlint
+        run: docker run --rm -v "${PWD}:/repo" -w /repo rhysd/actionlint:1.7.12
 
   # ---------------------------------------------------------------------------
   # Contracts: Foundry build/test, enforced coverage (>=90%), gated Slither.
@@ -142,6 +193,7 @@ jobs:
   contracts:
     name: Contracts (Foundry)
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     needs: detect-changes
     if: ${{ github.event_name != 'schedule' && (needs.detect-changes.outputs.contracts == 'true' || startsWith(github.ref, 'refs/tags/v')) }}
     permissions:
@@ -205,29 +257,55 @@ jobs:
           python3 - <<'PY'
           import re, sys
 
-          total = None
+          header = total = None
           with open("coverage-summary.txt") as fh:
               for line in fh:
-                  if line.strip().lower().startswith(("| total", "total")):
-                      total = line
-                      break
+                  stripped = line.strip()
+                  if header is None and stripped.startswith("|") and "% lines" in stripped.lower():
+                      header = stripped
+                  if stripped.lower().startswith(("| total", "total")):
+                      total = stripped
 
-          if total is None:
-              sys.exit("Could not find a 'Total' line in the forge coverage summary")
+          if header is None or total is None:
+              sys.exit("Could not find header/Total rows in the forge coverage summary")
+
+          # Validate the column layout against the header row (| File | % Lines |
+          # % Statements | % Branches | % Funcs |) and index by column name instead
+          # of assuming fixed positions, so a future Foundry column insertion or
+          # reorder fails loudly rather than silently mis-gating coverage.
+          def cells_of(row):
+              return [c.strip().lower() for c in row.strip().strip("|").split("|")]
+
+          header_cells = cells_of(header)
+          col = {name: i for i, name in enumerate(header_cells)}
+
+          def col_index(*names):
+              for name in names:
+                  if name in col:
+                      return col[name]
+              return None
+
+          i_lines = col_index("% lines", "lines")
+          i_statements = col_index("% statements", "statements")
+          i_branches = col_index("% branches", "branches")
+          i_funcs = col_index("% funcs", "funcs")
+          if any(i is None for i in (i_lines, i_statements, i_branches, i_funcs)):
+              sys.exit(f"Unexpected forge coverage header; expected % Lines/% Statements/% Branches/% Funcs columns, got: {header!r}")
 
           # A summary row (forge >= 1.x) looks like:
           #   | Total | 66.67% (2/3) | 57.14% (4/7) | 0.00% (0/1) | 66.67% (2/3) |
-          # Columns are % Lines | % Statements | % Branches | % Funcs. Take the FIRST
-          # number in each of the four cells after 'Total' (the percentage); this is
+          # Take the FIRST number in the matched cell (the percentage); this is
           # robust to the trailing "(hits/found)" hit-count annotation.
-          cells = [c.strip() for c in total.strip().strip("|").split("|")]
+          row_cells = cells_of(total)
+          if len(row_cells) <= max(i_lines, i_statements, i_branches, i_funcs):
+              sys.exit(f"Could not parse coverage columns from: {total!r}")
 
           def first_num(cell):
               m = re.search(r"(\d+(?:\.\d+)?)", cell)
               return float(m.group(1)) if m else None
 
-          vals = [first_num(cell) for cell in cells[1:5]]
-          if len(vals) < 4 or any(v is None for v in vals):
+          vals = [first_num(row_cells[i]) for i in (i_lines, i_statements, i_branches, i_funcs)]
+          if any(v is None for v in vals):
               sys.exit(f"Could not parse coverage columns from: {total!r}")
 
           lines, statements, branches, funcs = vals
@@ -250,7 +328,7 @@ jobs:
       - name: Install Slither + solc
         run: |
           set -euo pipefail
-          pip3 install --no-cache-dir slither-analyzer solc-select
+          pip3 install --no-cache-dir slither-analyzer==0.11.6 solc-select==1.2.0
           solc-select install 0.8.36
           solc-select use 0.8.36
 
@@ -278,6 +356,7 @@ jobs:
   backend:
     name: Backend (Workers + Effect)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: detect-changes
     if: ${{ github.event_name != 'schedule' && (needs.detect-changes.outputs.backend == 'true' || startsWith(github.ref, 'refs/tags/v')) }}
     permissions:
@@ -345,6 +424,7 @@ jobs:
   frontend:
     name: Frontend (Vite + React)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: detect-changes
     if: ${{ github.event_name != 'schedule' && (needs.detect-changes.outputs.frontend == 'true' || startsWith(github.ref, 'refs/tags/v')) }}
     permissions:
@@ -368,7 +448,16 @@ jobs:
         run: bun run test
 
       - name: Build
+        # vite.config.ts throws on production builds without VITE_API_URL (the
+        # localhost fallback must never ship); same placeholder as the e2e job.
         run: bun run build
+        env:
+          VITE_API_URL: "http://localhost:8080/api/v1"
+
+      - name: Verify build artifact
+        # `tsr generate` output is gitignored; assert the emitted artifact and the
+        # generated route tree exist so a silent codegen/build regression fails CI.
+        run: test -f dist/index.html && test -f src/routeTree.gen.ts
 
       - name: Coverage (enforce >= 70%, configured in vitest.config.ts)
         run: bun run test:coverage
@@ -392,6 +481,7 @@ jobs:
   e2e:
     name: E2E (Playwright)
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     needs: detect-changes
     if: ${{ github.event_name != 'schedule' && (needs.detect-changes.outputs.frontend == 'true' || startsWith(github.ref, 'refs/tags/v')) }}
     permissions:
@@ -441,6 +531,7 @@ jobs:
   echidna:
     name: Echidna fuzz — advisory
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     needs: detect-changes
     if: ${{ github.event_name == 'schedule' || needs.detect-changes.outputs.contracts == 'true' }}
     permissions:
@@ -509,13 +600,16 @@ jobs:
         if: steps.harness.outputs.present == 'true'
         run: |
           set -euo pipefail
-          # Official static linux binary (x86_64) for Ubuntu runners.
+          # Official static linux binary (x86_64) for Ubuntu runners. Pinned by
+          # version AND verified by SHA-256 before extraction so a tampered or
+          # mismatched download fails loudly instead of installing garbage.
           url="https://github.com/crytic/echidna/releases/download/${ECHIDNA_VERSION}/echidna-${ECHIDNA_VERSION#v}-x86_64-linux.tar.gz"
           curl -fsSL "$url" -o /tmp/echidna.tar.gz
+          echo "38e4eb12627d8dea2a9eabfaebbcdb4d9ad0bde633aafbcae4d69656d6bcdb4a  /tmp/echidna.tar.gz" | sha256sum -c -
           tar -xzf /tmp/echidna.tar.gz -C /tmp echidna
           sudo mv /tmp/echidna /usr/local/bin/echidna
           echo "Echidna version: $(echidna --version)"
-          pip3 install --no-cache-dir solc-select
+          pip3 install --no-cache-dir solc-select==1.2.0
           solc-select install 0.8.36
           solc-select use 0.8.36
 
@@ -535,6 +629,7 @@ jobs:
   ci-status:
     name: CI Status
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: [release-version-guard, detect-changes, quality, contracts, backend, frontend, e2e]
     if: ${{ github.event_name != 'schedule' && always() }}
     permissions:

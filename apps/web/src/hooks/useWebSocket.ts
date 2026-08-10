@@ -62,6 +62,14 @@ export function useWebSocket<T = unknown>(options: WebSocketOptions): WebSocketS
   useEffect(() => {
     mountedRef.current = true
 
+    // Drop any reconnect scheduled by a superseded effect run and start a
+    // fresh reconnect budget for this URL.
+    if (reconnectTimerRef.current !== undefined) {
+      clearTimeout(reconnectTimerRef.current)
+      reconnectTimerRef.current = undefined
+    }
+    reconnectCountRef.current = 0
+
     function connect() {
       if (!mountedRef.current) return
 
@@ -70,7 +78,7 @@ export function useWebSocket<T = unknown>(options: WebSocketOptions): WebSocketS
         wsRef.current = ws
 
         ws.onopen = () => {
-          if (!mountedRef.current) return
+          if (!mountedRef.current || wsRef.current !== ws) return
           reconnectCountRef.current = 0
           setState((prev) => ({
             ...prev,
@@ -82,7 +90,7 @@ export function useWebSocket<T = unknown>(options: WebSocketOptions): WebSocketS
         }
 
         ws.onmessage = (event) => {
-          if (!mountedRef.current) return
+          if (!mountedRef.current || wsRef.current !== ws) return
           try {
             const parsed = JSON.parse(event.data) as T
             setState((prev) => ({ ...prev, data: parsed }))
@@ -94,6 +102,9 @@ export function useWebSocket<T = unknown>(options: WebSocketOptions): WebSocketS
 
         ws.onclose = () => {
           if (!mountedRef.current) return
+          // Ignore closes from a socket superseded by a newer effect run
+          // (URL change): it must not flip state or reconnect to the old URL.
+          if (wsRef.current !== ws) return
           setState((prev) => ({ ...prev, isConnected: false }))
           onCloseRef.current?.()
 
@@ -106,11 +117,20 @@ export function useWebSocket<T = unknown>(options: WebSocketOptions): WebSocketS
             }))
             const delay = reconnectInterval * Math.min(reconnectCountRef.current, 5)
             reconnectTimerRef.current = setTimeout(connect, delay)
+          } else {
+            // A clean close (server restart / idle) with the reconnect budget
+            // exhausted never fires onerror; surface it so consumers don't
+            // silently render a permanent placeholder.
+            setState((prev) => ({
+              ...prev,
+              error: "Connection lost; reconnection attempts exhausted",
+            }))
           }
         }
 
         ws.onerror = (error) => {
           if (!mountedRef.current) return
+          if (wsRef.current !== ws) return
           onErrorRef.current?.(error)
           setState((prev) => ({
             ...prev,

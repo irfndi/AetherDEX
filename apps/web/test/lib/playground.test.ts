@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
-  allocatePositionAmounts,
   type AllocationResult,
+  allocatePositionAmounts,
   priceFromSqrtPriceX96,
   type ScenarioResult,
   simulatePriceScenarios,
@@ -190,6 +190,15 @@ describe("simulatePriceScenarios", () => {
     if (invalid.ok) return
     expect(invalid.errors.upperPrice).toBe("Upper price must be greater than lower price.")
     expect(invalid.errors.amount0).toBe("Position value must be greater than zero.")
+  })
+
+  it("reports an invalid fee percent under the fee field, not the price field", () => {
+    const invalid = simulatePriceScenarios({ ...input, feePercent: -1 })
+
+    expect(invalid.ok).toBe(false)
+    if (invalid.ok) return
+    expect(invalid.errors.feePercent).toBe("Fee percent must be zero or positive.")
+    expect(invalid.errors.currentPrice).toBeUndefined()
   })
 })
 

@@ -23,6 +23,9 @@ const liquidity = new Hono<{ Bindings: Env }>()
 const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/
 const UINT_RE = /^\d+$/
 const MAX_INPUTS = 8
+/** Max decimal digits for a uint256 amount (2^256 - 1 has 78 digits). */
+const UINT256_MAX_DIGITS = 78
+const UINT256_MAX = (1n << 256n) - 1n
 
 /** Router deposit entry points that incur the protocol entry fee. */
 const DEPOSIT_MODES = ["add_liquidity", "add_liquidity_single_sided"] as const
@@ -57,6 +60,11 @@ const parseInputs = (raw: unknown, mode: DepositMode): { inputs?: readonly Parse
     if (typeof grossAmount !== "string" || !UINT_RE.test(grossAmount)) {
       return { error: "grossAmount must be a non-negative integer string" }
     }
+    // Reject before BigInt: decimal-string conversion is super-linear in digit
+    // count, and >uint256 amounts could never be processed by AetherRouter anyway.
+    if (grossAmount.length > UINT256_MAX_DIGITS) {
+      return { error: "grossAmount must not exceed uint256 (max 78 digits)" }
+    }
     let parsed: bigint
     try {
       parsed = BigInt(grossAmount)
@@ -64,6 +72,7 @@ const parseInputs = (raw: unknown, mode: DepositMode): { inputs?: readonly Parse
       return { error: "grossAmount exceeds the supported integer range" }
     }
     if (parsed <= 0n) return { error: "grossAmount must be positive" }
+    if (parsed > UINT256_MAX) return { error: "grossAmount must not exceed uint256" }
     if (token !== undefined && (typeof token !== "string" || !ADDRESS_RE.test(token))) {
       return { error: "token must be a valid 0x-prefixed address when provided" }
     }

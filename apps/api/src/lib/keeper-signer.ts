@@ -18,6 +18,7 @@
  */
 
 import {
+  type Chain,
   createPublicClient,
   createWalletClient,
   encodeFunctionData,
@@ -181,7 +182,10 @@ export class KeeperRelayError extends Error {
 
 export class KeeperTransactionError extends Error {
   readonly _tag = "KeeperTransactionError"
-  constructor(readonly txHash: string, message: string) {
+  constructor(
+    readonly txHash: string,
+    message: string,
+  ) {
     super(message)
   }
 }
@@ -248,7 +252,7 @@ interface KeeperTransactionReceipt {
 // "unlocked account" instead of local signing — a keeper security footgun.
 interface KeeperSubmitClient {
   sendTransaction(args: {
-    chain: null
+    chain?: Chain
     to: `0x${string}`
     data: `0x${string}`
     value?: bigint
@@ -258,10 +262,24 @@ interface KeeperSubmitClient {
   }): Promise<`0x${string}`>
 }
 
+/**
+ * Durable nonce storage so a consumed nonce survives signer-instance recreation
+ * (serverless retries build a fresh signer whose closure state is empty). A
+ * private-relay tx is invisible to the public RPC's pending-nonce read, so
+ * without this a retry would reuse the accepted nonce and fail permanently.
+ * Optional: when absent, nonce tracking degrades to per-instance closure state.
+ */
+export interface KeeperNonceStore {
+  readonly read: (address: string) => Promise<number | null>
+  readonly write: (address: string, nonce: number) => Promise<void>
+}
+
 export interface KeeperSignerDeps {
   readonly publicClient?: KeeperChainClient
   readonly walletClient?: KeeperSubmitClient
   readonly fetchFn?: typeof fetch
+  /** Durable nonce store; without it nonce state dies with the signer instance. */
+  readonly nonceStore?: KeeperNonceStore
 }
 
 const ORDER_EXECUTED_TOPIC = keccak256(toBytes("OrderExecuted(uint256,address,uint256,uint256)"))
@@ -304,11 +322,7 @@ export interface TpSlExecutionPolicy {
  * must be in the future, the order's chain must match, and — when the policy
  * carries a cap — the input amount must not exceed it.
  */
-export function canExecuteTpSlOrder(
-  order: TpSlExecutableLike,
-  policy: TpSlExecutionPolicy,
-  now: number,
-): boolean {
+export function canExecuteTpSlOrder(order: TpSlExecutableLike, policy: TpSlExecutionPolicy, now: number): boolean {
   if (order.status !== "pending") return false
   if (!Number.isFinite(order.deadline) || !Number.isFinite(now) || order.deadline <= now) return false
   if (!Number.isInteger(order.chainId) || !Number.isInteger(policy.expectedChainId)) return false
@@ -386,6 +400,19 @@ export function createKeeperSigner(config: KeeperSignerConfig, deps: KeeperSigne
     }
   }
 
+  // Advance the in-instance AND durable nonce the moment the relay/wallet accepts.
+  // The durable write is best-effort: the tx is already accepted, so failing the
+  // submission here would make a retry reuse the same nonce — the opposite of the
+  // failure we are guarding against. The closure bump still protects this instance.
+  const recordNonce = async (acceptedNonce: number): Promise<void> => {
+    nextNonce = acceptedNonce + 1
+    try {
+      await deps.nonceStore?.write(account.address, acceptedNonce + 1)
+    } catch {
+      // durable write failed — next instance falls back to the public pending nonce
+    }
+  }
+
   const awaitConfirmation = async (txHash: `0x${string}`, target: `0x${string}`): Promise<boolean | undefined> => {
     if (publicClient.waitForTransactionReceipt === undefined) return undefined
     let receipt: KeeperTransactionReceipt
@@ -404,9 +431,7 @@ export function createKeeperSigner(config: KeeperSignerConfig, deps: KeeperSigne
     )
   }
 
-  const preflight = async (
-    input: SendTransactionInput,
-  ): Promise<{ nonce: number; gas: bigint; gasPrice: bigint }> => {
+  const preflight = async (input: SendTransactionInput): Promise<{ nonce: number; gas: bigint; gasPrice: bigint }> => {
     if (input.chainId !== undefined && input.chainId !== chainId) {
       throw new KeeperChainMismatchError(chainId, input.chainId, account.address)
     }
@@ -416,7 +441,11 @@ export function createKeeperSigner(config: KeeperSignerConfig, deps: KeeperSigne
     let gasPrice: bigint
     try {
       const pendingNonce = await publicClient.getTransactionCount({ address: account.address, blockTag: "pending" })
-      nonce = Math.max(pendingNonce, nextNonce ?? pendingNonce)
+      // A relay-accepted tx is invisible to the public RPC's pending-nonce read, so a
+      // fresh instance must recover the consumed nonce from durable state. Math.max
+      // keeps a stale stored nonce from ever going backwards behind chain state.
+      const storedNonce = nextNonce ?? (await deps.nonceStore?.read(account.address)) ?? pendingNonce
+      nonce = Math.max(pendingNonce, storedNonce)
       balance = await publicClient.getBalance({ address: account.address })
       gasPrice = await publicClient.getGasPrice()
       gas =
@@ -450,80 +479,77 @@ export function createKeeperSigner(config: KeeperSignerConfig, deps: KeeperSigne
         withSubmissionLock(async () => {
           const { nonce, gas, gasPrice } = await preflight(input)
 
-        let signed: `0x${string}`
-        try {
-          signed = await account.signTransaction({
-            chainId,
-            to: input.to,
-            data: input.data,
-            ...(input.value !== undefined ? { value: input.value } : {}),
-            nonce,
-            gas,
-            gasPrice,
-          })
-        } catch (error) {
-          throw new KeeperRpcError(`Keeper tx signing failed: ${String(error)}`)
-        }
+          let signed: `0x${string}`
+          try {
+            signed = await account.signTransaction({
+              chainId,
+              to: input.to,
+              data: input.data,
+              ...(input.value !== undefined ? { value: input.value } : {}),
+              nonce,
+              gas,
+              gasPrice,
+            })
+          } catch (error) {
+            throw new KeeperRpcError(`Keeper tx signing failed: ${String(error)}`)
+          }
 
-        // Defense in depth: parseRelayUrl already enforces https at config time.
-        let relay: URL
-        try {
-          relay = new URL(relayUrl)
-        } catch {
-          throw new KeeperRelayError("PRIVATE_TX_RELAY_URL is invalid", false)
-        }
-        if (relay.protocol !== "https:") {
-          throw new KeeperRelayError("PRIVATE_TX_RELAY_URL must use https (MEV Tier-B)", false)
-        }
+          // Defense in depth: parseRelayUrl already enforces https at config time.
+          let relay: URL
+          try {
+            relay = new URL(relayUrl)
+          } catch {
+            throw new KeeperRelayError("PRIVATE_TX_RELAY_URL is invalid", false)
+          }
+          if (relay.protocol !== "https:") {
+            throw new KeeperRelayError("PRIVATE_TX_RELAY_URL must use https (MEV Tier-B)", false)
+          }
 
-        let response: Response
-        try {
-          response = await fetchImpl(relayUrl, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            // NOTE: the signed raw tx is deliberately never logged.
-            body: JSON.stringify({
-              jsonrpc: "2.0",
-              id: 1,
-              method: "eth_sendRawTransaction",
-              params: [signed],
-            }),
-          })
-        } catch (error) {
-          throw new KeeperRelayError(`Private relay request failed: ${String(error)}`, true)
-        }
+          let response: Response
+          try {
+            response = await fetchImpl(relayUrl, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              // NOTE: the signed raw tx is deliberately never logged.
+              body: JSON.stringify({
+                jsonrpc: "2.0",
+                id: 1,
+                method: "eth_sendRawTransaction",
+                params: [signed],
+              }),
+            })
+          } catch (error) {
+            throw new KeeperRelayError(`Private relay request failed: ${String(error)}`, true)
+          }
 
-        if (!response.ok) {
-          throw new KeeperRelayError(
-            `Private relay returned HTTP ${response.status}`,
-            response.status >= 500,
-          )
-        }
+          if (!response.ok) {
+            throw new KeeperRelayError(`Private relay returned HTTP ${response.status}`, response.status >= 500)
+          }
 
-        let payload: Record<string, unknown> | null = null
-        try {
-          const body: unknown = await response.json()
-          if (typeof body === "object" && body !== null) payload = body as Record<string, unknown>
-        } catch {
-          payload = null
-        }
-        if (payload === null) throw new KeeperRelayError("Private relay returned a non-JSON response", false)
+          let payload: Record<string, unknown> | null = null
+          try {
+            const body: unknown = await response.json()
+            if (typeof body === "object" && body !== null) payload = body as Record<string, unknown>
+          } catch {
+            payload = null
+          }
+          if (payload === null) throw new KeeperRelayError("Private relay returned a non-JSON response", false)
 
-        const errorField = payload.error
-        if (errorField !== undefined && errorField !== null) {
-          const message =
-            typeof errorField === "object"
-              ? String((errorField as { message?: unknown }).message ?? "rejected")
-              : String(errorField)
-          throw new KeeperRelayError(`Private relay rejected transaction: ${message}`, false)
-        }
+          const errorField = payload.error
+          if (errorField !== undefined && errorField !== null) {
+            const message =
+              typeof errorField === "object"
+                ? String((errorField as { message?: unknown }).message ?? "rejected")
+                : String(errorField)
+            throw new KeeperRelayError(`Private relay rejected transaction: ${message}`, false)
+          }
 
-        if (typeof payload.result !== "string" || !TX_HASH_PATTERN.test(payload.result)) {
-          throw new KeeperRelayError("Private relay response is missing a valid transaction hash", false)
-        }
+          if (typeof payload.result !== "string" || !TX_HASH_PATTERN.test(payload.result)) {
+            throw new KeeperRelayError("Private relay response is missing a valid transaction hash", false)
+          }
 
           const txHash = payload.result as `0x${string}`
-          nextNonce = nonce + 1
+          await recordNonce(nonce)
           const confirmed = await awaitConfirmation(txHash, input.to)
           return confirmed === undefined
             ? { kind: "submitted", channel: "private-relay", txHash }
@@ -532,11 +558,20 @@ export function createKeeperSigner(config: KeeperSignerConfig, deps: KeeperSigne
     }
   }
 
-  // Explicit public-submission opt-in.
+  // Explicit public-submission opt-in. The chain carries the keeper's chainId so
+  // viem embeds it in the signed legacy tx — EIP-155 replay protection, mirroring
+  // the private-relay path which signs with an explicit chainId.
+  const keeperChain: Chain = {
+    id: chainId,
+    name: `AetherDEX Keeper (chain ${chainId})`,
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    rpcUrls: { default: { http: [config.rpcUrl] } },
+  }
   const walletClient: KeeperSubmitClient = (deps.walletClient ??
     createWalletClient({
       account,
       transport,
+      chain: keeperChain,
     })) as unknown as KeeperSubmitClient
 
   return {
@@ -545,23 +580,21 @@ export function createKeeperSigner(config: KeeperSignerConfig, deps: KeeperSigne
     sendTransaction: async (input: SendTransactionInput): Promise<SubmissionResult> =>
       withSubmissionLock(async () => {
         const { nonce, gas, gasPrice } = await preflight(input)
-      let txHash: `0x${string}`
-      try {
-        txHash = await walletClient.sendTransaction({
-          // chain: null → send on the wallet client's default chain; the target
-          // chain was already validated against the config in preflight.
-          chain: null,
-          to: input.to,
-          data: input.data,
-          ...(input.value !== undefined ? { value: input.value } : {}),
-          nonce,
-          gas,
-          gasPrice,
-        })
-      } catch (error) {
-        throw new KeeperRpcError(`Public submission failed: ${String(error)}`)
-      }
-        nextNonce = nonce + 1
+        let txHash: `0x${string}`
+        try {
+          txHash = await walletClient.sendTransaction({
+            chain: keeperChain,
+            to: input.to,
+            data: input.data,
+            ...(input.value !== undefined ? { value: input.value } : {}),
+            nonce,
+            gas,
+            gasPrice,
+          })
+        } catch (error) {
+          throw new KeeperRpcError(`Public submission failed: ${String(error)}`)
+        }
+        await recordNonce(nonce)
         const confirmed = await awaitConfirmation(txHash, input.to)
         return confirmed === undefined
           ? { kind: "submitted", channel: "public", txHash }

@@ -26,9 +26,12 @@ const POSITION_MANAGER_ABI = [
     name: "Collect",
     inputs: [
       { indexed: true, name: "tokenId", type: "uint256" },
-      { indexed: true, name: "recipient", type: "address" },
-      { indexed: false, name: "amount0", type: "uint256" },
-      { indexed: false, name: "amount1", type: "uint256" },
+      // Canonical NonfungiblePositionManager: only tokenId is indexed (recipient
+      // is in the data) and the amounts are uint128 — the ABI must match the
+      // deployed contract's signature exactly or real logs fail to decode.
+      { indexed: false, name: "recipient", type: "address" },
+      { indexed: false, name: "amount0", type: "uint128" },
+      { indexed: false, name: "amount1", type: "uint128" },
     ],
   },
   {

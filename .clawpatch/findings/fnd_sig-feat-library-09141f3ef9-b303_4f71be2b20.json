@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "findingId": "fnd_sig-feat-library-09141f3ef9-b303_4f71be2b20",
+  "featureId": "feat_library_09141f3ef9",
+  "title": "TP/SL order ids lose precision: Number.parseInt truncates uint256 ids above 2^53 in GET/DELETE",
+  "category": "bug",
+  "severity": "medium",
+  "confidence": "medium",
+  "triage": "risk",
+  "evidence": [
+    {
+      "path": "apps/api/src/routes/tp-sl.ts",
+      "startLine": 261,
+      "endLine": 265,
+      "symbol": null,
+      "quote": null
+    },
+    {
+      "path": "apps/api/src/routes/tp-sl.ts",
+      "startLine": 288,
+      "endLine": 291,
+      "symbol": null,
+      "quote": null
+    },
+    {
+      "path": "apps/api/src/routes/tp-sl.ts",
+      "startLine": 228,
+      "endLine": 228,
+      "symbol": null,
+      "quote": null
+    }
+  ],
+  "reasoning": "Order creation stores the on-chain uint256 order id as a decimal string (onchainOrderId = eventArgs.orderId.toString(), line 228), but GET /orders/:id and DELETE /orders/:id convert the path param with Number.parseInt. Any id >= 2^53 (9007199254740993) is rounded to the nearest double, so lookups and cancellations target a different (or non-existent) id — a cancel could silently no-op or hit the wrong row. Additionally parseInt silently accepts malformed input like \"1.5\" (→ 1), returning the wrong order instead of 400. On-chain order ids are uint256 and can legitimately exceed 2^53.",
+  "reproduction": "Create an order whose OrderCreated event carries orderId 9007199254740993, then GET /api/v1/tp-sl/orders/9007199254740993 — the parsed id becomes 9007199254740992 and the lookup misses.",
+  "recommendation": "Validate the param with /^\\d+$/ and pass the id as a string through to getOrder/cancelOrder, keeping ids as strings end-to-end (the service already stores the string form).",
+  "whyTestsDoNotAlreadyCoverThis": "No tp-sl route tests exist in the included test set; only price-guard is tested.",
+  "suggestedRegressionTest": "Unit/integration test that a large id (e.g., 9007199254740993) round-trips through getOrder/cancelOrder without precision loss, and that \"1.5\" is rejected with 400.",
+  "minimumFixScope": "apps/api/src/routes/tp-sl.ts GET/DELETE handlers plus TpSlService signatures to accept string ids.",
+  "status": "open",
+  "history": [],
+  "signature": "sig_feat-library-09141f3ef9_b30347caf7",
+  "linkedPatchAttemptIds": [],
+  "createdByRunId": "20260810T032502-239ff8",
+  "createdAt": "2026-08-10T03:29:35.650Z",
+  "updatedAt": "2026-08-10T03:29:35.650Z"
+}

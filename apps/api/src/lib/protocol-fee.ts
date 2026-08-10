@@ -61,9 +61,7 @@ export interface ProtocolFeeComputed<Amount extends bigint | number> {
  */
 export function computeProtocolFee(amount: bigint): ProtocolFeeComputed<bigint>
 export function computeProtocolFee(amount: number): ProtocolFeeComputed<number>
-export function computeProtocolFee(
-  amount: bigint | number,
-): ProtocolFeeComputed<bigint> | ProtocolFeeComputed<number> {
+export function computeProtocolFee(amount: bigint | number): ProtocolFeeComputed<bigint> | ProtocolFeeComputed<number> {
   if (typeof amount === "bigint") {
     if (amount < 0n) throw new RangeError("Protocol fee amount must be non-negative")
     const fee = (amount * FEE_BPS_BIGINT) / BPS_DENOMINATOR_BIGINT
@@ -131,10 +129,7 @@ export interface ProtocolFeeInput {
  *   `false` for fee-free operations — returns {@link ZERO_PROTOCOL_FEE_BREAKDOWN}.
  * @param inputs Gross deposit amounts per relevant token (only meaningful when charged).
  */
-export function protocolFeeBreakdown(
-  charged: boolean,
-  inputs?: readonly ProtocolFeeInput[],
-): ProtocolFeeBreakdown {
+export function protocolFeeBreakdown(charged: boolean, inputs?: readonly ProtocolFeeInput[]): ProtocolFeeBreakdown {
   if (!charged) return ZERO_PROTOCOL_FEE_BREAKDOWN
   const amounts: ProtocolFeeAmountEntry[] = (inputs ?? []).map((input) => {
     const { fee, amountAfterFee } = computeProtocolFee(input.grossAmount)

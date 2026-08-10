@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "featureId": "feat_library_410ea57829",
+  "title": "Node source apps/web/src/routes",
+  "summary": "Node/TypeScript source group apps/web/src/routes with 10 files.",
+  "kind": "library",
+  "source": "node-source-group",
+  "confidence": "medium",
+  "entrypoints": [
+    {
+      "path": "apps/web/package.json",
+      "symbol": "apps/web/src/routes",
+      "route": null,
+      "command": null
+    }
+  ],
+  "ownedFiles": [
+    {
+      "path": "apps/web/src/routes/__root.tsx",
+      "reason": "source group apps/web/src/routes"
+    },
+    {
+      "path": "apps/web/src/routes/charts.$tokenAddress.tsx",
+      "reason": "source group apps/web/src/routes"
+    },
+    {
+      "path": "apps/web/src/routes/index.tsx",
+      "reason": "source group apps/web/src/routes"
+    },
+    {
+      "path": "apps/web/src/routes/playground.tsx",
+      "reason": "source group apps/web/src/routes"
+    },
+    {
+      "path": "apps/web/src/routes/pools.$poolId.tsx",
+      "reason": "source group apps/web/src/routes"
+    },
+    {
+      "path": "apps/web/src/routes/pools.new.tsx",
+      "reason": "source group apps/web/src/routes"
+    },
+    {
+      "path": "apps/web/src/routes/pools.tsx",
+      "reason": "source group apps/web/src/routes"
+    },
+    {
+      "path": "apps/web/src/routes/portfolio.tsx",
+      "reason": "source group apps/web/src/routes"
+    },
+    {
+      "path": "apps/web/src/routes/positions.tsx",
+      "reason": "source group apps/web/src/routes"
+    },
+    {
+      "path": "apps/web/src/routes/swap.tsx",
+      "reason": "source group apps/web/src/routes"
+    }
+  ],
+  "contextFiles": [
+    {
+      "path": "apps/web/package.json",
+      "reason": "package manifest"
+    },
+    {
+      "path": "apps/web/test/e2e/swap.spec.ts",
+      "reason": "associated test"
+    },
+    {
+      "path": "apps/web/test/index.test.ts",
+      "reason": "associated test"
+    },
+    {
+      "path": "apps/web/test/lib/playground.test.ts",
+      "reason": "associated test"
+    },
+    {
+      "path": "apps/web/test/routes/playground.test.tsx",
+      "reason": "associated test"
+    },
+    {
+      "path": "apps/web/test/routes/pools.test.tsx",
+      "reason": "associated test"
+    },
+    {
+      "path": "apps/web/test/routes/portfolio.test.tsx",
+      "reason": "associated test"
+    }
+  ],
+  "tests": [
+    {
+      "path": "apps/web/test/e2e/swap.spec.ts",
+      "command": "bun --cwd apps/web run test"
+    },
+    {
+      "path": "apps/web/test/index.test.ts",
+      "command": "bun --cwd apps/web run test"
+    },
+    {
+      "path": "apps/web/test/lib/playground.test.ts",
+      "command": "bun --cwd apps/web run test"
+    },
+    {
+      "path": "apps/web/test/routes/playground.test.tsx",
+      "command": "bun --cwd apps/web run test"
+    },
+    {
+      "path": "apps/web/test/routes/pools.test.tsx",
+      "command": "bun --cwd apps/web run test"
+    },
+    {
+      "path": "apps/web/test/routes/portfolio.test.tsx",
+      "command": "bun --cwd apps/web run test"
+    }
+  ],
+  "tags": [
+    "node",
+    "typescript",
+    "source-group",
+    "project:@aetherdex/web",
+    "project-root:apps/web"
+  ],
+  "trustBoundaries": [],
+  "status": "error",
+  "lock": null,
+  "findingIds": [],
+  "patchAttemptIds": [],
+  "analysisHistory": [
+    {
+      "runId": "20260810T032502-239ff8",
+      "kind": "review-error",
+      "summary": "pi provider failed: command timed out after 180000ms",
+      "provider": "pi",
+      "model": "opencode-go/deepseek-v4-flash",
+      "reasoningEffort": null,
+      "createdAt": "2026-08-10T03:31:04.938Z"
+    }
+  ],
+  "createdAt": "2026-08-10T03:21:26.575Z",
+  "updatedAt": "2026-08-10T03:31:04.939Z"
+}

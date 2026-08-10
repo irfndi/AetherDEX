@@ -138,14 +138,15 @@ const makeTokenListService = Effect.gen(function* () {
         // Chain-scoped: tokens are keyed by (chain_id, address) — the same address on two
         // chains is two different tokens and must not overwrite each other's cache rows.
         sql`
-          INSERT INTO tokens (chain_id, address, symbol, name, decimals, logo_url, is_verified, is_native, total_supply, created_at, updated_at)
-          VALUES (${deps.chainId}, ${token.address}, ${token.symbol}, ${token.name}, ${token.decimals}, ${token.logoURI}, 1, 0, NULL, ${asOf}, ${asOf})
+          INSERT INTO tokens (chain_id, address, symbol, name, decimals, logo_url, is_verified, is_native, total_supply, created_at, updated_at, source)
+          VALUES (${deps.chainId}, ${token.address}, ${token.symbol}, ${token.name}, ${token.decimals}, ${token.logoURI}, 1, 0, NULL, ${asOf}, ${asOf}, 'token-list')
           ON CONFLICT(chain_id, address) DO UPDATE SET
             symbol = excluded.symbol,
             name = excluded.name,
             decimals = excluded.decimals,
             logo_url = excluded.logo_url,
             is_verified = 1,
+            source = excluded.source,
             updated_at = excluded.updated_at
         `,
       { concurrency: 20 },
@@ -186,15 +187,28 @@ const makeTokenListService = Effect.gen(function* () {
     })
 
   const readD1Cache = (): Effect.Effect<TokenInfo[], never> =>
-    // Chain-scoped read: never serve another chain's tokens from the shared table.
+    // Chain-scoped, source-scoped read: only canonical-list rows (written by
+    // writeThroughD1 with source = 'token-list') may serve as fallback content —
+    // never user-curated rows upserted via token.service.
     sql`
       SELECT * FROM tokens
-      WHERE is_verified = 1 AND chain_id = ${deps.chainId}
+      WHERE source = 'token-list' AND is_verified = 1 AND chain_id = ${deps.chainId}
       ORDER BY symbol ASC
       LIMIT 500
     `
       .pipe(Effect.map((rows) => rows.map((r) => rowToToken(r as Record<string, unknown>))))
       .pipe(Effect.catch(() => Effect.succeed([] as TokenInfo[])))
+
+  /** Uncapped fallback read of one canonical token by address, for getToken. */
+  const readD1Token = (address: string): Effect.Effect<TokenInfo | null, TokenListError> =>
+    Effect.gen(function* () {
+      const rows = (yield* sql`
+        SELECT * FROM tokens
+        WHERE source = 'token-list' AND is_verified = 1 AND chain_id = ${deps.chainId} AND LOWER(address) = LOWER(${address})
+      `) as unknown as readonly Record<string, unknown>[]
+      if (rows.length === 0) return null
+      return rowToToken(rows[0] as Record<string, unknown>)
+    }).pipe(Effect.mapError((e) => new TokenListError(`Token list unavailable: ${String(e)}`)))
 
   const applyOptions = (tokens: readonly TokenInfo[], options?: TokenSearchOptions): TokenInfo[] => {
     // Defensive: a non-finite limit (e.g. NaN from a bad caller) or a negative one must
@@ -231,7 +245,18 @@ const makeTokenListService = Effect.gen(function* () {
 
   const getToken = (address: string): Effect.Effect<TokenInfo | null, TokenListError> =>
     Effect.gen(function* () {
-      const tokens = yield* resolveTokens()
+      // KV has the complete canonical list: an address absent from it is authoritative.
+      const cached = yield* readCache().pipe(Effect.catch(() => Effect.succeed(null)))
+      if (cached) {
+        const lower = address.toLowerCase()
+        return cached.find((t) => t.address.toLowerCase() === lower) ?? null
+      }
+      // KV miss: refresh (fetch + re-cache). On fetch failure fall back to an
+      // uncapped direct D1 lookup by address, so a canonical token beyond the
+      // listTokens 500-row cap still resolves.
+      const tokens = yield* refresh().pipe(
+        Effect.catch(() => readD1Token(address).pipe(Effect.map((t) => (t ? [t] : [])))),
+      )
       const lower = address.toLowerCase()
       return tokens.find((t) => t.address.toLowerCase() === lower) ?? null
     })

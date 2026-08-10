@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "findingId": "fnd_sig-feat-library-4a1871bbb1-794f_236800fcdf",
+  "featureId": "feat_library_4a1871bbb1",
+  "title": "No tests included for either service — cache fallback chain, case handling, and write paths unverified",
+  "category": "test-gap",
+  "severity": "low",
+  "confidence": "medium",
+  "triage": "test-gap",
+  "evidence": [
+    {
+      "path": "apps/api/src/services/token-list.service.ts",
+      "startLine": 208,
+      "endLine": 224,
+      "symbol": "resolveTokens",
+      "quote": null
+    },
+    {
+      "path": "apps/api/src/services/token.service.ts",
+      "startLine": 75,
+      "endLine": 127,
+      "symbol": "getToken/listTokens",
+      "quote": null
+    },
+    {
+      "path": "apps/api/package.json",
+      "startLine": 15,
+      "endLine": 15,
+      "symbol": null,
+      "quote": null
+    }
+  ],
+  "reasoning": "The feature reports tests: [] and no test files were included or omitted; the only test infrastructure evidence is the vitest script in package.json (line 15). The most behavior-critical logic — the KV → upstream-refresh → D1 fallback chain in resolveTokens (which decides 200 vs 500 for the whole token API), the case-sensitive getToken path, the ON CONFLICT column lists, and the silent upsert failure swallow — has no test coverage among the included files. These are exactly the paths where regressions (e.g. fallback ordering, cache-envelope validation at line 128, limit clamping) would silently change API behavior.",
+  "reproduction": null,
+  "recommendation": "Add unit tests for both services with injected fetcher/KV/SQL mocks: cache hit, cache miss→refresh, fetch failure→D1 fallback, all-miss→TokenListError, malformed KV envelope treated as miss, case-insensitive getToken, conflict-update column behavior, and limit edge cases.",
+  "whyTestsDoNotAlreadyCoverThis": "No test files were included for this feature and the feature metadata lists no linked tests.",
+  "suggestedRegressionTest": "Parameterized test over resolveTokens: (a) KV hit returns cached tokens without calling fetcher; (b) KV miss + fetch failure + non-empty D1 returns D1 rows; (c) all miss → TokenListError.",
+  "minimumFixScope": "New test file(s) under apps/api/test/ covering token-list.service.ts and token.service.ts.",
+  "status": "open",
+  "history": [],
+  "signature": "sig_feat-library-4a1871bbb1_794f793368",
+  "linkedPatchAttemptIds": [],
+  "createdByRunId": "20260810T032502-239ff8",
+  "createdAt": "2026-08-10T03:31:10.077Z",
+  "updatedAt": "2026-08-10T03:31:10.077Z"
+}

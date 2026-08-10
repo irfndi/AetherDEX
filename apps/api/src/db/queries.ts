@@ -106,6 +106,7 @@ export const insertTransaction = (tx: Omit<Transaction, "id" | "createdAt">) =>
     yield* sql`
       INSERT INTO transactions (chain_id, tx_hash, user_address, pool_id, tx_type, token_in, token_out, amount_in, amount_out, amount_usd, gas_used, gas_price, block_number, block_timestamp, status, created_at)
       VALUES (${tx.chainId}, ${tx.txHash}, ${tx.userAddress}, ${tx.poolId}, ${tx.txType}, ${tx.tokenIn}, ${tx.tokenOut}, ${tx.amountIn}, ${tx.amountOut}, ${tx.amountUsd}, ${tx.gasUsed}, ${tx.gasPrice}, ${tx.blockNumber}, ${tx.blockTimestamp}, ${tx.status}, ${Date.now()})
+      ON CONFLICT(chain_id, tx_hash) DO NOTHING
     `
   })
 
@@ -118,7 +119,7 @@ export const upsertUser = (address: string) =>
     yield* sql`
       INSERT INTO users (address, nonce, first_seen_at, last_active_at, tx_count, total_volume_usd)
       VALUES (${address}, ${nonce}, ${Date.now()}, ${Date.now()}, 0, 0)
-      ON CONFLICT(address) DO UPDATE SET last_active_at = excluded.last_active_at
+      ON CONFLICT(address) DO UPDATE SET nonce = excluded.nonce, last_active_at = excluded.last_active_at
     `
     return nonce
   })
@@ -189,7 +190,7 @@ export const setIndexerCursor = (chainId: number, indexer: string, nextBlock: bi
       INSERT INTO indexer_cursors (chain_id, indexer, next_block, updated_at)
       VALUES (${chainId}, ${indexer}, ${nextBlock.toString()}, ${Date.now()})
       ON CONFLICT(chain_id, indexer) DO UPDATE SET
-        next_block = excluded.next_block,
+        next_block = MAX(next_block, excluded.next_block),
         updated_at = excluded.updated_at
     `
   })
@@ -204,6 +205,8 @@ export const listLiquidityEvents = (chainId: number, protocol: "v3" | "v4", toke
     `
     return rows.map((row) => rowToLiquidityEvent(row as Record<string, unknown>))
   })
+
+export type PositionUpdateResult = { readonly updated: true; readonly id: number } | { readonly updated: false }
 
 export const updateLiquidityPosition = (input: {
   chainId: number
@@ -230,7 +233,8 @@ export const updateLiquidityPosition = (input: {
       RETURNING id
     `
     const id = rows[0]?.id
-    return typeof id === "number" ? id : null
+    const result: PositionUpdateResult = typeof id === "number" ? { updated: true, id } : { updated: false }
+    return result
   })
 
 export const updateV4LiquidityPosition = (input: {
@@ -251,5 +255,6 @@ export const updateV4LiquidityPosition = (input: {
       RETURNING id
     `
     const id = rows[0]?.id
-    return typeof id === "number" ? id : null
+    const result: PositionUpdateResult = typeof id === "number" ? { updated: true, id } : { updated: false }
+    return result
   })

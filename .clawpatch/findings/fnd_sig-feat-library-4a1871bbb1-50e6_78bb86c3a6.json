@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "findingId": "fnd_sig-feat-library-4a1871bbb1-50e6_78bb86c3a6",
+  "featureId": "feat_library_4a1871bbb1",
+  "title": "getToken performs case-sensitive exact-match on address while canonical tokens are stored EIP-55 checksummed",
+  "category": "api-contract",
+  "severity": "medium",
+  "confidence": "medium",
+  "triage": "contract-mismatch",
+  "evidence": [
+    {
+      "path": "apps/api/src/services/token.service.ts",
+      "startLine": 75,
+      "endLine": 84,
+      "symbol": "getToken",
+      "quote": null
+    },
+    {
+      "path": "apps/api/src/services/token-list.service.ts",
+      "startLine": 232,
+      "endLine": 237,
+      "symbol": "getToken",
+      "quote": null
+    }
+  ],
+  "reasoning": "The D1 tokens table is populated by writeThroughD1 with addresses from the canonical Uniswap list, which the module header (lines 4-7) says is validated for EIP-55 checksums. token.service.getToken queries `WHERE address = ${address}` verbatim, so a caller passing a lowercase or otherwise differently-cased address (typical for user input from wallets/URLs) will miss a valid stored token and return null, producing a 404 for an existing token. The sibling implementation in token-list.service.ts (lines 232-237) explicitly lowercases both sides of the comparison, showing the author knew case normalization matters. The HTTP layer is not included here, so normalization may or may not happen upstream; the two services are internally inconsistent, which is a contract hazard.",
+  "reproduction": "Insert a token with checksummed address 0xAbC...; call getToken('0xabc...'); observe null despite the token existing.",
+  "recommendation": "Normalize in the service: e.g. query `WHERE LOWER(address) = LOWER(${address})` or normalize the input to the stored format before binding (preferable to keep index usage), and mirror the same normalization in upsertToken so stored addresses have a canonical case.",
+  "whyTestsDoNotAlreadyCoverThis": "No test files were included for this feature (tests: []), and no tests are referenced by either service file.",
+  "suggestedRegressionTest": "Insert a token via upsertToken with a checksummed address, then call getToken with the all-lowercase form of the same address and assert the token is returned (and vice versa).",
+  "minimumFixScope": "apps/api/src/services/token.service.ts getToken (and upsertToken for consistency).",
+  "status": "open",
+  "history": [],
+  "signature": "sig_feat-library-4a1871bbb1_50e6e4e04f",
+  "linkedPatchAttemptIds": [],
+  "createdByRunId": "20260810T032502-239ff8",
+  "createdAt": "2026-08-10T03:31:10.075Z",
+  "updatedAt": "2026-08-10T03:31:10.075Z"
+}

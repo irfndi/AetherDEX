@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest"
 import {
-  buildRebalanceManagerCall,
   buildRebalanceIntent,
-  validateRebalanceForm,
+  buildRebalanceManagerCall,
   type RebalanceFormValues,
   type RebalancePosition,
+  validateRebalanceForm,
 } from "../../src/lib/rebalance"
 
 const position: RebalancePosition = {

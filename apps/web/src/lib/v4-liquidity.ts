@@ -6,7 +6,7 @@ const BPS = 10_000n
 const MAX_UINT128 = 2n ** 128n - 1n
 const MAX_INT128 = 2n ** 127n - 1n
 
-const AETHER_ROUTER_ABI = [
+export const AETHER_ROUTER_ABI = [
   {
     name: "addLiquiditySingleSided",
     type: "function",
@@ -179,9 +179,7 @@ export async function findV4SwapAmount(input: {
       amount1: amount1.toString(),
       useFullPrecision: true,
     })
-    const consumed = BigInt(
-      (input.zeroForOne ? position.mintAmounts.amount0 : position.mintAmounts.amount1).toString(),
-    )
+    const consumed = BigInt((input.zeroForOne ? position.mintAmounts.amount0 : position.mintAmounts.amount1).toString())
     const error = consumed > remainingInput ? consumed - remainingInput : remainingInput - consumed
     if (best === null || error < best.error) best = { swapAmountIn, quote, error }
     if (consumed < remainingInput) low = swapAmountIn + 1n
@@ -207,7 +205,11 @@ function createV4Pool(input: V4LiquidityPoolInput): Pool {
 }
 
 function validateInput(input: V4SingleSidedCallInput): void {
-  if (!Number.isSafeInteger(input.tickLower) || !Number.isSafeInteger(input.tickUpper) || input.tickLower >= input.tickUpper) {
+  if (
+    !Number.isSafeInteger(input.tickLower) ||
+    !Number.isSafeInteger(input.tickUpper) ||
+    input.tickLower >= input.tickUpper
+  ) {
     throw new Error("V4 range must contain two ordered integer ticks")
   }
   if (input.tickLower % input.pool.tickSpacing !== 0 || input.tickUpper % input.pool.tickSpacing !== 0) {

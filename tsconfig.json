@@ -26,5 +26,6 @@
     "incremental": true,
     "tsBuildInfoFile": "./.cache/tsbuildinfo"
   },
+  "include": ["*.ts", "src/**/*.ts"],
   "exclude": ["node_modules", "dist", ".wrangler", "coverage", "**/lib/**", "apps/**"]
 }

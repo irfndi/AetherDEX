@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "findingId": "fnd_sig-feat-library-4a1871bbb1-2cd8_b7f4d4c40e",
+  "featureId": "feat_library_4a1871bbb1",
+  "title": "is_native omitted from ON CONFLICT DO UPDATE in both write paths, leaving a stale native flag",
+  "category": "bug",
+  "severity": "low",
+  "confidence": "medium",
+  "triage": "risk",
+  "evidence": [
+    {
+      "path": "apps/api/src/services/token.service.ts",
+      "startLine": 156,
+      "endLine": 166,
+      "symbol": "upsertToken",
+      "quote": null
+    },
+    {
+      "path": "apps/api/src/services/token-list.service.ts",
+      "startLine": 140,
+      "endLine": 150,
+      "symbol": "writeThroughD1",
+      "quote": null
+    }
+  ],
+  "reasoning": "Both INSERT statements include is_native (token.service.ts line 157: ${token.isNative ? 1 : 0}; token-list.service.ts line 142: hardcoded 0), but neither conflict clause updates it. Consequences: (1) upsertToken called twice on the same address with different is_native values silently keeps the first value; (2) a token first upserted with is_native=1 keeps that flag after the canonical token-list refresh overwrites the row via ON CONFLICT, so readD1Cache/listTokens can report is_native=1 for a token the canonical source defines as non-native. The row's flag diverges from the latest write in both directions.",
+  "reproduction": "upsertToken({isNative:true,...}) then upsertToken({isNative:false,...}) for the same (chain_id,address); SELECT shows is_native still 1.",
+  "recommendation": "Add is_native = excluded.is_native to both ON CONFLICT DO UPDATE clauses (or, for the canonical refresh, deliberately reset is_native = 0 with a comment explaining the choice).",
+  "whyTestsDoNotAlreadyCoverThis": "No tests are included for either service; nothing exercises the conflict-update column list.",
+  "suggestedRegressionTest": "For both upsertToken and the token-list refresh: insert a row with is_native=1, then re-write with is_native=0, and assert the stored flag is 0.",
+  "minimumFixScope": "Add is_native to the SET list in both ON CONFLICT clauses (token.service.ts lines 158-166 and token-list.service.ts lines 143-150).",
+  "status": "open",
+  "history": [],
+  "signature": "sig_feat-library-4a1871bbb1_2cd8a55d2e",
+  "linkedPatchAttemptIds": [],
+  "createdByRunId": "20260810T032502-239ff8",
+  "createdAt": "2026-08-10T03:31:10.077Z",
+  "updatedAt": "2026-08-10T03:31:10.077Z"
+}

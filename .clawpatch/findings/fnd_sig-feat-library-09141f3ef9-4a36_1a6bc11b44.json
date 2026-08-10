@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "findingId": "fnd_sig-feat-library-09141f3ef9-4a36_1a6bc11b44",
+  "featureId": "feat_library_09141f3ef9",
+  "title": "tp-sl chainIdFor silently falls back to Sepolia (11155111) when CHAIN_ID is missing or invalid",
+  "category": "bug",
+  "severity": "low",
+  "confidence": "high",
+  "triage": "confirmed-bug",
+  "evidence": [
+    {
+      "path": "apps/api/src/routes/tp-sl.ts",
+      "startLine": 35,
+      "endLine": 35,
+      "symbol": null,
+      "quote": null
+    }
+  ],
+  "reasoning": "chainIdFor(c) = Number.parseInt(c.env.CHAIN_ID, 10) || 11155111 masks configuration errors: every other route (pools.ts line 33-34, positions.ts line 54-55/121, swap.ts line 103-104, price-guard.ts line 83-84) treats an invalid CHAIN_ID as a 500 configuration error, but tp-sl silently binds all reads (getOrder, listByPool, listByUser, getTriggerableOrders) and writes (createOrder) to chain id 11155111. In a misconfigured production deployment, users would silently see empty/wrong-chain order data and new orders would be recorded under the wrong chain id; the create path is only incidentally protected by the RPC chain-id check at line 177 when the RPC chain differs.",
+  "reproduction": "Deploy without CHAIN_ID; GET /api/v1/tp-sl/orders/1 returns 200/404 on Sepolia-bound data rather than surfacing the misconfiguration.",
+  "recommendation": "Match the other routes: parse CHAIN_ID strictly and return 500 'Invalid chain configuration' when missing/invalid instead of defaulting to a chain id.",
+  "whyTestsDoNotAlreadyCoverThis": "No tp-sl tests exist in the included files.",
+  "suggestedRegressionTest": "Unit test chainIdFor with unset and non-numeric CHAIN_ID expecting a configuration error rather than the 11155111 fallback.",
+  "minimumFixScope": "apps/api/src/routes/tp-sl.ts chainIdFor helper (and its call sites).",
+  "status": "open",
+  "history": [],
+  "signature": "sig_feat-library-09141f3ef9_4a3617d569",
+  "linkedPatchAttemptIds": [],
+  "createdByRunId": "20260810T032502-239ff8",
+  "createdAt": "2026-08-10T03:29:35.650Z",
+  "updatedAt": "2026-08-10T03:29:35.650Z"
+}

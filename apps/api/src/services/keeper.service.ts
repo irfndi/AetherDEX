@@ -34,10 +34,8 @@ export interface PositionPolicy {
 export interface KeeperTickResult {
   readonly timestamp: number
   readonly ordersChecked: number
-  readonly ordersTriggered: number
   readonly ordersFailed: number
   readonly positionsChecked: number
-  readonly rebalancesQueued: number
   readonly errors: readonly string[]
 }
 
@@ -180,7 +178,7 @@ function evaluateVolatility(
   _poolId: string,
   _windowSeconds: number,
 ): Effect.Effect<PolicyEvaluation, PolicyEvaluationError> {
-  // TODO: Read TWAP from AetherHook to compute volatility
+  // TODO: #323 - Read TWAP from AetherHook to compute volatility
   // For now, return a conservative default
   return Effect.succeed({
     shouldExecute: true,
@@ -225,7 +223,7 @@ function evaluateCapPressure(
   _poolId: string,
   _maxExposureUsd: number,
 ): Effect.Effect<PolicyEvaluation, PolicyEvaluationError> {
-  // TODO: Query total exposure for this pool from D1
+  // TODO: #324 - Query total exposure for this pool from D1
   // For now, return a conservative default
   return Effect.succeed({
     shouldExecute: true,
@@ -243,10 +241,9 @@ const makeKeeperService = Effect.gen(function* () {
   const tick = (chainId: number): Effect.Effect<KeeperTickResult, KeeperError, never> => {
     return Effect.gen(function* () {
       let ordersChecked = 0
-      const ordersTriggered = 0
-      let ordersFailed = 0
+      // Counts evaluations that threw; 0 until trigger evaluation lands.
+      const ordersFailed = 0
       let positionsChecked = 0
-      const rebalancesQueued = 0
       const errors: string[] = []
       const startTime = Date.now()
 
@@ -267,13 +264,12 @@ const makeKeeperService = Effect.gen(function* () {
           twapWindow: row.twap_window as number,
         }
 
-        try {
-          // TODO: Read spot price from PoolManager and TWAP from AetherHook
-          console.log(`[Keeper] Evaluating order ${order.id} for pool ${order.poolId}`)
-        } catch (error) {
-          errors.push(`Order ${order.id}: ${String(error)}`)
-          ordersFailed++
-        }
+        // ponytail: trigger evaluation is not implemented yet (needs PoolManager
+        // spot + AetherHook TWAP reads). Orders are counted as checked only —
+        // nothing is triggered or executed, and ordersTriggered is deliberately
+        // absent from KeeperTickResult so operators don't mistake a stub 0 for
+        // real activity.
+        console.warn(`[Keeper] Order ${order.id}: trigger evaluation not implemented yet — skipped`)
       }
 
       // 2. Check active position policies for rebalancing
@@ -299,7 +295,11 @@ const makeKeeperService = Effect.gen(function* () {
             continue
           }
 
-          console.log(`[Keeper] Evaluating position ${policy.positionId} for rebalance`)
+          // ponytail: rebalance queueing is not implemented yet (target range
+          // computation + on-chain reconciliation lands with auto-recenter in
+          // Phase 3). The anti-whipsaw check above is real; rebalancesQueued is
+          // deliberately absent from KeeperTickResult instead of a stub 0.
+          console.warn(`[Keeper] Position ${policy.positionId}: rebalance needed but queueing not implemented yet`)
         }
       }
 
@@ -309,10 +309,8 @@ const makeKeeperService = Effect.gen(function* () {
           timestamp: startTime,
           duration,
           ordersChecked,
-          ordersTriggered,
           ordersFailed,
           positionsChecked,
-          rebalancesQueued,
           errors: errors.length,
         }),
       )
@@ -320,10 +318,8 @@ const makeKeeperService = Effect.gen(function* () {
       return {
         timestamp: startTime,
         ordersChecked,
-        ordersTriggered,
         ordersFailed,
         positionsChecked,
-        rebalancesQueued,
         errors,
       }
     }).pipe(Effect.catch((error) => Effect.fail(new KeeperError(`Keeper tick failed: ${String(error)}`))))

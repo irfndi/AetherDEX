@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "findingId": "fnd_sig-feat-library-09141f3ef9-4de1_3a0e9c1b4d",
+  "featureId": "feat_library_09141f3ef9",
+  "title": "Route-level behavior is untested: only the price-guard pure function has coverage",
+  "category": "test-gap",
+  "severity": "low",
+  "confidence": "high",
+  "triage": "test-gap",
+  "evidence": [
+    {
+      "path": "apps/api/test/price-guard.test.ts",
+      "startLine": 1,
+      "endLine": 20,
+      "symbol": null,
+      "quote": null
+    }
+  ],
+  "reasoning": "The only test file associated with this source group covers the exported evaluatePriceGuard helper (two happy/sad path cases) and never exercises any route handler. All the validation, auth, error-mapping, and RPC-verification logic in swap.ts, tp-sl.ts, positions.ts, liquidity.ts, pools.ts, tokens.ts, and v3-quote.ts is unguarded — which is why the parameter-validation and id-precision defects above exist without regression protection. The project has the tooling for this (@cloudflare/vitest-pool-workers in devDependencies).",
+  "reproduction": null,
+  "recommendation": "Add handler-level tests using @cloudflare/vitest-pool-workers covering at minimum: swap /quote param validation, tp-sl create/verify flow and large-id round-trip, positions reconcile ownership checks, and pools sortBy whitelist.",
+  "whyTestsDoNotAlreadyCoverThis": "This finding is itself the gap: price-guard.test.ts covers only the pure evaluatePriceGuard function and contains no route or middleware tests.",
+  "suggestedRegressionTest": null,
+  "minimumFixScope": "Add route-level test files under apps/api/test/ for swap, tp-sl, positions, and pools handlers.",
+  "status": "open",
+  "history": [],
+  "signature": "sig_feat-library-09141f3ef9_4de14d2326",
+  "linkedPatchAttemptIds": [],
+  "createdByRunId": "20260810T032502-239ff8",
+  "createdAt": "2026-08-10T03:29:35.650Z",
+  "updatedAt": "2026-08-10T03:29:35.650Z"
+}

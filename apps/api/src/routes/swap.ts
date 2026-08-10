@@ -8,6 +8,7 @@
 
 import { Effect, Layer } from "effect"
 import { Hono } from "hono"
+import { createPublicClient, http } from "viem"
 import { type AuthVariables, requireAuth } from "../auth/middleware"
 import { makeDbLayer } from "../db/client"
 import { recordSwap } from "../db/queries"
@@ -140,7 +141,6 @@ swap.get("/quote", async (c) => {
   const tokenIn = c.req.query("tokenIn")
   const tokenOut = c.req.query("tokenOut")
   const amountIn = c.req.query("amountIn")
-  const slippageTolerance = Number.parseFloat(c.req.query("slippage") ?? "0.5") / 100
 
   if (!tokenIn || !tokenOut || !amountIn) {
     return c.json({ error: "Missing required query params: tokenIn, tokenOut, amountIn" }, 400)
@@ -149,6 +149,15 @@ swap.get("/quote", async (c) => {
   if (!ETH_ADDRESS_RE.test(tokenIn) || !ETH_ADDRESS_RE.test(tokenOut)) {
     return c.json({ error: "Invalid token address" }, 400)
   }
+
+  // Slippage is a percentage (0.5 = 0.5%). NaN (abc), negative, and unbounded
+  // values would flow into the quote and null out minAmountOut (silently
+  // disabling client slippage protection) — reject them up front.
+  const slippagePercent = Number.parseFloat(c.req.query("slippage") ?? "0.5")
+  if (!Number.isFinite(slippagePercent) || slippagePercent < 0 || slippagePercent > 100) {
+    return c.json({ error: "Slippage must be between 0% and 100%" }, 400)
+  }
+  const slippageTolerance = slippagePercent / 100
 
   try {
     if (!c.env.ROUTER_ADDRESS || !c.env.FACTORY_ADDRESS) {
@@ -254,7 +263,59 @@ swap.post(
       return c.json({ error: "Invalid chain configuration" }, 500)
     }
 
+    // Strict shape checks: fabricated rows must fail before any on-chain or D1 work.
+    const TX_HASH_RE = /^0x[a-fA-F0-9]{64}$/
+    const POOL_ID_RE = /^0x[a-fA-F0-9]{64}$/
+    const TOKEN_ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/
+    const UINT_RE = /^\d+$/
+    if (!TX_HASH_RE.test(body.txHash)) {
+      return c.json({ error: "Invalid txHash (must be 0x + 64 hex chars)" }, 400)
+    }
+    if (!Number.isSafeInteger(body.blockNumber) || body.blockNumber <= 0) {
+      return c.json({ error: "Invalid blockNumber (must be a positive integer)" }, 400)
+    }
+    if (!Number.isSafeInteger(body.blockTimestamp) || body.blockTimestamp <= 0) {
+      return c.json({ error: "Invalid blockTimestamp (must be a positive integer)" }, 400)
+    }
+    if (body.poolId !== undefined && !POOL_ID_RE.test(body.poolId)) {
+      return c.json({ error: "Invalid poolId (must be 0x + 64 hex chars)" }, 400)
+    }
+    if (body.tokenIn !== undefined && !TOKEN_ADDRESS_RE.test(body.tokenIn)) {
+      return c.json({ error: "Invalid tokenIn address" }, 400)
+    }
+    if (body.tokenOut !== undefined && !TOKEN_ADDRESS_RE.test(body.tokenOut)) {
+      return c.json({ error: "Invalid tokenOut address" }, 400)
+    }
+    if (body.amountIn !== undefined && !UINT_RE.test(body.amountIn)) {
+      return c.json({ error: "Invalid amountIn (must be a non-negative integer string)" }, 400)
+    }
+    if (body.amountOut !== undefined && !UINT_RE.test(body.amountOut)) {
+      return c.json({ error: "Invalid amountOut (must be a non-negative integer string)" }, 400)
+    }
+    if (body.amountUsd !== undefined && (!Number.isFinite(body.amountUsd) || body.amountUsd < 0)) {
+      return c.json({ error: "Invalid amountUsd (must be a non-negative number)" }, 400)
+    }
+
     try {
+      // Verify the tx on-chain before persisting: receipt succeeded and the sender
+      // is the authenticated wallet (mirrors tp-sl creation verification). Without
+      // an RPC endpoint no receipt can be verified, so recording is refused.
+      const rpcUrl = c.env.RPC_URL
+      if (!rpcUrl) {
+        return c.json({ error: "Swap verification is not configured (RPC_URL required)" }, 503)
+      }
+      const publicClient = createPublicClient({ transport: http(rpcUrl) })
+      if ((await publicClient.getChainId()) !== chainId) {
+        return c.json({ error: "RPC_URL chain does not match CHAIN_ID" }, 503)
+      }
+      const receipt = await publicClient.getTransactionReceipt({ hash: body.txHash as `0x${string}` })
+      if (receipt.status !== "success") {
+        return c.json({ error: "Transaction did not succeed on-chain" }, 400)
+      }
+      if (receipt.from.toLowerCase() !== session.userAddress.toLowerCase()) {
+        return c.json({ error: "Transaction sender does not match the authenticated wallet" }, 403)
+      }
+
       await runEffect(
         recordSwap({
           chainId,

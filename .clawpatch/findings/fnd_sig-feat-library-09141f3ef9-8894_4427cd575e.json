@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "findingId": "fnd_sig-feat-library-09141f3ef9-8894_4427cd575e",
+  "featureId": "feat_library_09141f3ef9",
+  "title": "GET /api/v1/quote accepts invalid slippage and amountIn: NaN tolerance silently corrupts quote output (minAmountOut serialized as null)",
+  "category": "api-contract",
+  "severity": "medium",
+  "confidence": "medium",
+  "triage": "contract-mismatch",
+  "evidence": [
+    {
+      "path": "apps/api/src/routes/swap.ts",
+      "startLine": 139,
+      "endLine": 146,
+      "symbol": null,
+      "quote": null
+    },
+    {
+      "path": "apps/api/src/routes/swap.ts",
+      "startLine": 159,
+      "endLine": 164,
+      "symbol": null,
+      "quote": null
+    }
+  ],
+  "reasoning": "In the GET /quote handler, slippage is computed as Number.parseFloat(c.req.query(\"slippage\") ?? \"0.5\") / 100 with no regex, finite, or range validation (contrast v3-quote.ts lines 23/35 which enforce 0-5). A non-numeric value such as \"abc\" yields NaN, which propagates into swapService.getQuote as slippageTolerance; any derived numeric field then serializes as null in the 200 response (JSON.stringify(NaN) → null), silently corrupting minAmountOut/price impact instead of returning 400. amountIn is likewise only presence-checked (line 145), so non-numeric input surfaces as a service-level 500 with String(err) instead of a 400. The companion /build and /record handlers are not affected, but this endpoint has no tests at all.",
+  "reproduction": "GET /api/v1/quote?tokenIn=0x0000000000000000000000000000000000000001&tokenOut=0x0000000000000000000000000000000000000002&amountIn=1000000000000000000&slippage=abc returns HTTP 200 with minAmountOut: null instead of 400.",
+  "recommendation": "Validate slippage with a bounded finite check (e.g., 0 <= slippage <= 5, mirroring v3-quote.ts) and validate amountIn against /^\\d+$/ before calling getQuote; return 400 for violations. Add handler-level tests covering non-numeric and out-of-range params.",
+  "whyTestsDoNotAlreadyCoverThis": "The only included test file (apps/api/test/price-guard.test.ts) covers the pure evaluatePriceGuard function; no test exercises the swap route handlers or their query-param validation.",
+  "suggestedRegressionTest": "Assert GET /quote with slippage=abc and with amountIn=abc both return 400, and that a valid request never returns null for minAmountOut.",
+  "minimumFixScope": "apps/api/src/routes/swap.ts GET /quote handler parameter validation.",
+  "status": "open",
+  "history": [],
+  "signature": "sig_feat-library-09141f3ef9_889490b3ab",
+  "linkedPatchAttemptIds": [],
+  "createdByRunId": "20260810T032502-239ff8",
+  "createdAt": "2026-08-10T03:29:35.650Z",
+  "updatedAt": "2026-08-10T03:29:35.650Z"
+}

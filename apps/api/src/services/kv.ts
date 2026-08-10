@@ -33,6 +33,18 @@ const KEY_PREFIXES = {
 } as const
 
 /**
+ * Parse a KV value defensively: a corrupt/truncated/old-schema entry must
+ * degrade the cache read to `none`, never throw out of the Effect runtime.
+ */
+function parseEntry<T>(raw: string): Option.Option<T> {
+  try {
+    return Option.some(JSON.parse(raw) as T)
+  } catch {
+    return Option.none()
+  }
+}
+
+/**
  * KV Cache Service — typed wrapper around KVNamespace
  */
 export class KVCacheService extends Context.Service<KVCacheService>()("@aetherdex/KVCacheService", {
@@ -61,7 +73,7 @@ export class KVCacheService extends Context.Service<KVCacheService>()("@aetherde
           catch: (e) => new Error(`KV get price failed: ${String(e)}`),
         })
         if (!raw) return Option.none<PriceEntry>()
-        return Option.some(JSON.parse(raw) as PriceEntry)
+        return parseEntry<PriceEntry>(raw)
       }),
 
     /**
@@ -76,7 +88,10 @@ export class KVCacheService extends Context.Service<KVCacheService>()("@aetherde
             catch: (e) => new Error(`KV get price failed: ${String(e)}`),
           })
           if (raw) {
-            result[addr] = JSON.parse(raw) as PriceEntry
+            const parsed = parseEntry<PriceEntry>(raw)
+            if (Option.isSome(parsed)) {
+              result[addr] = parsed.value
+            }
           }
         }
         return result
@@ -106,7 +121,7 @@ export class KVCacheService extends Context.Service<KVCacheService>()("@aetherde
           catch: (e) => new Error(`KV get nonce failed: ${String(e)}`),
         })
         if (!raw) return Option.none<SiweNonceEntry>()
-        return Option.some(JSON.parse(raw) as SiweNonceEntry)
+        return parseEntry<SiweNonceEntry>(raw)
       }),
 
     /**
@@ -142,7 +157,7 @@ export class KVCacheService extends Context.Service<KVCacheService>()("@aetherde
           catch: (e) => new Error(`KV get session failed: ${String(e)}`),
         })
         if (!raw) return Option.none<SessionEntry>()
-        return Option.some(JSON.parse(raw) as SessionEntry)
+        return parseEntry<SessionEntry>(raw)
       }),
 
     /**

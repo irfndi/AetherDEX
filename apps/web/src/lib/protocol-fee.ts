@@ -180,10 +180,7 @@ export async function fetchDepositEstimate(
 
 function parseDepositEstimateResponse(json: unknown): DepositEstimateResponse {
   if (!isRecord(json)) throw new Error("Unexpected deposit estimate response")
-  if (
-    typeof json.mode !== "string" ||
-    !(DEPOSIT_ESTIMATE_MODES as readonly string[]).includes(json.mode)
-  ) {
+  if (typeof json.mode !== "string" || !(DEPOSIT_ESTIMATE_MODES as readonly string[]).includes(json.mode)) {
     throw new Error("Deposit estimate response is missing a valid mode")
   }
   const breakdown = json.protocolFee
@@ -217,8 +214,7 @@ function parseDepositEstimateResponse(json: unknown): DepositEstimateResponse {
         typeof breakdown.protocolFeePercentLabel === "string"
           ? breakdown.protocolFeePercentLabel
           : PROTOCOL_FEE_PERCENT_LABEL,
-      chargedOn:
-        typeof breakdown.chargedOn === "string" ? breakdown.chargedOn : PROTOCOL_FEE_CHARGED_ON,
+      chargedOn: typeof breakdown.chargedOn === "string" ? breakdown.chargedOn : PROTOCOL_FEE_CHARGED_ON,
       chargedHere: breakdown.chargedHere,
       amounts,
     },

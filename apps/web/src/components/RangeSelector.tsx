@@ -20,6 +20,9 @@ export function RangeSelector({
   const maximum = minimum + spacing * 48
   const lower = clamp(snap(lowerTick, spacing), minimum, maximum - spacing)
   const upper = clamp(snap(upperTick, spacing), lower + spacing, maximum)
+  // Normalize raw depth values (any scale, e.g. 1e18 wei amounts) to 0-100%
+  // relative to the tallest bar so the curve isn't silently flattened.
+  const maxDepth = liquidityDistribution ? Math.max(0, ...liquidityDistribution) : 0
 
   return (
     <fieldset className="rounded-box border border-base-300 bg-base-200/35 p-3" aria-label="Visual price range">
@@ -38,7 +41,7 @@ export function RangeSelector({
               <span
                 className="min-w-0 flex-1 rounded-t-sm bg-secondary/45"
                 key={`${height}-${index}`}
-                style={{ height: `${clamp(height, 0, 100)}%` }}
+                style={{ height: `${maxDepth > 0 ? clamp((height / maxDepth) * 100, 0, 100) : 0}%` }}
               />
             ))}
           </div>
@@ -47,14 +50,15 @@ export function RangeSelector({
             Pool depth data unavailable
           </div>
         )}
-        <div
-          className="absolute bottom-3 top-5 rounded-sm border-x-2 border-primary bg-primary/15"
-          style={{
-            left: `${percentage(lower, minimum, maximum)}%`,
-            right: `${100 - percentage(upper, minimum, maximum)}%`,
-          }}
-          aria-hidden="true"
-        />
+        <div className="absolute inset-x-2 bottom-3 top-5" aria-hidden="true">
+          <div
+            className="h-full rounded-sm border-x-2 border-primary bg-primary/15"
+            style={{
+              marginLeft: `${percentage(lower, minimum, maximum)}%`,
+              marginRight: `${100 - percentage(upper, minimum, maximum)}%`,
+            }}
+          />
+        </div>
         <input
           aria-label="Lower tick range handle"
           className="range range-primary absolute inset-x-2 top-1 z-10 h-5 [--range-shdw:transparent]"

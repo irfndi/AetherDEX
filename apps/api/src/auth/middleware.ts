@@ -58,14 +58,24 @@ export async function authMiddleware(
       !Number.isFinite(configuredChainId) ||
       session.chainId !== configuredChainId
     ) {
-      await kv.delete(`session:${token}`)
+      try {
+        await kv.delete(`session:${token}`)
+      } catch {
+        // Best-effort cleanup — a failed delete must not fail the request.
+      }
       await next()
       return
     }
     c.set("session", session)
     c.set("sessionToken", token)
   } catch {
-    // Malformed session data — treat as no session
+    // Malformed session data — treat as no session, then remove the bad key
+    // so a poison session cannot wedge the bearer token.
+    try {
+      await kv.delete(`session:${token}`)
+    } catch {
+      // Best-effort cleanup — a failed delete must not fail the request.
+    }
   }
 
   await next()

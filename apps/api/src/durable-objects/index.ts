@@ -1,3 +1,4 @@
+export { AtomicCounterDO } from "./atomic-counter-do"
 export { OrderBookDO } from "./order-book-do"
 export { SiweNonceDO } from "./siwe-nonce-do"
 export { VolumeAlertHubDO } from "./volume-alert-hub-do"

@@ -160,19 +160,21 @@ const makeIndexerService = (chains: readonly IndexerChainConfig[]) =>
       }
     }
 
-    /** blockNumber -> unix seconds, fetched once per block per batch. */
+    /** blockNumber -> unix seconds, fetched once per block per batch, in parallel. */
     const loadTimestamps = (chainId: number, client: PublicClient, blocks: readonly number[]) =>
       Effect.gen(function* () {
-        const timestampByBlock = new Map<number, number>()
-        for (const blockNumber of blocks) {
-          if (timestampByBlock.has(blockNumber)) continue
-          const block = yield* Effect.tryPromise({
-            try: () => client.getBlock({ blockNumber: BigInt(blockNumber) }),
-            catch: (e) => new IndexerError({ reason: `RPC getBlock: ${String(e)}`, chainId }),
-          })
-          timestampByBlock.set(blockNumber, Number(block.timestamp))
-        }
-        return timestampByBlock
+        // Bounded concurrency: a 2000-block batch must not serialize 2000 RPC
+        // round-trips, but unbounded parallelism would hammer the RPC provider.
+        const fetched = yield* Effect.forEach(
+          blocks,
+          (blockNumber) =>
+            Effect.tryPromise({
+              try: () => client.getBlock({ blockNumber: BigInt(blockNumber) }),
+              catch: (e) => new IndexerError({ reason: `RPC getBlock: ${String(e)}`, chainId }),
+            }).pipe(Effect.map((block) => [blockNumber, Number(block.timestamp)] as const)),
+          { concurrency: 16 },
+        )
+        return new Map(fetched)
       })
 
     const persistV3 = (chainId: number, event: V3LiquidityEvent, blockTimestamp: number) =>
@@ -238,24 +240,37 @@ const makeIndexerService = (chains: readonly IndexerChainConfig[]) =>
             return
           case "swap": {
             const pool = yield* getPoolById(event.poolId, chainId)
-            if (pool) {
-              yield* upsertPool({
-                chainId: pool.chainId,
-                poolId: pool.poolId,
-                token0Address: pool.token0Address,
-                token1Address: pool.token1Address,
-                fee: pool.fee,
-                tickSpacing: pool.tickSpacing,
-                hookAddress: pool.hookAddress,
-                sqrtPriceX96: event.sqrtPriceX96,
-                currentTick: event.tick,
-                liquidity: event.liquidity,
-                tvlUsd: pool.tvlUsd,
-                volume24hUsd: pool.volume24hUsd,
-                fees24hUsd: pool.fees24hUsd,
-                isActive: pool.isActive,
-              })
+            if (pool === null) {
+              // The pool row only exists if its Initialize was indexed. A missing row
+              // means the Initialize predates this index window; the Swap event carries
+              // no currency addresses, so the pool cannot be reconstructed and silently
+              // persisting poolId = null records unlinkable, unrecoverable rows (a
+              // later backfill cannot repair them because the swaps are conflict-guarded
+              // once written). Fail loudly so the operator backfills the deployment
+              // range (indexRange / genesisBlock) and the cursor stays put to retry.
+              return yield* Effect.fail(
+                new IndexerError({
+                  reason: `Swap references unknown pool ${event.poolId} (its Initialize predates the index window) — set genesisBlock before pool deployment or indexRange the deployment block range so the pool row exists before swaps are recorded`,
+                  chainId,
+                }),
+              )
             }
+            yield* upsertPool({
+              chainId: pool.chainId,
+              poolId: pool.poolId,
+              token0Address: pool.token0Address,
+              token1Address: pool.token1Address,
+              fee: pool.fee,
+              tickSpacing: pool.tickSpacing,
+              hookAddress: pool.hookAddress,
+              sqrtPriceX96: event.sqrtPriceX96,
+              currentTick: event.tick,
+              liquidity: event.liquidity,
+              tvlUsd: pool.tvlUsd,
+              volume24hUsd: pool.volume24hUsd,
+              fees24hUsd: pool.fees24hUsd,
+              isActive: pool.isActive,
+            })
             // D1 enforces FKs: the swap's user must exist, and pool_id may only
             // reference a persisted pool (a swap indexed before its Initialize).
             yield* upsertUser(event.sender)
@@ -263,7 +278,7 @@ const makeIndexerService = (chains: readonly IndexerChainConfig[]) =>
               chainId,
               txHash: event.txHash,
               userAddress: event.sender,
-              poolId: pool ? event.poolId : null,
+              poolId: event.poolId,
               ...swapSides(event, pool),
               amountUsd: null,
               blockNumber: event.blockNumber,

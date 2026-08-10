@@ -55,8 +55,8 @@
 ## Tech Stack (Latest, 2026-06-30)
 
 ### Runtime
-- **Bun**: canary (`bun --canary`; Bun 1.4.x canary) — pinned via `packageManager: bun@canary` + CI. (document exact version in tooling/scripts/VERSIONS.md)
-- **TypeScript** (*target — delivered by Workstream P, PR #302*): **7.0 stable (native Go compiler — 8–12× faster builds)** via the standard `typescript@^7.0.x` package (`tsc`). **This branch is pre-migration** (`typescript@7.0.1-rc` + `@typescript/native-preview`/`tsgo`); the stable native `tsc` lands with Workstream P. `@typescript/native-preview` / `tsgo` are **superseded**; nightlies ship as `typescript@next`.
+- **Bun**: canary (`bun --canary`; Bun 1.4.x canary) — `packageManager: bun@canary` selects the floating canary dist-tag (not an exact pin); record the resolved `bun --version` in tooling/scripts/VERSIONS.md. CI installs canary via `.github/actions/setup` (oven-sh/setup-bun, `bun-version: canary`).
+- **TypeScript** (**installed**): **7.0.2 stable (native Go compiler — 8–12× faster builds)** via the standard `typescript@^7.0.2` package (`tsc`). The pre-migration `typescript@7.0.1-rc` + `@typescript/native-preview`/`tsgo` toolchain is superseded and not installed; nightlies ship as `typescript@next`.
 - **TS 7 config rules**: `rootDir` defaults to `./` (set explicitly per workspace), `types` defaults to `[]` (list needed `@types` explicitly), `baseUrl` removed (relative `paths`), `esModuleInterop`/`allowSyntheticDefaultImports` must stay `true`.
 - **Node**: 24+
 
@@ -264,7 +264,7 @@ bun run contracts:deploy:sepolia
 ### Done (Wave 1)
 - T1: Nuclear reset (preserve contracts as `.archive-contracts-2026/`, wipe rest)
 - T2: Monorepo scaffold (apps/web, apps/api, packages/contracts, root tooling)
-- T3: Install deps (Bun 1.4.0-canary, TS 7.0.1-rc, tsgo, Biome 1.9.4, Vitest 4.1.9)
+- T3: Install deps (Bun 1.4.0-canary, TS 7.0.1-rc, tsgo, Biome 1.9.4, Vitest 4.1.9) — historical snapshot; current toolchain versions are in root package.json / bun.lock (TS ^7.0.2, Biome ^2.5.5, Vitest ^4.1.10)
 - T4: CI/CD (GitHub Actions: contracts, backend, frontend, ci-status + CodeQL + Dependabot)
 
 ### In Progress (Wave 2)

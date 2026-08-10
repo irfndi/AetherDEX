@@ -78,4 +78,52 @@ describe("ThemeToggle", () => {
     await user.click(screen.getByRole("button", { name: /toggle theme/i }))
     expect(screen.getByRole("img", { name: /switch to dark theme/i })).toBeDefined()
   })
+
+  it("falls back to aetherdex for an invalid stored theme", () => {
+    mockStorage.setItem("aetherdex-theme", "dark")
+    render(<ThemeToggle />)
+    expect(document.documentElement.getAttribute("data-theme")).toBe("aetherdex")
+  })
+
+  it("falls back to aetherdex for an empty stored value", () => {
+    mockStorage.setItem("aetherdex-theme", "")
+    render(<ThemeToggle />)
+    expect(document.documentElement.getAttribute("data-theme")).toBe("aetherdex")
+  })
+
+  it("renders with the default theme when storage reads throw", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: () => {
+        throw new Error("storage blocked")
+      },
+      setItem: () => {},
+      removeItem: () => {},
+      clear: () => {},
+      key: () => null,
+      get length() {
+        return 0
+      },
+    })
+    render(<ThemeToggle />)
+    expect(document.documentElement.getAttribute("data-theme")).toBe("aetherdex")
+  })
+
+  it("still toggles the theme when storage writes throw", async () => {
+    vi.stubGlobal("localStorage", {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error("quota exceeded")
+      },
+      removeItem: () => {},
+      clear: () => {},
+      key: () => null,
+      get length() {
+        return 0
+      },
+    })
+    const user = userEvent.setup()
+    render(<ThemeToggle />)
+    await user.click(screen.getByRole("button", { name: /toggle theme/i }))
+    expect(document.documentElement.getAttribute("data-theme")).toBe("light")
+  })
 })

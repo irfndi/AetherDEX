@@ -36,6 +36,9 @@ export function listPools(limit = 50, offset = 0, options: ListPoolsOptions = {}
       try: () => fetch(`${API_URL}/pools?${params.toString()}`, { signal: options.signal ?? null }),
       catch: (e) => new Error(`Pools fetch failed: ${String(e)}`),
     })
+    if (!res.ok) {
+      return yield* Effect.fail(new Error(`Pools fetch failed: HTTP ${res.status}`))
+    }
     const json: unknown = yield* Effect.tryPromise({
       try: () => res.json(),
       catch: (e) => new Error(`Pools parse failed: ${String(e)}`),
@@ -66,6 +69,9 @@ export function fetchTokens(options: FetchTokensOptions = {}) {
       try: () => fetch(`${API_URL}/tokens?${params.toString()}`, { signal: options.signal ?? null }),
       catch: (e) => new Error(`Tokens fetch failed: ${String(e)}`),
     })
+    if (!res.ok) {
+      return yield* Effect.fail(new Error(`Tokens fetch failed: HTTP ${res.status}`))
+    }
     const json: unknown = yield* Effect.tryPromise({
       try: () => res.json(),
       catch: (e) => new Error(`Tokens parse failed: ${String(e)}`),

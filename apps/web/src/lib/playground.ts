@@ -10,7 +10,14 @@
 export const POSITION_STATUSES = ["below", "inside", "above"] as const
 export type PositionStatus = (typeof POSITION_STATUSES)[number]
 
-export type PlaygroundField = "amountUsdOrToken" | "currentPrice" | "lowerPrice" | "upperPrice" | "amount0" | "amount1"
+export type PlaygroundField =
+  | "amountUsdOrToken"
+  | "currentPrice"
+  | "lowerPrice"
+  | "upperPrice"
+  | "amount0"
+  | "amount1"
+  | "feePercent"
 export type PlaygroundErrors = Partial<Record<PlaygroundField, string>>
 
 export type PlaygroundRangeInput = {
@@ -210,12 +217,13 @@ export function simulatePriceScenarios(input: ScenarioSimulatorInput): ScenarioR
     errors.amount1 = "Token amount cannot be negative."
   }
   if (
-    (Number.isFinite(input.amount0) ? input.amount0 : 0) + (Number.isFinite(input.amount1) ? input.amount1 : 0) <= 0
+    (Number.isFinite(input.amount0) ? input.amount0 : 0) + (Number.isFinite(input.amount1) ? input.amount1 : 0) <=
+    0
   ) {
     errors.amount0 = errors.amount0 ?? "Position value must be greater than zero."
   }
   if (input.feePercent !== undefined && (!Number.isFinite(input.feePercent) || input.feePercent < 0)) {
-    errors.currentPrice = errors.currentPrice ?? "Fee percent must be zero or positive."
+    errors.feePercent = "Fee percent must be zero or positive."
   }
   if (Object.keys(errors).length > 0) {
     return { ok: false, errors }

@@ -86,8 +86,65 @@ async function writeState(kv: KVNamespace, stateKey: string, record: CircuitStat
   }
 }
 
+/**
+ * Atomically add `amount` to a per-key counter via the atomic-counter DO.
+ * Cloudflare KV has no CAS/increment, so the DO instance (one per key) is the
+ * serialization point for the failure streak. Returns null when the binding is
+ * missing (caller falls back to KV).
+ */
+async function atomicIncrement(
+  counter: DurableObjectNamespace | null,
+  key: string,
+  amount: number,
+  ttlMs: number,
+): Promise<number | null> {
+  if (!counter) return null
+  const stub = counter.get(counter.idFromName(key))
+  const response = await stub.fetch("https://counter/increment", {
+    method: "POST",
+    body: JSON.stringify({ amount, ttlMs }),
+  })
+  const { value } = (await response.json()) as { value: number }
+  return value
+}
+
+async function resetCounter(counter: DurableObjectNamespace | null, key: string): Promise<void> {
+  if (!counter) return
+  try {
+    await counter.get(counter.idFromName(key)).fetch("https://counter/reset", { method: "POST" })
+  } catch (error) {
+    console.warn("[circuit-breaker] counter reset failed:", error)
+  }
+}
+
+/**
+ * Atomically claim the single half-open trial slot for a breaker. KV cannot
+ * express this (no CAS), so the claim marker lives in the atomic-counter DO:
+ * the first caller after cooldown wins, and every concurrent request is
+ * rejected until the trial resolves (or the marker TTL expires).
+ */
+async function claimTrial(
+  counter: DurableObjectNamespace | null,
+  stateKey: string,
+  cooldownSeconds: number,
+): Promise<boolean> {
+  if (!counter) {
+    // No COUNTER binding — fall back to best-effort admission. Single-flight
+    // cannot be guaranteed without the atomic DO.
+    return true
+  }
+  const stub = counter.get(counter.idFromName(stateKey))
+  const response = await stub.fetch("https://counter/claim", {
+    method: "POST",
+    body: JSON.stringify({ ttlMs: cooldownSeconds * 1000 }),
+  })
+  const { claimed } = (await response.json()) as { claimed: boolean }
+  return claimed
+}
+
 async function recordFailure(
   kv: KVNamespace,
+  counter: DurableObjectNamespace | null,
   failuresKey: string,
   stateKey: string,
   failureThreshold: number,
@@ -99,39 +156,68 @@ async function recordFailure(
   const now = Date.now()
   if (trial) {
     // Half-open trial failed — the dependency is still down; re-open immediately.
+    // The trial claim is NOT released here: releasing it early would let
+    // concurrent stragglers claim a second trial; its TTL (cooldown) expires
+    // before the next admission is possible anyway.
     await writeState(kv, stateKey, { status: "open", openedAt: now }, cooldownSeconds)
     console.warn(`[circuit-breaker] breaker "${name}" RE-OPENED (half-open trial failed)`)
     return
   }
 
-  let count = weight
-  try {
-    const { metadata } = await kv.getWithMetadata(failuresKey)
-    if (metadata !== null && typeof metadata === "object") {
-      const previous = (metadata as { count?: unknown }).count
-      if (typeof previous === "number" && Number.isFinite(previous)) count = previous + weight
+  const atomicCount = await atomicIncrement(counter, failuresKey, weight, cooldownSeconds * 2000)
+  let count: number
+  if (atomicCount !== null) {
+    count = atomicCount
+  } else {
+    // ponytail: KV fallback (no COUNTER binding) — the read-modify-write is
+    // not atomic, so concurrent failures may be under-counted (trip one
+    // failure late); bind COUNTER for exact streaks.
+    count = weight
+    try {
+      const { metadata } = await kv.getWithMetadata(failuresKey)
+      if (metadata !== null && typeof metadata === "object") {
+        const previous = (metadata as { count?: unknown }).count
+        if (typeof previous === "number" && Number.isFinite(previous)) count = previous + weight
+      }
+    } catch (error) {
+      console.warn("[circuit-breaker] failure read failed; starting a new streak:", error)
     }
-  } catch (error) {
-    console.warn("[circuit-breaker] failure read failed; starting a new streak:", error)
+    try {
+      await kv.put(failuresKey, String(count), {
+        expirationTtl: kvTtlSeconds(cooldownSeconds * 2),
+        metadata: { count, failedAt: now },
+      })
+    } catch (error) {
+      console.warn("[circuit-breaker] failure write failed:", error)
+    }
   }
 
-  try {
-    await kv.put(failuresKey, String(count), {
-      expirationTtl: kvTtlSeconds(cooldownSeconds * 2),
-      metadata: { count, failedAt: now },
-    })
-    if (count >= failureThreshold) {
-      await writeState(kv, stateKey, { status: "open", openedAt: now }, cooldownSeconds)
-      console.warn(`[circuit-breaker] breaker "${name}" OPEN after ${count} failures (threshold ${failureThreshold})`)
-    }
-  } catch (error) {
-    console.warn("[circuit-breaker] failure write failed:", error)
+  if (count >= failureThreshold) {
+    await writeState(kv, stateKey, { status: "open", openedAt: now }, cooldownSeconds)
+    console.warn(`[circuit-breaker] breaker "${name}" OPEN after ${count} failures (threshold ${failureThreshold})`)
   }
 }
 
-async function closeCircuit(kv: KVNamespace, failuresKey: string, stateKey: string, name: string): Promise<void> {
+async function closeCircuit(
+  kv: KVNamespace,
+  counter: DurableObjectNamespace | null,
+  failuresKey: string,
+  stateKey: string,
+  openedAt: number,
+  name: string,
+): Promise<void> {
   try {
+    // Only close the circuit THIS trial opened: a concurrent failed trial may
+    // have already re-opened it (new openedAt) and its reopen must not be
+    // undone. (KV delete is not conditional, so read+delete is best-effort —
+    // the atomic claim in claimTrial() is what makes trials single-flight.)
+    const { value } = await kv.getWithMetadata(stateKey)
+    if (value !== null) {
+      const current = JSON.parse(value) as { status?: unknown; openedAt?: unknown }
+      if (current.status !== "half_open" || current.openedAt !== openedAt) return
+    }
     await Promise.all([kv.delete(failuresKey), kv.delete(stateKey)])
+    await resetCounter(counter, failuresKey)
     console.warn(`[circuit-breaker] breaker "${name}" CLOSED (half-open trial succeeded)`)
   } catch (error) {
     console.warn("[circuit-breaker] close failed:", error)
@@ -162,10 +248,12 @@ export function circuitBreaker(options: CircuitBreakerOptions = {}): CircuitBrea
     const envConfig = readCircuitBreakerConfig(env)
     const failureThreshold = options.failureThreshold ?? envConfig.failureThreshold
     const cooldownSeconds = options.cooldownSeconds ?? envConfig.cooldownSeconds
+    const counter = env.COUNTER ?? null
     const now = Date.now()
 
     const state = await readState(kv, stateKey)
     let trial = false
+    let trialOpenedAt = 0
     if (state !== null) {
       const elapsedMs = now - state.openedAt
       if (elapsedMs < cooldownSeconds * 1000) {
@@ -174,8 +262,19 @@ export function circuitBreaker(options: CircuitBreakerOptions = {}): CircuitBrea
         c.header("X-Circuit-Breaker", "open")
         return c.json({ error: "Service temporarily unavailable (circuit open). Retry later." }, 503)
       }
-      // Cooldown elapsed: admit exactly one probe request.
-      trial = true
+      // A half_open state means another request already holds the trial slot.
+      if (state.status === "half_open") {
+        c.header("X-Circuit-Breaker", "half_open")
+        return c.json({ error: "Service temporarily unavailable (circuit open). Retry later." }, 503)
+      }
+      // Cooldown elapsed: atomically claim the single probe slot so concurrent
+      // requests cannot all pass as trials (each would re-fail the dependency).
+      trial = await claimTrial(counter, stateKey, cooldownSeconds)
+      if (!trial) {
+        c.header("X-Circuit-Breaker", "half_open")
+        return c.json({ error: "Service temporarily unavailable (circuit open). Retry later." }, 503)
+      }
+      trialOpenedAt = state.openedAt
       await writeState(kv, stateKey, { status: "half_open", openedAt: state.openedAt }, cooldownSeconds)
     }
 
@@ -201,7 +300,7 @@ export function circuitBreaker(options: CircuitBreakerOptions = {}): CircuitBrea
     }
 
     if (failed) {
-      await recordFailure(kv, failuresKey, stateKey, failureThreshold, cooldownSeconds, weight, trial, name)
+      await recordFailure(kv, counter, failuresKey, stateKey, failureThreshold, cooldownSeconds, weight, trial, name)
       // A thrown handler would otherwise surface as an opaque worker error;
       // return the standard API error shape instead.
       if (thrown) return c.json({ error: "Internal server error" }, 500)
@@ -209,7 +308,7 @@ export function circuitBreaker(options: CircuitBreakerOptions = {}): CircuitBrea
     }
 
     if (trial) {
-      await closeCircuit(kv, failuresKey, stateKey, name)
+      await closeCircuit(kv, counter, failuresKey, stateKey, trialOpenedAt, name)
     }
     return
   }

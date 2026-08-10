@@ -1,0 +1,373 @@
+{
+  "schemaVersion": 1,
+  "runId": "20260810T032502-239ff8",
+  "command": "review",
+  "args": [
+    "review",
+    "--limit",
+    "73"
+  ],
+  "rootPath": "/Users/irfandi/Coding/2025/AetherDEX",
+  "headSha": "2fc63b23ef17edf99cb088fe39e121cc8dec8611",
+  "startedAt": "2026-08-10T03:25:02.627Z",
+  "finishedAt": "2026-08-10T03:31:10.153Z",
+  "status": "failed",
+  "claimedFeatureIds": [
+    "feat_config_3a72a27053",
+    "feat_config_57f59ddd1e",
+    "feat_config_7528cb5b98",
+    "feat_config_902602e3e1",
+    "feat_config_991500c02e",
+    "feat_config_ac74680d99",
+    "feat_config_ee313a6930",
+    "feat_library_09141f3ef9",
+    "feat_library_36b3e24e1a",
+    "feat_library_410ea57829",
+    "feat_library_4a1871bbb1",
+    "feat_library_53a6b417c0",
+    "feat_library_67e36e39d1",
+    "feat_library_75f5288ce0",
+    "feat_library_782a776077",
+    "feat_library_7f7e3c5382",
+    "feat_library_8f5d5fd534",
+    "feat_library_9f563d7b60",
+    "feat_library_a50e9b911f",
+    "feat_library_ad98bca978",
+    "feat_library_b3899aac05",
+    "feat_library_b4cb74367c",
+    "feat_library_b8af523b91",
+    "feat_library_bd573b816b",
+    "feat_library_c77821ce5c",
+    "feat_library_d06274bfb5",
+    "feat_library_d9ae9adbfb",
+    "feat_library_da89b4a88e",
+    "feat_library_dab264ab2a",
+    "feat_library_e12da032c1",
+    "feat_library_e6a0e61d33",
+    "feat_library_e99f39f7ec",
+    "feat_library_f8bf0b65a1",
+    "feat_release_2c926a7be1",
+    "feat_release_3c1de179c9",
+    "feat_release_4862937c51",
+    "feat_release_51170e0f9c",
+    "feat_release_734b842583",
+    "feat_release_738a65aa87",
+    "feat_release_854b75ccaa",
+    "feat_release_98203099b0",
+    "feat_release_9a65e9eca0",
+    "feat_release_a235aa99b1",
+    "feat_release_a33c784326",
+    "feat_release_a568f2a731",
+    "feat_release_accf8dfaca",
+    "feat_release_d0eb442a0a",
+    "feat_release_fa18bd5381",
+    "feat_route_552aaeecba",
+    "feat_route_615aa60302",
+    "feat_route_8a6337af57",
+    "feat_route_98dcbb586b",
+    "feat_route_b4cf758698",
+    "feat_route_bd11a92fe4",
+    "feat_route_c733a805a5",
+    "feat_service_1e40670be0",
+    "feat_test-suite_78d951fc31",
+    "feat_test-suite_84ae84a25a",
+    "feat_test-suite_fba3efc44a",
+    "feat_ui-flow_07f3e47ecf",
+    "feat_ui-flow_458f3992b6",
+    "feat_ui-flow_48e197d8fd",
+    "feat_ui-flow_5e1863c145",
+    "feat_ui-flow_62776b9e70",
+    "feat_ui-flow_8f3d4647c6",
+    "feat_ui-flow_902c997d16",
+    "feat_ui-flow_96f77c54e9",
+    "feat_ui-flow_be6bf02bc2",
+    "feat_ui-flow_cfc2470a11",
+    "feat_ui-flow_e6ed457e9a",
+    "feat_ui-flow_f49a6c4ae7",
+    "feat_ui-flow_ffdbfd5b3b"
+  ],
+  "findingIds": [
+    "fnd_sig-feat-config-57f59ddd1e-cbf16_52a00600ea",
+    "fnd_sig-feat-config-7528cb5b98-fbb10_7065132bd5",
+    "fnd_sig-feat-config-7528cb5b98-3c2b8_40b3dd252b",
+    "fnd_sig-feat-config-7528cb5b98-818b7_b8e7f4ad28",
+    "fnd_sig-feat-config-3a72a27053-7047b_49a653ec25",
+    "fnd_sig-feat-config-3a72a27053-6de72_b5df24451b",
+    "fnd_sig-feat-config-991500c02e-dfefa_33826584cc",
+    "fnd_sig-feat-config-991500c02e-7c1f2_166578f1bd",
+    "fnd_sig-feat-config-991500c02e-48a97_18ce4b3b3c",
+    "fnd_sig-feat-config-991500c02e-7524f_c8135e7cbd",
+    "fnd_sig-feat-config-991500c02e-f3516_7bb041b6ef",
+    "fnd_sig-feat-library-36b3e24e1a-89d0_74fb6ea345",
+    "fnd_sig-feat-library-36b3e24e1a-fdd8_74f261d4ff",
+    "fnd_sig-feat-library-09141f3ef9-8894_4427cd575e",
+    "fnd_sig-feat-library-09141f3ef9-b303_4f71be2b20",
+    "fnd_sig-feat-library-09141f3ef9-1bde_36cd6d04b6",
+    "fnd_sig-feat-library-09141f3ef9-4a36_1a6bc11b44",
+    "fnd_sig-feat-library-09141f3ef9-dc26_083de2d8a8",
+    "fnd_sig-feat-library-09141f3ef9-4de1_3a0e9c1b4d",
+    "fnd_sig-feat-config-ee313a6930-3f3a8_219a945689",
+    "fnd_sig-feat-config-ee313a6930-80a2f_a419922dd0",
+    "fnd_sig-feat-library-4a1871bbb1-50e6_78bb86c3a6",
+    "fnd_sig-feat-library-4a1871bbb1-2cd8_b7f4d4c40e",
+    "fnd_sig-feat-library-4a1871bbb1-3695_0ed9685b74",
+    "fnd_sig-feat-library-4a1871bbb1-229a_51fea7a0ea",
+    "fnd_sig-feat-library-4a1871bbb1-9464_e918dd68ef",
+    "fnd_sig-feat-library-4a1871bbb1-794f_236800fcdf"
+  ],
+  "patchAttemptIds": [],
+  "errors": [
+    {
+      "message": "pi provider failed: command timed out after 180000ms",
+      "code": "provider-failure"
+    },
+    {
+      "message": "feature not found: feat_library_53a6b417c0",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_library_67e36e39d1",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_library_75f5288ce0",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_library_782a776077",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_library_7f7e3c5382",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_library_8f5d5fd534",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_library_9f563d7b60",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_library_a50e9b911f",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_library_ad98bca978",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_library_b3899aac05",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_library_b4cb74367c",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_library_b8af523b91",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_library_bd573b816b",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_library_c77821ce5c",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_library_d06274bfb5",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_library_d9ae9adbfb",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_library_da89b4a88e",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_library_dab264ab2a",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_library_e12da032c1",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_library_e6a0e61d33",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_library_e99f39f7ec",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_library_f8bf0b65a1",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_release_2c926a7be1",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_release_3c1de179c9",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_release_4862937c51",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_release_51170e0f9c",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_release_734b842583",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_release_738a65aa87",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_release_854b75ccaa",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_release_98203099b0",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_release_9a65e9eca0",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_release_a235aa99b1",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_release_a33c784326",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_release_a568f2a731",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_release_accf8dfaca",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_release_d0eb442a0a",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_release_fa18bd5381",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_route_552aaeecba",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_route_615aa60302",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_route_8a6337af57",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_route_98dcbb586b",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_route_b4cf758698",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_route_bd11a92fe4",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_route_c733a805a5",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_service_1e40670be0",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_test-suite_78d951fc31",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_test-suite_84ae84a25a",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_test-suite_fba3efc44a",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_ui-flow_07f3e47ecf",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_ui-flow_458f3992b6",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_ui-flow_48e197d8fd",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_ui-flow_5e1863c145",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_ui-flow_62776b9e70",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_ui-flow_8f3d4647c6",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_ui-flow_902c997d16",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_ui-flow_96f77c54e9",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_ui-flow_be6bf02bc2",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_ui-flow_cfc2470a11",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_ui-flow_e6ed457e9a",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_ui-flow_f49a6c4ae7",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "feature not found: feat_ui-flow_ffdbfd5b3b",
+      "code": "feature-not-found"
+    },
+    {
+      "message": "pi provider failed: command timed out after 180000ms",
+      "code": "provider-failure"
+    }
+  ]
+}

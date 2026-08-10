@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
-import { shortenAddress } from "../lib/address"
+import { isValidAddress, shortenAddress } from "../lib/address"
 import { Card, CardBody, CardTitle } from "./ui"
 
 interface DexScreenerPair {
@@ -38,12 +38,14 @@ function formatChange(value: number): string {
 export function PoolStats({ tokenAddress, chainId, className = "" }: PoolStatsProps) {
   const { data, isLoading, error } = useQuery({
     queryKey: ["pool-stats", tokenAddress, chainId],
-    queryFn: async () => {
-      const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`)
+    queryFn: async ({ signal }) => {
+      const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(tokenAddress)}`, {
+        signal,
+      })
       if (!res.ok) throw new Error(`DexScreener API error: ${res.status}`)
-      const json = (await res.json()) as { pairs: DexScreenerPair[] }
+      const json = (await res.json()) as { pairs: DexScreenerPair[] | null }
 
-      let pairs = json.pairs
+      const pairs = json.pairs ?? []
       if (chainId !== undefined) {
         const chainMap: Record<number, string> = {
           1: "ethereum",
@@ -51,13 +53,22 @@ export function PoolStats({ tokenAddress, chainId, className = "" }: PoolStatsPr
           11155111: "sepolia",
           84532: "base-sepolia",
         }
-        const chainName = chainMap[chainId] ?? "ethereum"
-        pairs = pairs.filter((p) => p.chainId === chainName)
+        const chainName = chainMap[chainId]
+        // Unmapped chainIds skip filtering entirely (same as chainId-undefined);
+        // falling back to "ethereum" would silently hide pools on other chains.
+        if (chainName !== undefined) {
+          return (
+            pairs
+              .filter((p) => p.chainId === chainName)
+              .sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0))[0] ?? null
+          )
+        }
       }
 
       // Pick the pair with highest liquidity
       return pairs.sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0))[0] ?? null
     },
+    enabled: isValidAddress(tokenAddress),
     staleTime: 30_000,
   })
 

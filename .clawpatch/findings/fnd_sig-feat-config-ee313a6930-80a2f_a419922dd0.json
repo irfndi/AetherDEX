@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "findingId": "fnd_sig-feat-config-ee313a6930-80a2f_a419922dd0",
+  "featureId": "feat_config_ee313a6930",
+  "title": "Workflow and renovate.json have no automated validation or dry-run smoke coverage",
+  "category": "test-gap",
+  "severity": "low",
+  "confidence": "medium",
+  "triage": "test-gap",
+  "evidence": [
+    {
+      "path": ".github/workflows/renovate.yml",
+      "startLine": 50,
+      "endLine": 61,
+      "symbol": null,
+      "quote": null
+    }
+  ],
+  "reasoning": "This workflow is the single automation owning all dependency updates, yet nothing validates it before it runs: no actionlint/syntax check on renovate.yml, no schema check that renovate.json still exists and parses (configurationFile is referenced at line 53 with no guard), and no dry-run smoke run in CI. Any expression typo, invalid cron, missing renovate.json, or under-scoped RENOVATE_TOKEN is only discovered at the weekly Monday 5am scheduled run (or a manual dispatch), where a failure blocks all dependency updates for a week. The comment block at lines 47-49 even documents a failure mode (Workflows scope missing causes silent PR failures) that no check enforces.",
+  "reproduction": null,
+  "recommendation": "Add a CI job (or extend an existing test workflow) that runs actionlint on .github/workflows/renovate.yml, validates renovate.json against Renovate's config schema, and executes a `RENOVATE_DRY_RUN=full` smoke run with a low log level on pull requests touching the workflow or config.",
+  "whyTestsDoNotAlreadyCoverThis": "The tests list for this feature is empty; the vitest-based test command covers application code, not workflow YAML semantics or Renovate configuration.",
+  "suggestedRegressionTest": "CI job: `actionlint .github/workflows/renovate.yml` and `renovate --dry-run=full --config=renovate.json` validation that fails on any workflow/config drift.",
+  "minimumFixScope": "Add a validation job to CI plus a presence/schema check for renovate.json referenced at line 53.",
+  "status": "open",
+  "history": [],
+  "signature": "sig_feat-config-ee313a6930_80a2f295a6",
+  "linkedPatchAttemptIds": [],
+  "createdByRunId": "20260810T032502-239ff8",
+  "createdAt": "2026-08-10T03:30:10.765Z",
+  "updatedAt": "2026-08-10T03:30:10.765Z"
+}

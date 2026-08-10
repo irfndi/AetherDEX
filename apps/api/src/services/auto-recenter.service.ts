@@ -133,33 +133,19 @@ const makeAutoRecenterService = Effect.gen(function* () {
     }).pipe(Effect.catch((error) => Effect.fail(new AutoRecenterError(`Failed to queue rebalance: ${String(error)}`))))
 
   const getPendingRebalances = (
-    chainId: number,
+    _chainId: number,
   ): Effect.Effect<readonly RebalanceRequest[], AutoRecenterError, never> =>
-    Effect.gen(function* () {
-      // Query positions with auto-recenter policies that haven't been rebalanced recently
-      const positions = (yield* sql`
-        SELECT pp.*, lp.tick_lower, lp.tick_upper, lp.liquidity
-        FROM position_policies pp
-        JOIN liquidity_positions lp ON pp.position_id = CAST(lp.id AS TEXT) AND lp.chain_id = pp.chain_id
-        WHERE pp.chain_id = ${chainId} AND pp.is_active = 1
-          AND pp.policy_type = 'auto_recenter'
-          AND lp.is_active = 1
-          AND (pp.last_rebalance_at IS NULL OR pp.last_rebalance_at < ${Date.now() - 3600 * 1000})
-      `) as unknown as readonly Record<string, unknown>[]
-
-      return positions.map((row) => ({
-        chainId,
-        positionId: row.position_id as string,
-        userAddress: row.user_address as string,
-        poolId: row.pool_id as string,
-        currentTickLower: row.tick_lower as number,
-        currentTickUpper: row.tick_upper as number,
-        currentLiquidity: row.liquidity as string,
-        targetTickLower: row.tick_lower as number,
-        targetTickUpper: row.tick_upper as number,
-        reason: "auto_recenter: pending rebalance",
-      }))
-    }).pipe(Effect.catch((error) => Effect.fail(new AutoRecenterError(`Failed to list rebalances: ${String(error)}`))))
+    // ponytail: not implemented. The previous version copied each position's
+    // CURRENT range into targetTickLower/targetTickUpper, so the result looked
+    // like a rebalance queue but contained no computed targets — any consumer
+    // treating it as such would recenter onto the range already occupied. A real
+    // pending-rebalance list needs computeOptimalRange + on-chain reconciliation
+    // (same gating as detectOutOfRangePositions, Phase 3). Fail loudly instead.
+    Effect.fail(
+      new AutoRecenterError(
+        "getPendingRebalances is not implemented yet (needs computed optimal ranges + on-chain reconciliation)",
+      ),
+    )
 
   return {
     detectOutOfRangePositions,

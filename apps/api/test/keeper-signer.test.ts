@@ -5,7 +5,7 @@
  * balance / gas / chain preflight guards. No network access.
  */
 
-import { keccak256, parseEther, parseGwei, toBytes, toFunctionSelector } from "viem"
+import { keccak256, parseEther, parseGwei, parseTransaction, toBytes, toFunctionSelector } from "viem"
 import { describe, expect, it, vi } from "vitest"
 import {
   canExecuteRecenter,
@@ -403,7 +403,9 @@ describe("explicit public submission", () => {
     expect(result).toEqual({ kind: "submitted", channel: "public", txHash: TX_HASH })
     expect(sendTransaction).toHaveBeenCalledTimes(1)
     expect(sendTransaction.mock.calls[0][0]).toMatchObject({
-      chain: null,
+      // The chain must carry the keeper's chainId so the signed legacy tx embeds
+      // the EIP-155 chainId (replay protection) — never chain: null.
+      chain: expect.objectContaining({ id: 11155111 }),
       to: "0x1111111111111111111111111111111111111111",
       data: "0xdeadbeef",
       nonce: 7,
@@ -455,5 +457,69 @@ describe("encodeExecuteOrder", () => {
 
   it("rejects negative order ids", () => {
     expect(() => encodeExecuteOrder(-1)).toThrow(RangeError)
+  })
+})
+
+describe("EIP-155 replay protection", () => {
+  const input = { to: "0x1111111111111111111111111111111111111111" as const, data: "0x" as const, chainId: 11155111 }
+
+  it("signs the private-relay raw tx with the configured chainId embedded", async () => {
+    const { signer, fetchMock } = makeRelaySigner()
+    await signer.sendTransaction(input)
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as { params: string[] }
+    const parsed = parseTransaction(body.params[0] as `0x${string}`)
+    // A legacy tx signed without a chainId has no EIP-155 protection (chainId undefined).
+    expect(parsed.chainId).toBe(11155111)
+  })
+})
+
+describe("durable nonce across signer instances", () => {
+  const input = { to: "0x1111111111111111111111111111111111111111" as const, data: "0x" as const }
+
+  it("recovers a relay-accepted nonce on a fresh instance after a post-acceptance failure", async () => {
+    // Shared durable store: signer A fails AFTER the relay accepted the tx (receipt
+    // wait throws KeeperRpcError); signer B is a fresh instance with the same store.
+    let stored: number | null = null
+    const nonceStore = {
+      read: async () => stored,
+      write: async (_address: string, nonce: number) => {
+        stored = nonce
+      },
+    }
+
+    // Signer A: relay accepts (returns a hash), then the receipt wait fails.
+    const fetchMockA = vi.fn<typeof fetch>(
+      async () => new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: TX_HASH })),
+    )
+    const signerA = createKeeperSigner(readKeeperSignerConfig({ ...baseEnv, PRIVATE_TX_RELAY_URL: RELAY_URL }), {
+      publicClient: {
+        ...makeChainStub(),
+        waitForTransactionReceipt: async () => {
+          throw new Error("receipt wait timed out")
+        },
+      },
+      fetchFn: fetchMockA,
+      nonceStore,
+    })
+    await expect(signerA.sendTransaction(input)).rejects.toSatisfy((error: unknown) => isTransientKeeperError(error))
+
+    // Signer B: fresh instance, same RPC state (pending count still 7 — the relay
+    // tx is invisible to the public RPC). Must NOT reuse nonce 7.
+    const captured: string[] = []
+    const fetchMockB = vi.fn<typeof fetch>(async (_url, init) => {
+      const body = JSON.parse(String(init?.body)) as { params: string[] }
+      captured.push(body.params[0])
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code: -32000, message: "nonce too low" } }))
+    })
+    const signerB = createKeeperSigner(readKeeperSignerConfig({ ...baseEnv, PRIVATE_TX_RELAY_URL: RELAY_URL }), {
+      publicClient: makeChainStub(), // getTransactionCount → 7
+      fetchFn: fetchMockB,
+      nonceStore,
+    })
+    await expect(signerB.sendTransaction(input)).rejects.toThrow(/nonce too low/)
+
+    expect(captured).toHaveLength(1)
+    expect(parseTransaction(captured[0] as `0x${string}`).nonce).toBe(8)
   })
 })

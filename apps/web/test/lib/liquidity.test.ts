@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { buildLiquidityRequest, validateLiquidityForm, type LiquidityFormValues } from "../../src/lib/liquidity"
+import { buildLiquidityRequest, type LiquidityFormValues, validateLiquidityForm } from "../../src/lib/liquidity"
 
 const validValues: LiquidityFormValues = {
   protocol: "v4",

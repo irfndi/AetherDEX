@@ -24,11 +24,24 @@ export function DexScreenerChart({
     84532: "base-sepolia",
   }
 
-  const chainName = chainMap[chainId] ?? "ethereum"
-  const src = `https://dexscreener.com/${chainName}/${tokenAddress}?embed=1&theme=${theme}&chart=smart&chartType=mc`
+  const chainName = chainMap[chainId]
+  const isValidAddress = /^0x[a-fA-F0-9]{40}$/.test(tokenAddress)
+  const wrapperClass = `relative w-full overflow-hidden rounded-lg border border-base-300 ${className}`.trim()
+
+  if (!chainName || !isValidAddress) {
+    return (
+      <div className={wrapperClass}>
+        <p className="p-4 text-center text-sm text-base-content/70">
+          {chainName ? "Invalid token address" : "Unsupported chain"}
+        </p>
+      </div>
+    )
+  }
+
+  const src = `https://dexscreener.com/${chainName}/${tokenAddress}?embed=1&theme=${encodeURIComponent(theme)}&chart=smart&chartType=mc`
 
   return (
-    <div className={`relative w-full overflow-hidden rounded-lg border border-base-300 ${className}`.trim()}>
+    <div className={wrapperClass}>
       <iframe
         src={src}
         title={`DexScreener chart for ${tokenAddress}`}

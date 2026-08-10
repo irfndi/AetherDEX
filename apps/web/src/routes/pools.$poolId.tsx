@@ -84,22 +84,31 @@ function PoolDetailPage() {
   const [token0, setToken0] = useState<Token | null>(null)
   const [token1, setToken1] = useState<Token | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
+    setError(null)
+    setPool(null)
 
-    fetch(`${API_URL}/pools/${poolId}`)
-      .then((r) => r.json())
-      .then((data: { pool: Pool }) => {
-        if (cancelled || !data.pool) return
-        setPool(data.pool)
+    fetch(`${API_URL}/pools/${poolId}?refresh=${reloadKey}`)
+      .then(async (r) => {
+        if (r.status === 404) return null
+        if (!r.ok) throw new Error(`Failed to load pool: HTTP ${r.status}`)
+        const data = (await r.json()) as { pool: Pool }
+        return data.pool ?? null
+      })
+      .then((loaded) => {
+        if (cancelled || !loaded) return
+        setPool(loaded)
 
         return Promise.all([
-          fetch(`${API_URL}/tokens/${data.pool.token0Address}`)
+          fetch(`${API_URL}/tokens/${loaded.token0Address}`)
             .then((r) => r.json())
             .catch(() => null),
-          fetch(`${API_URL}/tokens/${data.pool.token1Address}`)
+          fetch(`${API_URL}/tokens/${loaded.token1Address}`)
             .then((r) => r.json())
             .catch(() => null),
         ]).then(([t0, t1]) => {
@@ -108,7 +117,10 @@ function PoolDetailPage() {
           if (t1?.token) setToken1(t1.token)
         })
       })
-      .catch(() => {})
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : "Failed to load pool")
+      })
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
@@ -116,12 +128,32 @@ function PoolDetailPage() {
     return () => {
       cancelled = true
     }
-  }, [poolId])
+  }, [poolId, reloadKey])
 
   if (loading) {
     return (
       <div className="mx-auto flex justify-center py-8">
         <span className="loading loading-spinner loading-lg" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="mx-auto max-w-6xl py-8">
+        <Card>
+          <CardBody>
+            <p className="py-8 text-center">{error}</p>
+            <div className="flex justify-center gap-2">
+              <Button variant="primary" size="sm" onClick={() => setReloadKey((k) => k + 1)}>
+                Retry
+              </Button>
+              <Link to="/pools" search={{ sortBy: "tvl", filterToken: "" }} className="btn btn-ghost btn-sm">
+                ← Back to pools
+              </Link>
+            </div>
+          </CardBody>
+        </Card>
       </div>
     )
   }

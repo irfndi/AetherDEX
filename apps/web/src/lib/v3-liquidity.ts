@@ -1,6 +1,6 @@
 import { CurrencyAmount, Percent, Token } from "@uniswap/sdk-core"
-import { FeeAmount, nearestUsableTick, NonfungiblePositionManager, Pool, Position } from "@uniswap/v3-sdk"
 import type { MethodParameters } from "@uniswap/v3-sdk"
+import { type FeeAmount, NonfungiblePositionManager, nearestUsableTick, Pool, Position } from "@uniswap/v3-sdk"
 import { encodeFunctionData, type Hex } from "viem"
 
 const BPS = 10_000
@@ -121,7 +121,14 @@ export function buildV3PoolContext(input: V3PoolInput): V3PoolContext {
   return {
     token0,
     token1,
-    pool: new Pool(token0, token1, input.fee, input.sqrtPriceX96.toString(), input.liquidity.toString(), input.currentTick),
+    pool: new Pool(
+      token0,
+      token1,
+      input.fee,
+      input.sqrtPriceX96.toString(),
+      input.liquidity.toString(),
+      input.currentTick,
+    ),
   }
 }
 
@@ -141,6 +148,7 @@ export function buildV3PoolCreateCall(input: V3PoolInput): V3PoolCreateCall {
 
 export function buildV3MintCall(input: V3MintInput): V3MintCall {
   validateRange(input.tickLower, input.tickUpper, input.pool.pool.tickSpacing)
+  if (input.deadline <= 0n) throw new Error("V3 deadline must be positive")
   const slippageTolerance = toSlippage(input.slippageBps)
   const position = Position.fromAmounts({
     pool: input.pool.pool,
@@ -167,6 +175,7 @@ export function buildV3MintCall(input: V3MintInput): V3MintCall {
 
 export function buildV3RebalancePlan(input: V3RebalanceInput): V3RebalancePlan {
   validateRange(input.currentRange.tickLower, input.currentRange.tickUpper, input.pool.pool.tickSpacing)
+  if (input.deadline <= 0n) throw new Error("V3 deadline must be positive")
   validateRange(input.newRange.tickLower, input.newRange.tickUpper, input.pool.pool.tickSpacing)
   if (input.currentLiquidity <= 0n) throw new Error("V3 current liquidity must be positive")
   const position = new Position({
@@ -234,6 +243,42 @@ export function buildV3SingleSidedPlan(input: {
   }
 }
 
+export const V3_ZAP_ABI = [
+  {
+    name: "zap",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      {
+        name: "params",
+        type: "tuple",
+        components: [
+          { name: "token0", type: "address" },
+          { name: "token1", type: "address" },
+          { name: "tokenIn", type: "address" },
+          { name: "fee", type: "uint24" },
+          { name: "tickLower", type: "int24" },
+          { name: "tickUpper", type: "int24" },
+          { name: "amountIn", type: "uint256" },
+          { name: "swapAmountIn", type: "uint256" },
+          { name: "minSwapAmountOut", type: "uint256" },
+          { name: "amount0Min", type: "uint256" },
+          { name: "amount1Min", type: "uint256" },
+          { name: "sqrtPriceLimitX96", type: "uint160" },
+          { name: "deadline", type: "uint256" },
+        ],
+      },
+    ],
+    outputs: [
+      { name: "tokenId", type: "uint256" },
+      { name: "liquidity", type: "uint128" },
+      { name: "amount0", type: "uint256" },
+      { name: "amount1", type: "uint256" },
+      { name: "amountOut", type: "uint256" },
+    ],
+  },
+] as const
+
 export function buildV3SingleSidedZapCall(input: V3SingleSidedZapInput): V3SingleSidedZapCall {
   validateRange(input.tickLower, input.tickUpper, input.pool.pool.tickSpacing)
   if (input.executor === "0x0000000000000000000000000000000000000000") {
@@ -246,6 +291,7 @@ export function buildV3SingleSidedZapCall(input: V3SingleSidedZapInput): V3Singl
     throw new Error("V3 zap amounts are invalid")
   }
   if (input.minSwapAmountOut <= 0n) throw new Error("V3 zap minimum output must be positive")
+  if (input.deadline <= 0n) throw new Error("V3 deadline must be positive")
   const token0 = input.pool.token0.address as `0x${string}`
   const token1 = input.pool.token1.address as `0x${string}`
   return {
@@ -253,41 +299,7 @@ export function buildV3SingleSidedZapCall(input: V3SingleSidedZapInput): V3Singl
     execution: "v3-zap-executor",
     method: {
       calldata: encodeFunctionData({
-        abi: [
-          {
-            name: "zap",
-            type: "function",
-            stateMutability: "nonpayable",
-            inputs: [
-              {
-                name: "params",
-                type: "tuple",
-                components: [
-                  { name: "token0", type: "address" },
-                  { name: "token1", type: "address" },
-                  { name: "tokenIn", type: "address" },
-                  { name: "fee", type: "uint24" },
-                  { name: "tickLower", type: "int24" },
-                  { name: "tickUpper", type: "int24" },
-                  { name: "amountIn", type: "uint256" },
-                  { name: "swapAmountIn", type: "uint256" },
-                  { name: "minSwapAmountOut", type: "uint256" },
-                  { name: "amount0Min", type: "uint256" },
-                  { name: "amount1Min", type: "uint256" },
-                  { name: "sqrtPriceLimitX96", type: "uint160" },
-                  { name: "deadline", type: "uint256" },
-                ],
-              },
-            ],
-            outputs: [
-              { name: "tokenId", type: "uint256" },
-              { name: "liquidity", type: "uint128" },
-              { name: "amount0", type: "uint256" },
-              { name: "amount1", type: "uint256" },
-              { name: "amountOut", type: "uint256" },
-            ],
-          },
-        ] as const,
+        abi: V3_ZAP_ABI,
         functionName: "zap",
         args: [
           {

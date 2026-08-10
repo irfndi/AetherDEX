@@ -65,6 +65,64 @@ export const gunzip = async (data: Uint8Array): Promise<string> => {
 }
 
 /**
+ * Serialize read-modify-write appends per archive key within this isolate.
+ * R2's put has no atomic compare-and-swap, so two concurrent appends to the
+ * same key would each read the same base file and the last put would silently
+ * drop the other batch. Chaining per key turns concurrent appends into a queue.
+ * (Does not span isolates — cross-isolate dedup would need a D1 journal.)
+ */
+const pendingAppends = new Map<string, Promise<unknown>>()
+
+function serializeAppend<T>(key: string, task: () => Promise<T>): Promise<T> {
+  const prev = pendingAppends.get(key) ?? Promise.resolve()
+  const run = prev.then(task, task)
+  pendingAppends.set(
+    key,
+    run.then(
+      () => undefined,
+      () => undefined,
+    ),
+  )
+  return run
+}
+
+async function runAppend(
+  bucket: R2Bucket,
+  key: string,
+  newTrades: TradeRecord[],
+): Promise<{ key: string; sizeBytes: number; uploaded: Date; recordCount: number }> {
+  const existing = await bucket.get(key).catch((e) => {
+    throw new Error(`R2 get failed: ${String(e)}`)
+  })
+
+  let allTrades: TradeRecord[] = [...newTrades]
+  if (existing) {
+    const rawBytes = await existing.arrayBuffer()
+    const compressed = new Uint8Array(rawBytes)
+    const jsonl = await gunzip(compressed)
+    const lines = jsonl.split("\n").filter((l) => l.trim().length > 0)
+    const existingTrades = lines.map((l) => JSON.parse(l) as TradeRecord)
+    allTrades = [...existingTrades, ...newTrades]
+  }
+
+  const jsonl = tradesToJsonl(allTrades)
+  const newCompressed = await gzip(jsonl)
+  const result = await bucket
+    .put(key, newCompressed, {
+      httpMetadata: { contentType: "application/gzip", contentEncoding: "gzip" },
+    })
+    .catch((e) => {
+      throw new Error(`R2 put failed: ${String(e)}`)
+    })
+  return {
+    key: result.key,
+    sizeBytes: result.size,
+    uploaded: result.uploaded,
+    recordCount: allTrades.length,
+  }
+}
+
+/**
  * R2 Storage Service — typed wrapper for R2 operations
  * Trade history is archived as monthly JSONL.gz files
  */
@@ -95,41 +153,14 @@ export class R2StorageService extends Context.Service<R2StorageService>()("@aeth
         }),
 
       /**
-       * Append trades to an existing archive (downloads, appends, re-uploads)
+       * Append trades to an existing archive (downloads, appends, re-uploads).
+       * Appends to the same key are serialized within this isolate so concurrent
+       * callers cannot lose each other's batches in a read-modify-write race.
        */
       appendToArchive: (bucket: R2Bucket, period: ArchiveKey, newTrades: TradeRecord[]) =>
-        Effect.gen(function* () {
-          const key = archiveKey(period)
-          const existing = yield* Effect.tryPromise({
-            try: () => bucket.get(key),
-            catch: (e) => new Error(`R2 get failed: ${String(e)}`),
-          })
-
-          let allTrades: TradeRecord[] = [...newTrades]
-          if (existing) {
-            const rawBytes = yield* Effect.promise(() => existing.arrayBuffer())
-            const compressed = new Uint8Array(rawBytes)
-            const jsonl = yield* Effect.promise(() => gunzip(compressed))
-            const lines = jsonl.split("\n").filter((l) => l.trim().length > 0)
-            const existingTrades = lines.map((l) => JSON.parse(l) as TradeRecord)
-            allTrades = [...existingTrades, ...newTrades]
-          }
-
-          const jsonl = tradesToJsonl(allTrades)
-          const newCompressed = yield* Effect.promise(() => gzip(jsonl))
-          const result = yield* Effect.tryPromise({
-            try: () =>
-              bucket.put(key, newCompressed, {
-                httpMetadata: { contentType: "application/gzip", contentEncoding: "gzip" },
-              }),
-            catch: (e) => new Error(`R2 put failed: ${String(e)}`),
-          })
-          return {
-            key: result.key,
-            sizeBytes: result.size,
-            uploaded: result.uploaded,
-            recordCount: allTrades.length,
-          }
+        Effect.tryPromise({
+          try: () => serializeAppend(archiveKey(period), () => runAppend(bucket, archiveKey(period), newTrades)),
+          catch: (e) => new Error(`R2 append failed: ${String(e)}`),
         }),
 
       /**

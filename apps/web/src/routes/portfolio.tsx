@@ -87,9 +87,11 @@ function PortfolioPage() {
     }
 
     const controller = new AbortController()
+    let active = true
     setIsPending(true)
     setIsError(false)
     setErrorMessage(null)
+    setPositions([])
 
     fetch(`${API_URL}/users/${encodeURIComponent(address)}/positions?refresh=${reloadKey}`, {
       signal: controller.signal,
@@ -99,18 +101,26 @@ function PortfolioPage() {
         return response.json()
       })
       .then((response) => {
+        if (!active) return
         if (!isPortfolioResponse(response)) throw new Error("Unexpected positions response")
         setPositions(response.positions)
       })
       .catch((error: unknown) => {
+        // An aborted (superseded) request must not clobber the newer one's state.
+        if (!active) return
         if (error instanceof DOMException && error.name === "AbortError") return
         setPositions([])
         setIsError(true)
         setErrorMessage(error instanceof Error ? error.message : "Unknown request error")
       })
-      .finally(() => setIsPending(false))
+      .finally(() => {
+        if (active) setIsPending(false)
+      })
 
-    return () => controller.abort()
+    return () => {
+      active = false
+      controller.abort()
+    }
   }, [address, isConnected, reloadKey])
 
   return (

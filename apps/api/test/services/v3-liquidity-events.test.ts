@@ -1,4 +1,4 @@
-import { encodeAbiParameters, encodeEventTopics, parseAbiItem } from "viem"
+import { encodeAbiParameters, encodeEventTopics, getAddress, parseAbiItem } from "viem"
 import { describe, expect, it } from "vitest"
 import { parseV3LiquidityLog } from "../../src/services/v3-liquidity-events"
 
@@ -55,5 +55,31 @@ describe("parseV3LiquidityLog", () => {
         { positionManager: manager },
       ),
     ).toBeNull()
+  })
+
+  it("decodes Collect logs emitted by the canonical NonfungiblePositionManager (only tokenId indexed)", () => {
+    // Canonical ABI: recipient/amount0/amount1 live in the data, NOT topics.
+    // The service ABI used to mark recipient as indexed, which made every real
+    // Collect log fail to decode and be silently dropped.
+    const event = parseAbiItem(
+      "event Collect(uint256 indexed tokenId, address recipient, uint128 amount0, uint128 amount1)",
+    )
+    const recipient = "0x0000000000000000000000000000000000000009" as const
+    const topics = encodeEventTopics({ abi: [event], eventName: "Collect", args: [7n] })
+    const data = encodeAbiParameters(
+      [{ type: "address" }, { type: "uint128" }, { type: "uint128" }],
+      [recipient, 25n, 30n],
+    )
+    const parsed = parseV3LiquidityLog(
+      { address: manager, topics, data, transactionHash: txHash, logIndex: 4, blockNumber: 102n },
+      { positionManager: manager },
+    )
+    expect(parsed).toMatchObject({
+      eventType: "collect",
+      tokenId: "7",
+      ownerAddress: getAddress(recipient),
+      amount0: "25",
+      amount1: "30",
+    })
   })
 })

@@ -1,4 +1,6 @@
+import { useState } from "react"
 import { shortenAddress } from "../lib/address"
+import { isSafeImageUrl } from "../lib/image"
 
 export interface Token {
   address: string
@@ -15,9 +17,30 @@ interface TokenChipProps {
 }
 
 export function TokenChip({ token, onRemove, className = "" }: TokenChipProps) {
+  const [failedLogoUri, setFailedLogoUri] = useState<string | null>(null)
+
+  const showLogo = token.logoURI !== undefined && isSafeImageUrl(token.logoURI) && failedLogoUri !== token.logoURI
+  const showMonogram = token.logoURI !== undefined && !showLogo
   return (
     <div className={`badge badge-outline gap-1 px-3 py-3 ${className}`.trim()}>
-      {token.logoURI && <img src={token.logoURI} alt={token.symbol} className="h-4 w-4 rounded-full" />}
+      {showLogo ? (
+        <img
+          src={token.logoURI}
+          alt={token.symbol}
+          className="h-4 w-4 rounded-full"
+          referrerPolicy="no-referrer"
+          loading="lazy"
+          decoding="async"
+          onError={() => setFailedLogoUri(token.logoURI ?? null)}
+        />
+      ) : showMonogram ? (
+        <span
+          className="flex h-4 w-4 items-center justify-center rounded-full bg-base-300 text-[10px] font-semibold"
+          aria-hidden="true"
+        >
+          {token.symbol.charAt(0)}
+        </span>
+      ) : null}
       <span className="font-semibold">{token.symbol}</span>
       <span className="text-xs text-base-content/50">{shortenAddress(token.address, 3)}</span>
       {onRemove && (

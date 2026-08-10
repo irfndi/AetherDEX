@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "findingId": "fnd_sig-feat-library-09141f3ef9-dc26_083de2d8a8",
+  "featureId": "feat_library_09141f3ef9",
+  "title": "POST /api/v1/positions performs presence-only validation: null values and untyped fields reach PositionService and surface as 500s",
+  "category": "api-contract",
+  "severity": "low",
+  "confidence": "low",
+  "triage": "contract-mismatch",
+  "evidence": [
+    {
+      "path": "apps/api/src/routes/positions.ts",
+      "startLine": 86,
+      "endLine": 106,
+      "symbol": null,
+      "quote": null
+    }
+  ],
+  "reasoning": "The required-field check uses `body.tickLower === undefined`, so explicit nulls (JSON null) pass validation, and tickLower/tickUpper are never type/range-checked (floats, strings, and booleans all pass), liquidity/amount0/amount1 are never format-checked, protocol is not constrained to 'v3'|'v4', and tokenId is not validated. Malformed input therefore fails inside PositionService and is reported as a generic 500 with String(err) instead of a 400. This is inconsistent with the strictly validated reconcile endpoints in the same file (lines 120, 158) and the tp-sl create handler. Confidence is low because the service layer is not among the included files, but the pass-through of unvalidated null values is visible in the route itself.",
+  "reproduction": "POST /api/v1/positions with a valid session and body {poolId:'0x…', tickLower:null, tickUpper:100, liquidity:'1000'} — the null passes the === undefined check and the request fails downstream with 500.",
+  "recommendation": "Add explicit type/format/range validation for tickLower, tickUpper (integers), liquidity, amount0, amount1 (uint strings), protocol (enum), and tokenId, returning 400 on violations.",
+  "whyTestsDoNotAlreadyCoverThis": "No positions route tests are included in the feature's test set.",
+  "suggestedRegressionTest": "POST /positions with tickLower:null (and with non-integer liquidity) must return 400 before touching the service.",
+  "minimumFixScope": "apps/api/src/routes/positions.ts POST /positions validation block.",
+  "status": "open",
+  "history": [],
+  "signature": "sig_feat-library-09141f3ef9_dc26527834",
+  "linkedPatchAttemptIds": [],
+  "createdByRunId": "20260810T032502-239ff8",
+  "createdAt": "2026-08-10T03:29:35.650Z",
+  "updatedAt": "2026-08-10T03:29:35.650Z"
+}

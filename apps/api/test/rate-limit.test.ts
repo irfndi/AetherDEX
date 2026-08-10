@@ -147,3 +147,44 @@ describe("rate limiter integration (SELF)", () => {
     expect(quote.headers.get("x-mev-protection")).toBeNull()
   })
 })
+
+describe("rate limiter (atomic-counter DO)", () => {
+  const CONCURRENT_IP = "203.0.113.77"
+  const counterEnv = (max: string) => ({
+    CACHE: env.CACHE,
+    COUNTER: env.COUNTER,
+    CHAIN_ID: "11155111",
+    RATE_LIMIT_MAX: max,
+  })
+
+  afterEach(async () => {
+    await env.COUNTER.get(env.COUNTER.idFromName(`rl:ip:${CONCURRENT_IP}`)).fetch("https://counter/reset", {
+      method: "POST",
+    })
+  })
+
+  it("enforces the limit under concurrent requests (no lost updates)", async () => {
+    const { app } = makeApp({ RATE_LIMIT_MAX: "2" })
+    const headers = { "cf-connecting-ip": CONCURRENT_IP }
+
+    const responses = await Promise.all(
+      Array.from({ length: 3 }, () => app.request("/hit", { method: "POST", headers }, counterEnv("2"))),
+    )
+
+    // All three interleave at the same counter; the atomic DO must admit at
+    // most RATE_LIMIT_MAX=2 of them (a KV get/put race would admit all 3).
+    expect(responses.filter((response) => response.status === 200)).toHaveLength(2)
+    expect(responses.filter((response) => response.status === 429)).toHaveLength(1)
+  })
+
+  it("reports limit/remaining headers from the atomic counter", async () => {
+    const { app } = makeApp({ RATE_LIMIT_MAX: "3" })
+    const headers = { "cf-connecting-ip": CONCURRENT_IP }
+
+    const first = await app.request("/hit", { method: "POST", headers }, counterEnv("3"))
+
+    expect(first.status).toBe(200)
+    expect(first.headers.get("x-ratelimit-limit")).toBe("3")
+    expect(first.headers.get("x-ratelimit-remaining")).toBe("2")
+  })
+})

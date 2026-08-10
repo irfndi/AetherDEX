@@ -1,8 +1,9 @@
 import { Effect } from "effect"
 import { Hono } from "hono"
+import { rateLimit } from "../middleware/rate-limit"
 import { KVCacheService } from "../services/kv"
 import { type AuthVariables, authMiddleware, requireAuth } from "./middleware"
-import { deleteSession, issueNonce, verifyAndCreateSession } from "./siwe"
+import { deleteSession, issueNonce, VerificationError, verifyAndCreateSession } from "./siwe"
 
 type AuthBindings = Env & {
   SIWE_NONCE: DurableObjectNamespace
@@ -14,7 +15,8 @@ const auth = new Hono<{ Bindings: AuthBindings; Variables: AuthVariables }>()
 
 auth.use("*", authMiddleware)
 
-auth.post("/nonce", async (c) => {
+// Unauthenticated + DO-spawning: throttle to bound per-IP instance growth.
+auth.post("/nonce", rateLimit(), async (c) => {
   const result = await Effect.runPromise(issueNonce(c.env.SIWE_NONCE)).catch((err) => ({
     error: String(err),
   }))
@@ -26,8 +28,13 @@ auth.post("/nonce", async (c) => {
   return c.json(result)
 })
 
-auth.post("/verify", async (c) => {
-  const body = await c.req.json<{ message?: string; signature?: string }>()
+auth.post("/verify", rateLimit(), async (c) => {
+  let body: { message?: string; signature?: string }
+  try {
+    body = await c.req.json<{ message?: string; signature?: string }>()
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400)
+  }
   if (!body.message || !body.signature) {
     return c.json({ error: "message and signature are required" }, 400)
   }
@@ -45,10 +52,15 @@ auth.post("/verify", async (c) => {
         chainId: Number(c.env.CHAIN_ID),
       },
     ).pipe(Effect.provide(KVCacheService.layer)),
-  ).catch((err) => ({ error: String(err) }))
+  ).catch((err) => ({ error: err }))
 
   if ("error" in result) {
-    return c.json({ error: "Authentication failed" }, 401)
+    if (result.error instanceof VerificationError) {
+      return c.json({ error: "Authentication failed" }, 401)
+    }
+    // Server-side failure (KV/DO/parse) — log the cause, never leak internals.
+    console.error("SIWE verify server error:", result.error)
+    return c.json({ error: "Internal server error" }, 500)
   }
 
   return c.json({

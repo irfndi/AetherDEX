@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "featureId": "feat_library_4a1871bbb1",
+  "title": "Node source apps/api/src/services/:token",
+  "summary": "Node/TypeScript source group apps/api/src/services/:token with 2 files.",
+  "kind": "library",
+  "source": "node-source-group",
+  "confidence": "medium",
+  "entrypoints": [
+    {
+      "path": "apps/api/package.json",
+      "symbol": "apps/api/src/services/:token",
+      "route": null,
+      "command": null
+    }
+  ],
+  "ownedFiles": [
+    {
+      "path": "apps/api/src/services/token-list.service.ts",
+      "reason": "source group apps/api/src/services/:token"
+    },
+    {
+      "path": "apps/api/src/services/token.service.ts",
+      "reason": "source group apps/api/src/services/:token"
+    }
+  ],
+  "contextFiles": [
+    {
+      "path": "apps/api/package.json",
+      "reason": "package manifest"
+    }
+  ],
+  "tests": [],
+  "tags": [
+    "node",
+    "typescript",
+    "source-group",
+    "project:@aetherdex/api",
+    "project-root:apps/api"
+  ],
+  "trustBoundaries": [],
+  "status": "needs-fix",
+  "lock": null,
+  "findingIds": [
+    "fnd_sig-feat-library-4a1871bbb1-50e6_78bb86c3a6",
+    "fnd_sig-feat-library-4a1871bbb1-2cd8_b7f4d4c40e",
+    "fnd_sig-feat-library-4a1871bbb1-3695_0ed9685b74",
+    "fnd_sig-feat-library-4a1871bbb1-229a_51fea7a0ea",
+    "fnd_sig-feat-library-4a1871bbb1-9464_e918dd68ef",
+    "fnd_sig-feat-library-4a1871bbb1-794f_236800fcdf"
+  ],
+  "patchAttemptIds": [],
+  "analysisHistory": [
+    {
+      "runId": "20260810T032502-239ff8",
+      "kind": "review",
+      "summary": "6 finding(s); prompt=27428 bytes; approxTokens=6853; includedFiles=3; omittedFiles=0",
+      "provider": "pi",
+      "model": "opencode-go/deepseek-v4-flash",
+      "reasoningEffort": null,
+      "createdAt": "2026-08-10T03:31:10.146Z"
+    }
+  ],
+  "createdAt": "2026-08-10T03:21:26.575Z",
+  "updatedAt": "2026-08-10T03:31:10.146Z"
+}

@@ -173,8 +173,14 @@ export async function runPhase3Indexer(env: CronEnv, clientFactory?: (rpcUrl: st
   )
 }
 
-async function runKeeperTick(env: CronEnv): Promise<void> {
-  const chainId = Number.parseInt(env.CHAIN_ID, 10) || 11155111
+export async function runKeeperTick(env: CronEnv): Promise<void> {
+  // No silent chain fallback: an invalid CHAIN_ID skips the tick entirely
+  // (no queries, no enqueues) instead of acting on a guessed chain.
+  const chainId = parseChainId(env.CHAIN_ID)
+  if (chainId === null) {
+    console.warn(`[Keeper] invalid CHAIN_ID '${env.CHAIN_ID}' — skipping keeper tick`)
+    return
+  }
   const now = Date.now()
 
   console.log(`[Keeper] Tick started for chain ${chainId}`)
@@ -294,13 +300,30 @@ async function runKeeperTick(env: CronEnv): Promise<void> {
   console.log("[Keeper] Tick completed")
 }
 
-async function refreshTopPools(env: CronEnv): Promise<void> {
+export async function refreshTopPools(env: CronEnv): Promise<void> {
+  // No silent chain fallback: an invalid CHAIN_ID skips the refresh entirely,
+  // matching the price-key namespace (price:${chainId}:${address}) below.
+  const chainId = parseChainId(env.CHAIN_ID)
+  if (chainId === null) {
+    console.warn(`[Pools] invalid CHAIN_ID '${env.CHAIN_ID}' — skipping pool refresh`)
+    return
+  }
+
   console.log("Refreshing top pools from on-chain")
 
+  // Top pools by TVL, PLUS every pool that still has a pending TP/SL order or
+  // an active auto-recenter policy: poolSpot is the only spot-price source for
+  // the keeper evaluate handlers, so coverage must not depend on TVL rank.
   const pools = await env.DB.prepare(
-    `SELECT pool_id, token0_address, token1_address FROM pools
-     WHERE is_active = 1 ORDER BY tvl_usd DESC LIMIT 50`,
-  ).all<{ pool_id: string; token0_address: string; token1_address: string }>()
+    `SELECT pool_id, token0_address, token1_address, current_tick FROM pools
+     WHERE is_active = 1 AND chain_id = ? AND (
+       pool_id IN (SELECT pool_id FROM pools WHERE is_active = 1 ORDER BY tvl_usd DESC LIMIT 50)
+       OR pool_id IN (SELECT pool_id FROM tp_sl_orders WHERE chain_id = ? AND status = 'pending')
+       OR pool_id IN (SELECT pool_id FROM position_policies WHERE chain_id = ? AND is_active = 1 AND policy_type = 'auto_recenter')
+     )`,
+  )
+    .bind(chainId, chainId, chainId)
+    .all<{ pool_id: string; token0_address: string; token1_address: string; current_tick: number }>()
 
   if (!pools.results) return
 
@@ -322,9 +345,16 @@ async function refreshTopPools(env: CronEnv): Promise<void> {
   for (let i = 0; i < addresses.length; i += 10) {
     const batch = addresses.slice(i, i + 10)
     const values = await Promise.all(
-      batch.map(async (address) => {
-        const payload = await env.CACHE.get(`price:${address}`)
-        return [address, payload ? (JSON.parse(payload) as { priceUsd?: number }) : null] as const
+      batch.map(async (address): Promise<readonly [string, { priceUsd?: number } | null]> => {
+        const payload = await env.CACHE.get(`price:${chainId}:${address}`)
+        if (!payload) return [address, null] as const
+        try {
+          return [address, JSON.parse(payload) as { priceUsd?: number }] as const
+        } catch {
+          // One corrupt KV entry must not abort the whole pool refresh.
+          console.warn(`[Pools] Corrupt price cache payload for ${address}, treating as missing`)
+          return [address, null] as const
+        }
       }),
     )
     for (const [address, price] of values) prices.set(address, price)
@@ -341,9 +371,11 @@ async function refreshTopPools(env: CronEnv): Promise<void> {
         const denominator = toScaledBigInt(t1.priceUsd, PRICE_DECIMALS)
         if (denominator === 0n) continue
         const spotPriceX18 = String((numerator * 10n ** 18n) / denominator)
+        // Include the pool's current on-chain tick: the auto-recenter handler
+        // derives its position/range decision from poolSpot.tick.
         await env.CACHE.put(
           `poolSpot:${pool.pool_id}`,
-          JSON.stringify({ price: spotPriceX18, updatedAt: Date.now() }),
+          JSON.stringify({ price: spotPriceX18, tick: pool.current_tick, updatedAt: Date.now() }),
           { expirationTtl: 120 },
         )
       }
@@ -355,10 +387,16 @@ async function refreshTopPools(env: CronEnv): Promise<void> {
   console.log(`Refreshed ${pools.results.length} pools, ${tokenAddresses.size} tokens queued`)
 }
 
-async function enqueuePriceRefresh(env: CronEnv): Promise<void> {
-  const chainId = Number.parseInt(env.CHAIN_ID, 10)
+export async function enqueuePriceRefresh(env: CronEnv): Promise<void> {
+  // No silent chain fallback: an invalid CHAIN_ID skips the enqueue entirely
+  // instead of querying chain 1 with the configured chain's tokens.
+  const chainId = parseChainId(env.CHAIN_ID)
+  if (chainId === null) {
+    console.warn(`[Pools] invalid CHAIN_ID '${env.CHAIN_ID}' — skipping price enqueue`)
+    return
+  }
   const tokens = await env.DB.prepare("SELECT address FROM tokens WHERE is_verified = 1 AND chain_id = ? LIMIT 200")
-    .bind(Number.isNaN(chainId) ? 1 : chainId)
+    .bind(chainId)
     .all<{
       address: string
     }>()

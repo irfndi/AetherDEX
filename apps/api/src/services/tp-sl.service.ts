@@ -74,6 +74,20 @@ export class OrderUpdateError {
   constructor(readonly message: string) {}
 }
 
+/**
+ * The order exists but its current status does not allow the requested
+ * transition (e.g. cancelling/executing an order that already reached a
+ * terminal state). Distinct from OrderNotFoundError so retries of an already
+ * executed/cancelled/expired order are not mistaken for a missing row.
+ */
+export class OrderStateConflictError {
+  readonly _tag = "OrderStateConflictError"
+  constructor(
+    readonly orderId: number,
+    readonly message: string,
+  ) {}
+}
+
 export class TriggerCheckError {
   readonly _tag = "TriggerCheckError"
   constructor(readonly message: string) {}
@@ -107,14 +121,17 @@ export interface TpSlService {
     orderId: number,
     userAddress: string,
     chainId: number,
-  ) => Effect.Effect<void, OrderNotFoundError | OrderUpdateError>
+  ) => Effect.Effect<void, OrderNotFoundError | OrderStateConflictError | OrderUpdateError>
   readonly executeOrder: (
     orderId: number,
     chainId: number,
     txHash: string,
     amountOut: string,
-  ) => Effect.Effect<void, OrderNotFoundError | OrderUpdateError>
-  readonly expireOrder: (orderId: number, chainId: number) => Effect.Effect<void, OrderNotFoundError | OrderUpdateError>
+  ) => Effect.Effect<void, OrderNotFoundError | OrderStateConflictError | OrderUpdateError>
+  readonly expireOrder: (
+    orderId: number,
+    chainId: number,
+  ) => Effect.Effect<void, OrderNotFoundError | OrderStateConflictError | OrderUpdateError>
   readonly getTriggerableOrders: (
     poolId: string,
     chainId: number,
@@ -259,7 +276,7 @@ const makeTpSlService = Effect.gen(function* () {
     orderId: number,
     userAddress: string,
     chainId: number,
-  ): Effect.Effect<void, OrderNotFoundError | OrderUpdateError, never> =>
+  ): Effect.Effect<void, OrderNotFoundError | OrderStateConflictError | OrderUpdateError, never> =>
     Effect.gen(function* () {
       const raw = (yield* sql`
         UPDATE tp_sl_orders
@@ -267,24 +284,30 @@ const makeTpSlService = Effect.gen(function* () {
         WHERE id = ${orderId} AND chain_id = ${chainId} AND user_address = ${userAddress} AND status = 'pending'
       `) as unknown as { changes: number }
       if (raw.changes === 0) {
-        return yield* Effect.fail(new OrderNotFoundError(orderId))
+        const existing = (yield* sql`
+          SELECT id FROM tp_sl_orders WHERE id = ${orderId} AND chain_id = ${chainId} LIMIT 1
+        `) as unknown as readonly Record<string, unknown>[]
+        if (existing.length === 0) {
+          return yield* Effect.fail(new OrderNotFoundError(orderId))
+        }
+        return yield* Effect.fail(new OrderStateConflictError(orderId, `Order ${orderId} is not pending`))
       }
     }).pipe(
       Effect.catch((error) =>
         Effect.fail(
-          (error instanceof OrderNotFoundError ? error : new OrderUpdateError(String(error))) as
-            | OrderNotFoundError
-            | OrderUpdateError,
+          (error instanceof OrderNotFoundError || error instanceof OrderStateConflictError
+            ? error
+            : new OrderUpdateError(String(error))) as OrderNotFoundError | OrderStateConflictError | OrderUpdateError,
         ),
       ),
-    ) as unknown as Effect.Effect<void, OrderNotFoundError | OrderUpdateError, never>
+    ) as unknown as Effect.Effect<void, OrderNotFoundError | OrderStateConflictError | OrderUpdateError, never>
 
   const executeOrder = (
     orderId: number,
     chainId: number,
     txHash: string,
     amountOut: string,
-  ): Effect.Effect<void, OrderNotFoundError | OrderUpdateError, never> =>
+  ): Effect.Effect<void, OrderNotFoundError | OrderStateConflictError | OrderUpdateError, never> =>
     Effect.gen(function* () {
       const now = Date.now()
       const raw = (yield* sql`
@@ -293,22 +316,37 @@ const makeTpSlService = Effect.gen(function* () {
         WHERE id = ${orderId} AND chain_id = ${chainId} AND status = 'pending'
       `) as unknown as { changes: number }
       if (raw.changes === 0) {
-        return yield* Effect.fail(new OrderNotFoundError(orderId))
+        const existing = (yield* sql`
+          SELECT status, execution_tx_hash FROM tp_sl_orders WHERE id = ${orderId} AND chain_id = ${chainId} LIMIT 1
+        `) as unknown as readonly Record<string, unknown>[]
+        if (existing.length === 0) {
+          return yield* Effect.fail(new OrderNotFoundError(orderId))
+        }
+        const row = existing[0]
+        // Idempotent retry: an executeOrder that already committed is a success.
+        // A queue retry with the same txHash must be able to proceed (e.g. to
+        // backfill the keeper record) instead of surfacing as not-found.
+        if (row?.status === "executed" && row.execution_tx_hash === txHash) {
+          return
+        }
+        return yield* Effect.fail(
+          new OrderStateConflictError(orderId, `Order ${orderId} is not pending (status: ${String(row?.status)})`),
+        )
       }
     }).pipe(
       Effect.catch((error) =>
         Effect.fail(
-          (error instanceof OrderNotFoundError ? error : new OrderUpdateError(String(error))) as
-            | OrderNotFoundError
-            | OrderUpdateError,
+          (error instanceof OrderNotFoundError || error instanceof OrderStateConflictError
+            ? error
+            : new OrderUpdateError(String(error))) as OrderNotFoundError | OrderStateConflictError | OrderUpdateError,
         ),
       ),
-    ) as unknown as Effect.Effect<void, OrderNotFoundError | OrderUpdateError, never>
+    ) as unknown as Effect.Effect<void, OrderNotFoundError | OrderStateConflictError | OrderUpdateError, never>
 
   const expireOrder = (
     orderId: number,
     chainId: number,
-  ): Effect.Effect<void, OrderNotFoundError | OrderUpdateError, never> =>
+  ): Effect.Effect<void, OrderNotFoundError | OrderStateConflictError | OrderUpdateError, never> =>
     Effect.gen(function* () {
       const raw = (yield* sql`
         UPDATE tp_sl_orders
@@ -316,17 +354,23 @@ const makeTpSlService = Effect.gen(function* () {
         WHERE id = ${orderId} AND chain_id = ${chainId} AND status = 'pending'
       `) as unknown as { changes: number }
       if (raw.changes === 0) {
-        return yield* Effect.fail(new OrderNotFoundError(orderId))
+        const existing = (yield* sql`
+          SELECT id FROM tp_sl_orders WHERE id = ${orderId} AND chain_id = ${chainId} LIMIT 1
+        `) as unknown as readonly Record<string, unknown>[]
+        if (existing.length === 0) {
+          return yield* Effect.fail(new OrderNotFoundError(orderId))
+        }
+        return yield* Effect.fail(new OrderStateConflictError(orderId, `Order ${orderId} is not pending`))
       }
     }).pipe(
       Effect.catch((error) =>
         Effect.fail(
-          (error instanceof OrderNotFoundError ? error : new OrderUpdateError(String(error))) as
-            | OrderNotFoundError
-            | OrderUpdateError,
+          (error instanceof OrderNotFoundError || error instanceof OrderStateConflictError
+            ? error
+            : new OrderUpdateError(String(error))) as OrderNotFoundError | OrderStateConflictError | OrderUpdateError,
         ),
       ),
-    ) as unknown as Effect.Effect<void, OrderNotFoundError | OrderUpdateError, never>
+    ) as unknown as Effect.Effect<void, OrderNotFoundError | OrderStateConflictError | OrderUpdateError, never>
 
   const getTriggerableOrders = (
     poolId: string,
@@ -353,6 +397,17 @@ const makeTpSlService = Effect.gen(function* () {
   }): Effect.Effect<number, OrderCreateError, never> =>
     Effect.gen(function* () {
       const now = Date.now()
+      // Idempotent: a retry of the two-step execute+record flow after a crash
+      // must not duplicate the audit row. Reuse the existing record for the
+      // same (order, chain, txHash).
+      const existing = (yield* sql`
+        SELECT id FROM keeper_executions
+        WHERE order_id = ${input.orderId} AND chain_id = ${input.chainId} AND tx_hash = ${input.txHash}
+        LIMIT 1
+      `) as unknown as readonly Record<string, unknown>[]
+      if (existing.length > 0 && typeof existing[0]?.id === "number") {
+        return existing[0].id
+      }
       const rows = (yield* sql`
       INSERT INTO keeper_executions
           (order_id, chain_id, keeper_address, tx_hash, amount_out, gas_used, executed_at, policy_triggered)

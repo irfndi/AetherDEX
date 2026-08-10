@@ -91,7 +91,7 @@ describe("PoolStats", () => {
       ),
     )
 
-    renderWithQuery(<PoolStats tokenAddress="0xToken" chainId={1} />)
+    renderWithQuery(<PoolStats tokenAddress="0x1000000000000000000000000000000000000001" chainId={1} />)
 
     await waitFor(() => expect(screen.getByText("BASE / QUOTE")).toBeDefined())
     expect(screen.getAllByText("$2.0K")).toHaveLength(2)
@@ -100,7 +100,7 @@ describe("PoolStats", () => {
 
   it("renders the unavailable state when the API fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 503 })))
-    renderWithQuery(<PoolStats tokenAddress="0xToken" />)
+    renderWithQuery(<PoolStats tokenAddress="0x1000000000000000000000000000000000000001" />)
 
     await waitFor(() => expect(screen.getByText("No pool data available for this token.")).toBeDefined())
   })

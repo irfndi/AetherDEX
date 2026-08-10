@@ -43,6 +43,12 @@ export class TokenReadError {
   constructor(readonly cause: string) {}
 }
 
+/** Raised when a token write to D1 fails, so HTTP callers return 500 instead of a silent success. */
+export class TokenWriteError {
+  readonly _tag = "TokenWriteError"
+  constructor(readonly cause: string) {}
+}
+
 // --- Service interface ---
 
 export interface TokenService {
@@ -50,7 +56,7 @@ export interface TokenService {
   readonly listTokens: (options?: TokenSearchOptions) => Effect.Effect<TokenInfo[], TokenListError>
   readonly searchTokens: (query: string) => Effect.Effect<TokenInfo[], TokenListError>
   readonly getVerifiedTokens: () => Effect.Effect<TokenInfo[], TokenListError>
-  readonly upsertToken: (token: Omit<TokenInfo, "createdAt" | "updatedAt">) => Effect.Effect<void>
+  readonly upsertToken: (token: Omit<TokenInfo, "createdAt" | "updatedAt">) => Effect.Effect<void, TokenWriteError>
 }
 
 // --- Tag ---
@@ -75,7 +81,7 @@ const makeTokenService = Effect.gen(function* () {
   const getToken = (address: string): Effect.Effect<TokenInfo | null, TokenReadError, never> =>
     Effect.gen(function* () {
       const rows =
-        (yield* sql`SELECT * FROM tokens WHERE address = ${address} AND chain_id = ${deps.chainId}`) as unknown as readonly Record<
+        (yield* sql`SELECT * FROM tokens WHERE LOWER(address) = LOWER(${address}) AND chain_id = ${deps.chainId}`) as unknown as readonly Record<
           string,
           unknown
         >[]
@@ -85,7 +91,11 @@ const makeTokenService = Effect.gen(function* () {
 
   const listTokens = (options?: TokenSearchOptions): Effect.Effect<TokenInfo[], TokenListError, never> =>
     Effect.gen(function* () {
-      const limit = Math.min(options?.limit ?? 100, 500)
+      // Defensive: a non-finite limit (e.g. NaN from a malformed query param) or a
+      // negative one must fall back to the default — SQLite treats a negative LIMIT
+      // as "no limit", and LIMIT NaN errors. Mirrors applyOptions in token-list.service.
+      const rawLimit = options?.limit
+      const limit = Math.min(rawLimit === undefined || !Number.isFinite(rawLimit) || rawLimit < 0 ? 100 : rawLimit, 500)
       const verified = options?.verified
       const search = options?.query
 
@@ -150,7 +160,9 @@ const makeTokenService = Effect.gen(function* () {
       return rows.map((r: Record<string, unknown>) => rowToToken(r))
     }).pipe(Effect.catch((error) => Effect.fail(new TokenListError(String(error)))))
 
-  const upsertToken = (token: Omit<TokenInfo, "createdAt" | "updatedAt">): Effect.Effect<void, never, never> =>
+  const upsertToken = (
+    token: Omit<TokenInfo, "createdAt" | "updatedAt">,
+  ): Effect.Effect<void, TokenWriteError, never> =>
     Effect.gen(function* () {
       yield* sql`
         INSERT INTO tokens (chain_id, address, symbol, name, decimals, logo_url, is_verified, is_native, total_supply, created_at, updated_at)
@@ -161,10 +173,11 @@ const makeTokenService = Effect.gen(function* () {
           decimals = excluded.decimals,
           logo_url = excluded.logo_url,
           is_verified = excluded.is_verified,
+          is_native = excluded.is_native,
           total_supply = excluded.total_supply,
           updated_at = excluded.updated_at
       `
-    }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+    }).pipe(Effect.mapError((error) => new TokenWriteError(String(error))))
 
   return {
     getToken,

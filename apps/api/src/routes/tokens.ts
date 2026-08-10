@@ -9,6 +9,7 @@
 
 import { Effect, Layer } from "effect"
 import { Hono } from "hono"
+import { getAddress } from "viem"
 import { makeDbLayer } from "../db/client"
 import { runEffect } from "../lib/effect-bridge"
 import {
@@ -56,16 +57,28 @@ tokens.get("/", async (c) => {
   const parsedLimit = Number.parseInt(c.req.query("limit") ?? "100", 10)
   const limit = Math.min(Number.isNaN(parsedLimit) || parsedLimit < 0 ? 100 : parsedLimit, 500)
   const search = c.req.query("search")
+  const verifiedRaw = c.req.query("verified")
+  let verified: boolean | undefined
+  if (verifiedRaw !== undefined) {
+    if (verifiedRaw !== "true" && verifiedRaw !== "false") {
+      return c.json({ error: "verified must be 'true' or 'false'" }, 400)
+    }
+    verified = verifiedRaw === "true"
+  }
 
   try {
     const program = Effect.gen(function* () {
       const tokenList = yield* TokenListService
-      return yield* tokenList.listTokens({ limit, query: search })
+      return yield* tokenList.listTokens({ limit, query: search, verified })
     })
     const list = await runEffect(program.pipe(Effect.provide(tokenListLayer(c.env))))
-    return c.json({ tokens: list, count: list.length })
+    // The canonical list is fully verified (isVerified: true); honor the filter
+    // so ?verified=true returns the list and ?verified=false returns none.
+    const filtered = verified === undefined ? list : list.filter((token) => token.isVerified === verified)
+    return c.json({ tokens: filtered, count: filtered.length })
   } catch (err) {
-    return c.json({ error: String(err) }, 500)
+    console.error("[tokens] GET / failed:", err)
+    return c.json({ error: "Internal server error" }, 500)
   }
 })
 
@@ -73,10 +86,13 @@ tokens.get("/", async (c) => {
  * GET /api/v1/tokens/:address
  */
 tokens.get("/:address", async (c) => {
-  const address = c.req.param("address")
-  if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
+  const addressParam = c.req.param("address")
+  if (!/^0x[a-fA-F0-9]{40}$/.test(addressParam)) {
     return c.json({ error: "Invalid token address" }, 400)
   }
+  // Canonical list entries are keyed by EIP-55 checksummed address; normalize any
+  // valid hex form (lowercase included) to its checksum so lookups always match.
+  const address = getAddress(addressParam)
 
   try {
     const program = Effect.gen(function* () {
@@ -91,7 +107,8 @@ tokens.get("/:address", async (c) => {
 
     return c.json({ token })
   } catch (err) {
-    return c.json({ error: String(err) }, 500)
+    console.error("[tokens] GET /:address failed:", err)
+    return c.json({ error: "Internal server error" }, 500)
   }
 })
 

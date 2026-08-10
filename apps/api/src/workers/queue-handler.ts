@@ -23,7 +23,28 @@ import {
   type SubmissionResult,
 } from "../lib/keeper-signer"
 import { IndexerService, IndexerServiceLive, type IndexerSource } from "../services/indexer.service"
+import { MAX_TICK, MIN_TICK } from "../services/tick-bounds"
 import { buildIndexerChainConfig, isIndexerEnabled } from "./indexer-config"
+
+// CoinGecko "platform" ids keyed by chain id (https://api.coingecko.com/api/v3/asset_platforms).
+// Chains without a CoinGecko platform fail closed (no price) instead of silently
+// querying the Ethereum endpoint with the wrong chain's token addresses.
+const COINGECKO_PLATFORMS: Readonly<Record<number, string>> = {
+  1: "ethereum",
+  10: "optimism",
+  56: "bsc",
+  137: "polygon-pos",
+  250: "fantom",
+  100: "gnosis",
+  8453: "base",
+  42161: "arbitrum-one",
+  43114: "avalanche",
+}
+
+// Each upstream price fetch gets its own timeout, and a price-refresh message is
+// processed in bounded batches so one slow upstream can't serialize the queue.
+const PRICE_FETCH_TIMEOUT_MS = 10_000
+const PRICE_REFRESH_CONCURRENCY = 10
 
 const AETHER_HOOK_ABI = [
   {
@@ -320,9 +341,9 @@ async function handleTpSlEvaluate(
     return
   }
 
-  // 3. Read current spot price from pool state (via KV cache or on-chain)
-  // Prices are stored as price:${tokenAddress} — for pool spot price we need
-  // to read from the pool-specific cache or derive from token prices
+  // 3. Read current spot price from pool state (via KV cache or on-chain).
+  // poolSpot is chain-agnostic by pool id (written per-pool by refreshTopPools
+  // as poolSpot:${poolId} with a price + tick payload).
   const spotPriceKey = `poolSpot:${msg.poolId}`
   const spotPriceData = await env.CACHE.get(spotPriceKey)
   if (!spotPriceData) {
@@ -362,30 +383,13 @@ async function handleTpSlEvaluate(
   const spotPrice = BigInt(spotPriceX18)
   const twapPrice = BigInt(twapPriceX18)
 
-  let isTriggered = false
-
-  if (msg.orderType === "take_profit") {
-    if (msg.zeroForOne) {
-      // TP: price must go DOWN
-      isTriggered = spotPrice <= triggerPrice
-      isTriggered = isTriggered && twapPrice <= triggerPrice
-    } else {
-      // TP: price must go UP
-      isTriggered = spotPrice >= triggerPrice
-      isTriggered = isTriggered && twapPrice >= triggerPrice
-    }
-  } else {
-    // STOP_LOSS
-    if (msg.zeroForOne) {
-      // SL: price must go UP
-      isTriggered = spotPrice >= triggerPrice
-      isTriggered = isTriggered && twapPrice >= triggerPrice
-    } else {
-      // SL: price must go DOWN
-      isTriggered = spotPrice <= triggerPrice
-      isTriggered = isTriggered && twapPrice <= triggerPrice
-    }
-  }
+  const isTriggered = evaluateTpSlTrigger({
+    orderType: msg.orderType,
+    zeroForOne: msg.zeroForOne,
+    spotPrice,
+    twapPrice,
+    triggerPrice,
+  })
 
   if (!isTriggered) {
     console.log(
@@ -438,7 +442,24 @@ async function handleTpSlEvaluate(
   // 7. Submit the on-chain execution via the keeper relayer. The AetherTPSL
   // contract re-verifies the dual trigger itself before moving funds, so a
   // duplicate submission at worst reverts on-chain — never double-executes.
-  const signer = signerFactory !== undefined ? signerFactory(env) : createKeeperSigner(readKeeperSignerConfig(env))
+  const signer =
+    signerFactory !== undefined
+      ? signerFactory(env)
+      : createKeeperSigner(readKeeperSignerConfig(env), {
+          // Durable nonce (KV, keyed by keeper address): a relay-accepted tx is
+          // invisible to the public RPC's pending-nonce read, so a queue retry
+          // with a fresh signer instance must recover the consumed nonce from
+          // here or it would reuse it and the relay would reject the retry.
+          nonceStore: {
+            read: async (address) => {
+              const raw = await env.CACHE.get(`keeper:nonce:${address.toLowerCase()}`)
+              return raw === null ? null : Number(raw)
+            },
+            write: async (address, nonce) => {
+              await env.CACHE.put(`keeper:nonce:${address.toLowerCase()}`, String(nonce))
+            },
+          },
+        })
   let submission: SubmissionResult
   try {
     submission = await signer.sendTransaction({
@@ -569,13 +590,34 @@ async function handleAutoRecenterCheck(msg: AutoRecenterCheckMessage, env: Queue
     return
   }
 
-  // 6. Position is out of range and drift exceeds threshold — queue rebalance
+  // 6. Position is out of range and drift exceeds threshold — queue a rebalance.
+  // Target range is the current range re-centered on the current tick (same
+  // width), clamped to the V4 tick bounds; a keeper picks it up from the
+  // auto_recenter_rebalances table for execution.
+  const rangeWidth = msg.tickUpper - msg.tickLower
+  const halfWidth = Math.max(1, Math.floor(rangeWidth / 2))
+  const targetTickLower = Math.max(MIN_TICK, currentTick - halfWidth)
+  const targetTickUpper = Math.min(MAX_TICK, currentTick + halfWidth)
+  const requestId = `rebal-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+  await env.DB.prepare(`
+    INSERT INTO auto_recenter_rebalances
+      (request_id, chain_id, position_id, user_address, pool_id,
+       target_tick_lower, target_tick_upper, reason, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'auto_recenter', 'queued')
+  `)
+    .bind(requestId, msg.chainId, msg.positionId, msg.userAddress, msg.poolId, targetTickLower, targetTickUpper)
+    .run()
+
   console.log(
     JSON.stringify({
       event: "auto_recenter_triggered",
+      requestId,
       positionId: msg.positionId,
       poolId: msg.poolId,
       currentTick,
+      targetTickLower,
+      targetTickUpper,
       tickLower: msg.tickLower,
       tickUpper: msg.tickUpper,
       driftBps,
@@ -593,6 +635,36 @@ async function handleAutoRecenterCheck(msg: AutoRecenterCheckMessage, env: Queue
     .run()
 }
 
+/**
+ * Evaluate the TP/SL dual-trigger condition (spot AND twap must both breach).
+ * Extracted as a pure function so the four branch combinations (order type ×
+ * zero-for-one direction) are unit-testable without a queue/DB/KV environment.
+ */
+export function evaluateTpSlTrigger(input: {
+  readonly orderType: string
+  readonly zeroForOne: boolean
+  readonly spotPrice: bigint
+  readonly twapPrice: bigint
+  readonly triggerPrice: bigint
+}): boolean {
+  const { orderType, zeroForOne, spotPrice, twapPrice, triggerPrice } = input
+  if (orderType === "take_profit") {
+    if (zeroForOne) {
+      // TP: price must go DOWN
+      return spotPrice <= triggerPrice && twapPrice <= triggerPrice
+    }
+    // TP: price must go UP
+    return spotPrice >= triggerPrice && twapPrice >= triggerPrice
+  }
+  // STOP_LOSS
+  if (zeroForOne) {
+    // SL: price must go UP
+    return spotPrice >= triggerPrice && twapPrice >= triggerPrice
+  }
+  // SL: price must go DOWN
+  return spotPrice <= triggerPrice && twapPrice <= triggerPrice
+}
+
 // ─── Existing Handlers ──────────────────────────────────────────────────────
 
 async function handlePriceRefresh(
@@ -603,33 +675,45 @@ async function handlePriceRefresh(
 
   const hub = env.WEBSOCKET_HUB.get(env.WEBSOCKET_HUB.idFromName("price-hub"))
 
-  for (const token of msg.tokens) {
-    try {
-      // Fetch from external price feed
-      const priceUsd = await fetchTokenPrice(token, env.CHAIN_ID)
-      const updatedAt = Date.now()
+  // Process tokens in bounded batches: each fetch has its own timeout, and
+  // concurrency is capped so a long queue message can't pile up unbounded
+  // in-flight HTTP requests. Per-token failures never abort the batch.
+  for (let i = 0; i < msg.tokens.length; i += PRICE_REFRESH_CONCURRENCY) {
+    const batch = msg.tokens.slice(i, i + PRICE_REFRESH_CONCURRENCY)
+    await Promise.all(
+      batch.map(async (token) => {
+        try {
+          // Fetch from external price feed
+          const priceUsd = await fetchTokenPrice(token, env.CHAIN_ID)
+          const updatedAt = Date.now()
 
-      // Store in KV with 60s TTL
-      await env.CACHE.put(`price:${token}`, JSON.stringify({ tokenAddress: token, priceUsd, updatedAt }), {
-        expirationTtl: 60,
-      })
+          // Store in KV with 60s TTL. Chain-scoped key (price:${chainId}:${token})
+          // matches the read/write paths in price.service.ts — an unprefixed key
+          // would collide across chains in the shared CACHE namespace.
+          await env.CACHE.put(
+            `price:${env.CHAIN_ID}:${token}`,
+            JSON.stringify({ tokenAddress: token, priceUsd, updatedAt }),
+            { expirationTtl: 60 },
+          )
 
-      // Publish the refresh to the WebSocket hub so connected clients (PriceTicker)
-      // actually receive live updates — without this the /ws/prices route is only a
-      // handshake and subscribers never get a price. Only broadcast VALID prices:
-      // fetchTokenPrice returns 0 on lookup failure, and replacing a ticker's last
-      // good value with $0 would be worse than no update at all.
-      if (priceUsd > 0) {
-        await hub.fetch(
-          new Request("http://price-hub/price", {
-            method: "POST",
-            body: JSON.stringify({ tokenAddress: token, price: priceUsd, updatedAt }),
-          }),
-        )
-      }
-    } catch (error) {
-      console.error(`Failed to refresh price for ${token}:`, error)
-    }
+          // Publish the refresh to the WebSocket hub so connected clients (PriceTicker)
+          // actually receive live updates — without this the /ws/prices route is only a
+          // handshake and subscribers never get a price. Only broadcast VALID prices:
+          // fetchTokenPrice returns 0 on lookup failure, and replacing a ticker's last
+          // good value with $0 would be worse than no update at all.
+          if (priceUsd > 0) {
+            await hub.fetch(
+              new Request("http://price-hub/price", {
+                method: "POST",
+                body: JSON.stringify({ tokenAddress: token, price: priceUsd, updatedAt }),
+              }),
+            )
+          }
+        } catch (error) {
+          console.error(`Failed to refresh price for ${token}:`, error)
+        }
+      }),
+    )
   }
 }
 
@@ -708,10 +792,23 @@ async function handleTradeArchive(msg: TradeArchiveMessage, env: { DB: D1Databas
   console.log(`Archived ${result.results.length} trades to ${key}`)
 }
 
-async function fetchTokenPrice(tokenAddress: string, _chainId: string): Promise<number> {
+export async function fetchTokenPrice(
+  tokenAddress: string,
+  chainId: string,
+  timeoutMs: number = PRICE_FETCH_TIMEOUT_MS,
+): Promise<number> {
   try {
+    // Resolve the CoinGecko platform for the chain. Unknown chains fail closed
+    // (return 0) rather than silently hitting the Ethereum endpoint with a
+    // token that belongs to a different chain.
+    const platform = COINGECKO_PLATFORMS[Number(chainId)]
+    if (platform === undefined) {
+      console.error(`CoinGecko has no platform for chain ${chainId} (token ${tokenAddress})`)
+      return 0
+    }
     const res = await fetch(
-      `https://api.coingecko.com/api/v3/simple/token_price/ethereum?contract_addresses=${tokenAddress}&vs_currencies=usd`,
+      `https://api.coingecko.com/api/v3/simple/token_price/${platform}?contract_addresses=${tokenAddress}&vs_currencies=usd`,
+      { signal: AbortSignal.timeout(timeoutMs) },
     )
     if (!res.ok) {
       console.error(`CoinGecko returned ${res.status} for ${tokenAddress}`)

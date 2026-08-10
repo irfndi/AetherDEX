@@ -18,9 +18,11 @@ afterEach(() => {
 })
 
 const respondJson = (body: unknown, status = 200) =>
-  vi.mocked(globalThis.fetch).mockResolvedValueOnce(
-    new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }),
-  )
+  vi
+    .mocked(globalThis.fetch)
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }),
+    )
 
 describe("protocol fee constants", () => {
   it("match the immutable AetherRouter entry fee (10 bps = 0.1%)", () => {
@@ -134,9 +136,7 @@ describe("fetchDepositEstimate", () => {
     }
     respondJson(payload)
 
-    const result = await fetchDepositEstimate("add_liquidity_single_sided", [
-      { token, grossAmount: 10n ** 18n },
-    ])
+    const result = await fetchDepositEstimate("add_liquidity_single_sided", [{ token, grossAmount: 10n ** 18n }])
 
     expect(globalThis.fetch).toHaveBeenCalledWith(
       `${API_URL}/liquidity/deposit-estimate`,
@@ -154,7 +154,10 @@ describe("fetchDepositEstimate", () => {
   it("omits the token key for unnamed amounts", async () => {
     respondJson({
       mode: "add_liquidity",
-      protocolFee: { chargedHere: true, amounts: [{ grossAmount: "5", protocolFeeAmount: "0", amountAfterProtocolFee: "5" }] },
+      protocolFee: {
+        chargedHere: true,
+        amounts: [{ grossAmount: "5", protocolFeeAmount: "0", amountAfterProtocolFee: "5" }],
+      },
     })
 
     await fetchDepositEstimate("add_liquidity", [{ grossAmount: 5n }])

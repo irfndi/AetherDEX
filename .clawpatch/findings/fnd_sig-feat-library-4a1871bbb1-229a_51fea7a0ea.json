@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "findingId": "fnd_sig-feat-library-4a1871bbb1-229a_51fea7a0ea",
+  "featureId": "feat_library_4a1871bbb1",
+  "title": "upsertToken swallows all write failures — callers cannot detect a token that was never persisted",
+  "category": "data-loss",
+  "severity": "low",
+  "confidence": "medium",
+  "triage": "risk",
+  "evidence": [
+    {
+      "path": "apps/api/src/services/token.service.ts",
+      "startLine": 153,
+      "endLine": 167,
+      "symbol": "upsertToken",
+      "quote": null
+    }
+  ],
+  "reasoning": "upsertToken pipes the SQL insert through Effect.catch(() => Effect.succeed(undefined)), and the interface declares Effect<void, never>. Any D1 failure (constraint violation, driver error, quota) is converted into a successful completion, so the HTTP layer and callers proceed as though the token was persisted when it was not; the write is silently lost with no error surface and no logging. This contradicts the project's own documented pattern in token.service.ts lines 34-44, which deliberately surfaces read errors so HTTP callers can return 500 instead of a misleading success/empty response. The never error channel may be an intentional design choice, but the concrete impact (silent loss of user-submitted token data) is real.",
+  "reproduction": null,
+  "recommendation": "Change the error channel to Effect<void, TokenWriteError> (or similar) and let the HTTP layer map it to 500, or at minimum log the failure via Effect.tapError before swallowing; update the TokenService interface accordingly.",
+  "whyTestsDoNotAlreadyCoverThis": "No tests are included for either service; nothing asserts behavior on D1 write failure.",
+  "suggestedRegressionTest": "Mock SqlClient to fail on INSERT and assert upsertToken fails (or, if swallowing is retained, that an observable log/telemetry signal is emitted).",
+  "minimumFixScope": "apps/api/src/services/token.service.ts upsertToken and the TokenService interface (line 53).",
+  "status": "open",
+  "history": [],
+  "signature": "sig_feat-library-4a1871bbb1_229a6ac00e",
+  "linkedPatchAttemptIds": [],
+  "createdByRunId": "20260810T032502-239ff8",
+  "createdAt": "2026-08-10T03:31:10.077Z",
+  "updatedAt": "2026-08-10T03:31:10.077Z"
+}

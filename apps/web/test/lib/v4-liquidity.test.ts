@@ -1,5 +1,11 @@
+import { decodeFunctionData } from "viem"
 import { describe, expect, it } from "vitest"
-import { buildV4SingleSidedCall, findV4SwapAmount, type V4SwapQuote } from "../../src/lib/v4-liquidity"
+import {
+  AETHER_ROUTER_ABI,
+  buildV4SingleSidedCall,
+  findV4SwapAmount,
+  type V4SwapQuote,
+} from "../../src/lib/v4-liquidity"
 
 const pool = {
   chainId: 11155111,
@@ -52,6 +58,43 @@ describe("v4 liquidity adapter", () => {
         deadline: 2_000_000_000n,
       }),
     ).toThrow("amounts are invalid")
+  })
+
+  it("decodes router calldata back to the exact input args", () => {
+    const call = buildV4SingleSidedCall({
+      pool,
+      tickLower: -600,
+      tickUpper: 600,
+      zeroForOne: true,
+      amountIn: 1_000_000_000_000n,
+      swapAmountIn: 400_000_000_000n,
+      quotedAmountOut: 390_000_000_000n,
+      minSwapAmountOut: 380_000_000_000n,
+      slippageBps: 50,
+      deadline: 2_000_000_000n,
+    })
+
+    const decoded = decodeFunctionData({ abi: AETHER_ROUTER_ABI, data: call.calldata })
+    expect(decoded.functionName).toBe("addLiquiditySingleSided")
+    const params = decoded.args[0]
+    if (!params) throw new Error("Expected decoded router params")
+    expect(params.poolKey.currency0).toBe(pool.token0)
+    expect(params.poolKey.currency1).toBe(pool.token1)
+    expect(params.poolKey.fee).toBe(pool.fee)
+    expect(params.poolKey.tickSpacing).toBe(pool.tickSpacing)
+    expect(params.poolKey.hooks).toBe(pool.hooks)
+    expect(params.liquidityParams.tickLower).toBe(-600)
+    expect(params.liquidityParams.tickUpper).toBe(600)
+    expect(params.liquidityParams.liquidityDelta).toBe(call.liquidityDelta)
+    expect(params.liquidityParams.salt).toBe(`0x${"00".repeat(32)}`)
+    expect(params.zeroForOne).toBe(true)
+    expect(params.amountIn).toBe(1_000_000_000_000n)
+    expect(params.swapAmountIn).toBe(400_000_000_000n)
+    expect(params.minSwapAmountOut).toBe(380_000_000_000n)
+    expect(params.minAmount0).toBe((call.expectedAmount0 * 9_950n) / 10_000n)
+    expect(params.minAmount1).toBe((call.expectedAmount1 * 9_950n) / 10_000n)
+    expect(params.deadline).toBe(2_000_000_000n)
+    expect(params.hookData).toBe("0x")
   })
 })
 

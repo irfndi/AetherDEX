@@ -5,13 +5,14 @@ interface AddressProps {
 }
 
 export function Address({ address, length = 4, className = "" }: AddressProps) {
-  if (!address || address.length < length * 2 + 3) {
-    return <span className={className}>{address}</span>
-  }
-  const truncated = `${address.slice(0, 2 + length)}\u2026${address.slice(-length)}`
+  const chars = Math.max(1, Math.floor(length))
+  const display =
+    !address || address.length < chars * 2 + 3
+      ? address
+      : `${address.slice(0, 2 + chars)}\u2026${address.slice(-chars)}`
   return (
     <span className={`font-mono text-sm ${className}`.trim()} title={address}>
-      {truncated}
+      {display}
     </span>
   )
 }

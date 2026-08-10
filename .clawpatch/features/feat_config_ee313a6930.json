@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "featureId": "feat_config_ee313a6930",
+  "title": "Shell/workflow config renovate.yml",
+  "summary": "Shell or workflow automation in .github/workflows/renovate.yml, including command substitutions and machine-readable command output.",
+  "kind": "config",
+  "source": "shell-workflow-heuristic",
+  "confidence": "medium",
+  "entrypoints": [
+    {
+      "path": ".github/workflows/renovate.yml",
+      "symbol": null,
+      "route": null,
+      "command": null
+    }
+  ],
+  "ownedFiles": [
+    {
+      "path": ".github/workflows/renovate.yml",
+      "reason": "entrypoint"
+    }
+  ],
+  "contextFiles": [],
+  "tests": [],
+  "tags": [
+    "config",
+    "shell",
+    "workflow"
+  ],
+  "trustBoundaries": [
+    "process-exec",
+    "filesystem",
+    "network"
+  ],
+  "status": "needs-fix",
+  "lock": null,
+  "findingIds": [
+    "fnd_sig-feat-config-ee313a6930-3f3a8_219a945689",
+    "fnd_sig-feat-config-ee313a6930-80a2f_a419922dd0"
+  ],
+  "patchAttemptIds": [],
+  "analysisHistory": [
+    {
+      "runId": "20260810T032502-239ff8",
+      "kind": "review",
+      "summary": "2 finding(s); prompt=7132 bytes; approxTokens=1783; includedFiles=1; omittedFiles=0",
+      "provider": "pi",
+      "model": "opencode-go/deepseek-v4-flash",
+      "reasoningEffort": null,
+      "createdAt": "2026-08-10T03:30:10.827Z"
+    }
+  ],
+  "createdAt": "2026-08-10T03:21:26.575Z",
+  "updatedAt": "2026-08-10T03:30:10.833Z"
+}

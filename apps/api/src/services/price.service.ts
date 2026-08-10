@@ -144,7 +144,7 @@ function readD1Price(
         tokenAddress,
         priceUsd: row.price_usd,
         source: "d1-cache" as const,
-        updatedAt: row.updated_at * 1000,
+        updatedAt: rowUpdatedAtMs,
       })
     },
     catch: () => Option.none<PriceData>(),

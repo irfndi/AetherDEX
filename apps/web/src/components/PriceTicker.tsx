@@ -25,19 +25,25 @@ interface PriceTickerProps {
   showVolume?: boolean
 }
 
-function formatPrice(price: number): string {
+export function formatPrice(price: number): string {
+  if (!Number.isFinite(price)) return "—"
+  if (price <= 0) return "$0.00"
   if (price >= 1_000) return `$${price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   if (price >= 1) return `$${price.toFixed(4)}`
   if (price >= 0.01) return `$${price.toFixed(6)}`
-  return `$${price.toFixed(8)}`
+  // Tiny nonzero prices: keep significant digits so values below 1e-8 never
+  // round to a misleading "$0.00000000".
+  return `$${price.toPrecision(4)}`
 }
 
-function formatPercent(value: number): string {
+export function formatPercent(value: number): string {
+  if (!Number.isFinite(value)) return "—"
   const sign = value >= 0 ? "+" : ""
   return `${sign}${value.toFixed(2)}%`
 }
 
-function formatVolume(volume: number): string {
+export function formatVolume(volume: number): string {
+  if (!Number.isFinite(volume) || volume < 0) return "—"
   if (volume >= 1_000_000) return `$${(volume / 1_000_000).toFixed(2)}M`
   if (volume >= 1_000) return `$${(volume / 1_000).toFixed(1)}K`
   return `$${volume.toFixed(0)}`
@@ -64,11 +70,21 @@ export function PriceTicker({
   // The hub broadcasts ALL token prices (it is a single shared instance); keep the
   // latest payload for THIS ticker's token, unwrapped out of the frame envelope.
   const [data, setData] = useState<PricePayload | null>(null)
+
+  // Reset to the placeholder whenever the subscription identity changes so a
+  // previous token's price is never shown under the new token's label.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: these props are the subscription identity; a reset must run when they change.
+  useEffect(() => {
+    setData(null)
+  }, [tokenAddress, chainId, wsUrl])
+
   useEffect(() => {
     const payload = envelope?.data
     if (
       payload &&
       typeof payload.price === "number" &&
+      Number.isFinite(payload.price) &&
+      typeof payload.tokenAddress === "string" &&
       payload.tokenAddress.toLowerCase() === tokenAddress.toLowerCase()
     ) {
       setData(payload)
@@ -108,14 +124,14 @@ export function PriceTicker({
         </span>
       </div>
 
-      {data?.change24h !== undefined && (
+      {typeof data?.change24h === "number" && (
         <span className={`flex items-center gap-1 text-xs font-medium ${trendColor}`}>
           <TrendIcon size={14} />
           {formatPercent(data.change24h)}
         </span>
       )}
 
-      {showVolume && data?.volume24h !== undefined && (
+      {showVolume && typeof data?.volume24h === "number" && (
         <span className="text-xs text-base-content/50">Vol {formatVolume(data.volume24h)}</span>
       )}
     </div>

@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "featureId": "feat_library_09141f3ef9",
+  "title": "Node source apps/api/src/routes",
+  "summary": "Node/TypeScript source group apps/api/src/routes with 8 files.",
+  "kind": "library",
+  "source": "node-source-group",
+  "confidence": "medium",
+  "entrypoints": [
+    {
+      "path": "apps/api/package.json",
+      "symbol": "apps/api/src/routes",
+      "route": null,
+      "command": null
+    }
+  ],
+  "ownedFiles": [
+    {
+      "path": "apps/api/src/routes/liquidity.ts",
+      "reason": "source group apps/api/src/routes"
+    },
+    {
+      "path": "apps/api/src/routes/pools.ts",
+      "reason": "source group apps/api/src/routes"
+    },
+    {
+      "path": "apps/api/src/routes/positions.ts",
+      "reason": "source group apps/api/src/routes"
+    },
+    {
+      "path": "apps/api/src/routes/price-guard.ts",
+      "reason": "source group apps/api/src/routes"
+    },
+    {
+      "path": "apps/api/src/routes/swap.ts",
+      "reason": "source group apps/api/src/routes"
+    },
+    {
+      "path": "apps/api/src/routes/tokens.ts",
+      "reason": "source group apps/api/src/routes"
+    },
+    {
+      "path": "apps/api/src/routes/tp-sl.ts",
+      "reason": "source group apps/api/src/routes"
+    },
+    {
+      "path": "apps/api/src/routes/v3-quote.ts",
+      "reason": "source group apps/api/src/routes"
+    }
+  ],
+  "contextFiles": [
+    {
+      "path": "apps/api/package.json",
+      "reason": "package manifest"
+    },
+    {
+      "path": "apps/api/test/price-guard.test.ts",
+      "reason": "associated test"
+    }
+  ],
+  "tests": [
+    {
+      "path": "apps/api/test/price-guard.test.ts",
+      "command": "bun --cwd apps/api run test"
+    }
+  ],
+  "tags": [
+    "node",
+    "typescript",
+    "source-group",
+    "project:@aetherdex/api",
+    "project-root:apps/api"
+  ],
+  "trustBoundaries": [],
+  "status": "needs-fix",
+  "lock": null,
+  "findingIds": [
+    "fnd_sig-feat-library-09141f3ef9-8894_4427cd575e",
+    "fnd_sig-feat-library-09141f3ef9-b303_4f71be2b20",
+    "fnd_sig-feat-library-09141f3ef9-1bde_36cd6d04b6",
+    "fnd_sig-feat-library-09141f3ef9-4a36_1a6bc11b44",
+    "fnd_sig-feat-library-09141f3ef9-dc26_083de2d8a8",
+    "fnd_sig-feat-library-09141f3ef9-4de1_3a0e9c1b4d"
+  ],
+  "patchAttemptIds": [],
+  "analysisHistory": [
+    {
+      "runId": "20260810T032502-239ff8",
+      "kind": "review",
+      "summary": "6 finding(s); prompt=69487 bytes; approxTokens=17106; includedFiles=10; omittedFiles=0",
+      "provider": "pi",
+      "model": "opencode-go/deepseek-v4-flash",
+      "reasoningEffort": null,
+      "createdAt": "2026-08-10T03:29:35.733Z"
+    }
+  ],
+  "createdAt": "2026-08-10T03:21:26.575Z",
+  "updatedAt": "2026-08-10T03:29:35.733Z"
+}

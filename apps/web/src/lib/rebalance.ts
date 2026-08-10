@@ -122,10 +122,7 @@ export function validateRebalanceForm(values: RebalanceFormValues, tickSpacing: 
   return { valid: Object.keys(errors).length === 0, errors }
 }
 
-export function buildRebalanceIntent(
-  position: RebalancePosition,
-  values: RebalanceFormValues,
-): RebalanceIntent | null {
+export function buildRebalanceIntent(position: RebalancePosition, values: RebalanceFormValues): RebalanceIntent | null {
   const validation = validateRebalanceForm(values, position.tickSpacing)
   if (!validation.valid) return null
 

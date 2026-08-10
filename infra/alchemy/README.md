@@ -71,7 +71,7 @@ Inspect the deployed resource:
 ```bash
 bun alchemy state get \
   --stack AetherDEXCloudflare \
-  --stage dev_$USER \
+  --stage $(sh scripts/dev-stage.sh) \
   --fqn TradeHistory
 ```
 

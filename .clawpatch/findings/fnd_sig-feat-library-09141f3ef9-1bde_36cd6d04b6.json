@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "findingId": "fnd_sig-feat-library-09141f3ef9-1bde_36cd6d04b6",
+  "featureId": "feat_library_09141f3ef9",
+  "title": "pools.ts accepts arbitrary sortBy/sortDirection without validation, passing unverified input into PoolService queries",
+  "category": "api-contract",
+  "severity": "medium",
+  "confidence": "medium",
+  "triage": "contract-mismatch",
+  "evidence": [
+    {
+      "path": "apps/api/src/routes/pools.ts",
+      "startLine": 42,
+      "endLine": 46,
+      "symbol": null,
+      "quote": null
+    }
+  ],
+  "reasoning": "sortBy and sortDirection are read from query params and blindly cast to SortField/SortDirection even though the documented contract (header comment lines 29-30) is only tvl|volume|fees|created and asc|desc. Any other value (e.g., sortBy=1;DROP or sortDirection=random) flows into PoolQueryOptions and down to the SQL layer: invalid values produce 500 responses with raw error strings instead of 400s, and if PoolService interpolates the column/direction into ORDER BY rather than mapping a whitelist, this is a SQL injection vector (service internals are not in the included files, so the concrete confirmed impact is the unvalidated pass-through and 500-vs-400 behavior).",
+  "reproduction": "GET /api/v1/pools?sortBy=not-a-field returns HTTP 500 instead of 400.",
+  "recommendation": "Validate sortBy against the whitelist and sortDirection against asc|desc at the route boundary, returning 400 for unknown values; keep any ORDER BY column mapping as a constant whitelist in the service.",
+  "whyTestsDoNotAlreadyCoverThis": "No pools route tests are included; the only test file covers price-guard's pure function.",
+  "suggestedRegressionTest": "Test that GET /pools?sortBy=invalid and ?sortDirection=invalid return 400, and that each of the four valid sortBy values with both directions returns 200.",
+  "minimumFixScope": "apps/api/src/routes/pools.ts query-param validation.",
+  "status": "open",
+  "history": [],
+  "signature": "sig_feat-library-09141f3ef9_1bde1298dd",
+  "linkedPatchAttemptIds": [],
+  "createdByRunId": "20260810T032502-239ff8",
+  "createdAt": "2026-08-10T03:29:35.650Z",
+  "updatedAt": "2026-08-10T03:29:35.650Z"
+}

@@ -124,4 +124,34 @@ describe("ChainStateReader", () => {
     expect(blocks.length).toBe(5)
     expect(blocks.every((blockNumber) => blockNumber === 42n)).toBe(true)
   })
+
+  it("bounds the tick-scan fan-out instead of firing every probe at once", async () => {
+    let inFlight = 0
+    let maxInFlight = 0
+    const client: StateViewClient = {
+      getChainId: async () => 1,
+      getBlockNumber: async () => 42n,
+      getSlot0: async () => [2n ** 96n, 0],
+      getLiquidity: async () => 1n,
+      getTickLiquidity: async () => {
+        inFlight += 1
+        maxInFlight = Math.max(maxInFlight, inFlight)
+        await Promise.resolve()
+        inFlight -= 1
+        return [0n, 0n]
+      },
+    }
+    // scan = 512 each side => 1025 candidate ticks; without a bound every probe
+    // would be in flight simultaneously and trip public RPC rate limits.
+    const layer = makeStateViewReaderLayer({ ...liveConfig, tickScanEachSide: 512 }, () => client)
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const reader = yield* ChainStateReader
+        return yield* reader.getPoolState(key)
+      }).pipe(Effect.provide(layer)),
+    )
+
+    expect(result.initializedTicks).toEqual([])
+    expect(maxInFlight).toBeLessThanOrEqual(20)
+  })
 })

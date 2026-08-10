@@ -9,11 +9,11 @@
  *   2. cf-connecting-ip, else first x-forwarded-for hop  → rl:ip:<ip>
  *   3. anonymous                                         → rl:ip:anonymous
  *
- * Counters live in the CACHE KV namespace as window metadata ({ count, resetAt })
- * with a TTL for garbage collection; the embedded resetAt drives precise window
- * expiry (KV TTL is floored at 60s, so sub-minute windows are enforced manually).
- * Fail-open: a missing/erroring KV binding logs and passes the request through —
- * availability beats throttling for a pre-deployment DEX.
+ * Counters live in the atomic-counter Durable Object (COUNTER binding) — one
+ * DO instance per caller key makes the read-modify-write atomic (Cloudflare KV
+ * has no CAS/increment). Without the binding, counters fall back to the CACHE
+ * KV namespace as window metadata ({ count, resetAt }) with a TTL for garbage
+ * collection — approximate under concurrency, fail-open on KV errors.
  */
 
 import type { Context, Next } from "hono"
@@ -74,15 +74,36 @@ function readWindow(metadata: unknown, nowMs: number): WindowMetadata | null {
 }
 
 /**
- * Consume one request from the caller's fixed window. Pure KV interaction —
- * throws on KV errors (the middleware catches and fails open).
+ * Consume one request from the caller's fixed window. Uses the atomic-counter
+ * DO when bound (single-writer per key — Cloudflare KV has no CAS, so the KV
+ * fallback below is only approximate under concurrency). Throws on storage
+ * errors (the middleware catches and fails open).
  */
 export async function consumeRateLimit(
   kv: KVNamespace,
+  counter: DurableObjectNamespace | null,
   key: string,
   config: RateLimitConfig,
   nowMs: number = Date.now(),
 ): Promise<RateLimitOutcome> {
+  if (counter) {
+    const stub = counter.get(counter.idFromName(key))
+    const response = await stub.fetch("https://counter/increment", {
+      method: "POST",
+      body: JSON.stringify({ amount: 1, ttlMs: config.windowSeconds * 1000 }),
+    })
+    const { value, expiresAt } = (await response.json()) as { value: number; expiresAt: number }
+    return {
+      allowed: value <= config.max,
+      limit: config.max,
+      remaining: Math.max(0, config.max - value),
+      resetAt: expiresAt,
+    }
+  }
+
+  // ponytail: KV fallback (COUNTER binding missing) — the get/put is not
+  // atomic, so counts are approximate under concurrency; move to the DO
+  // binding to get exact windows.
   const { metadata } = await kv.getWithMetadata(key)
   const existing = readWindow(metadata, nowMs)
   const resetAt = existing?.resetAt ?? nowMs + config.windowSeconds * 1000
@@ -125,10 +146,11 @@ export function rateLimit(options: RateLimitOptions = {}): RateLimitMiddleware {
       windowSeconds: options.windowSeconds ?? fromEnv.windowSeconds,
     }
     const caller = identifyCaller(c)
+    const counter = env.COUNTER ?? null
 
     let outcome: RateLimitOutcome
     try {
-      outcome = await consumeRateLimit(kv, caller.key, config)
+      outcome = await consumeRateLimit(kv, counter, caller.key, config)
     } catch (error) {
       console.warn(`[rate-limit] KV error (${caller.kind}); failing open:`, error)
       await next()

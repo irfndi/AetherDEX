@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "findingId": "fnd_sig-feat-library-4a1871bbb1-3695_0ed9685b74",
+  "featureId": "feat_library_4a1871bbb1",
+  "title": "No single-flight/coalescing on cache miss — concurrent requests each re-fetch, re-validate, and re-write KV + D1 (thundering herd)",
+  "category": "performance",
+  "severity": "medium",
+  "confidence": "medium",
+  "triage": "risk",
+  "evidence": [
+    {
+      "path": "apps/api/src/services/token-list.service.ts",
+      "startLine": 209,
+      "endLine": 224,
+      "symbol": "resolveTokens",
+      "quote": null
+    },
+    {
+      "path": "apps/api/src/services/token-list.service.ts",
+      "startLine": 157,
+      "endLine": 186,
+      "symbol": "refresh",
+      "quote": null
+    }
+  ],
+  "reasoning": "resolveTokens calls refresh() on every KV miss with no deduplication: each concurrent request that misses the cache performs its own upstream fetch (a large JSON token list, 15s timeout), its own schema/EIP-55 validation, its own KV put, and up to ~350 individual D1 upserts at concurrency 20 (writeThroughD1). Because the KV TTL expires for all requests simultaneously, a burst at expiry multiplies upstream load and D1 write statements by the request concurrency. Correctness is preserved but the cost scales linearly with concurrent misses; on a shared upstream (Uniswap list) this is exactly the stampede pattern single-flight caching exists to prevent.",
+  "reproduction": null,
+  "recommendation": "Coalesce in-flight refreshes: memoize the refresh Effect per chainId (e.g. share a single in-flight promise/Effect until it settles, then clear it), so concurrent missers await the same refresh instead of starting their own. Optionally serve the D1 snapshot immediately while refreshing in the background.",
+  "whyTestsDoNotAlreadyCoverThis": "No tests are included for this feature; a test would need concurrent Effect fibers asserting a single fetch call.",
+  "suggestedRegressionTest": "Run N concurrent listTokens calls against an empty KV with a counting fetcher and assert the fetcher is invoked exactly once.",
+  "minimumFixScope": "apps/api/src/services/token-list.service.ts makeTokenListService (add a shared in-flight refresh handle keyed by chainId).",
+  "status": "open",
+  "history": [],
+  "signature": "sig_feat-library-4a1871bbb1_3695a5228e",
+  "linkedPatchAttemptIds": [],
+  "createdByRunId": "20260810T032502-239ff8",
+  "createdAt": "2026-08-10T03:31:10.077Z",
+  "updatedAt": "2026-08-10T03:31:10.077Z"
+}

@@ -119,26 +119,34 @@ export function TokenSearch({ onSelect, selectedToken, placeholder = "Search tok
     }
   }, [isOpen])
 
+  const searchSeqRef = useRef(0)
+
   const searchTokens = useCallback(async (searchQuery: string) => {
-    if (!searchQuery.trim()) {
+    const q = searchQuery.trim()
+    if (!q) {
+      // Invalidate any in-flight request so its response is dropped.
+      searchSeqRef.current += 1
       setResults([])
       setIsSearching(false)
       return
     }
 
+    const seq = ++searchSeqRef.current
     setIsSearching(true)
     try {
-      if (isValidAddress(searchQuery)) {
-        const found = await Effect.runPromise(fetchTokenByAddress(searchQuery))
+      if (isValidAddress(q)) {
+        const found = await Effect.runPromise(fetchTokenByAddress(q))
+        if (seq !== searchSeqRef.current) return
         setResults(found ? [toToken(found)] : [])
         return
       }
-      const res = await Effect.runPromise(fetchTokens({ query: searchQuery, limit: 50 }))
+      const res = await Effect.runPromise(fetchTokens({ query: q, limit: 50 }))
+      if (seq !== searchSeqRef.current) return
       setResults(res.tokens.map(toToken))
     } catch {
-      setResults([])
+      if (seq === searchSeqRef.current) setResults([])
     } finally {
-      setIsSearching(false)
+      if (seq === searchSeqRef.current) setIsSearching(false)
     }
   }, [])
 
@@ -147,7 +155,11 @@ export function TokenSearch({ onSelect, selectedToken, placeholder = "Search tok
     const timer = setTimeout(() => {
       searchTokens(query)
     }, 300)
-    return () => clearTimeout(timer)
+    return () => {
+      clearTimeout(timer)
+      // A new query supersedes any request still in flight from the old one.
+      searchSeqRef.current += 1
+    }
   }, [query, searchTokens])
 
   const handleSelect = (token: Token) => {
@@ -170,7 +182,7 @@ export function TokenSearch({ onSelect, selectedToken, placeholder = "Search tok
         >
           {selectedToken ? (
             <Fragment>
-              {selectedToken.logoURI && (
+              {selectedToken.logoURI && isSafeImageUrl(selectedToken.logoURI) && (
                 <img src={selectedToken.logoURI} alt={selectedToken.symbol} className="h-5 w-5 rounded-full" />
               )}
               <span className="font-semibold">{selectedToken.symbol}</span>

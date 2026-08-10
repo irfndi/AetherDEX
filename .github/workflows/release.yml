@@ -43,19 +43,26 @@ jobs:
           test "$(git rev-parse "${RELEASE_TAG}^{commit}")" = "$TESTED_SHA"
           node - "$RELEASE_TAG" <<'NODE'
           const fs = require("node:fs")
+          const path = require("node:path")
 
           const tag = process.argv[2]
           const expected = tag.slice(1)
-          const files = [
-            "package.json",
-            "apps/api/package.json",
-            "apps/web/package.json",
-            "packages/shared/package.json",
-          ]
+          // Derive the guard from the workspace instead of a hardcoded list so new
+          // apps/packages are covered automatically. Packages without a version field
+          // (e.g. packages/contracts) are not versioned with the tag and are skipped.
+          const files = ["package.json"]
+          for (const dir of ["apps", "packages"]) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              if (!entry.isDirectory()) continue
+              const file = path.join(dir, entry.name, "package.json")
+              if (fs.existsSync(file)) files.push(file)
+            }
+          }
           for (const file of files) {
-            const version = JSON.parse(fs.readFileSync(file, "utf8")).version
-            if (version !== expected) {
-              throw new Error(`${file} is ${version}; expected ${expected}`)
+            const pkg = JSON.parse(fs.readFileSync(file, "utf8"))
+            if (typeof pkg.version !== "string") continue
+            if (pkg.version !== expected) {
+              throw new Error(`${file} is ${pkg.version}; expected ${expected}`)
             }
           }
           NODE
@@ -108,7 +115,7 @@ jobs:
       - name: Validate production inputs
         run: |
           set -euo pipefail
-          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID CHAIN_ID RPC_URL SIWE_DOMAIN SIWE_URI STATE_VIEW_ADDRESS V4_POOL_MANAGER_ADDRESS AETHERDEX_HOOK AETHERDEX_TREASURY AETHERDEX_ROUTER AETHERDEX_FACTORY AETHERDEX_POSITION_MANAGER AETHERDEX_POOL_MANAGER VITE_REOWN_PROJECT_ID VITE_API_URL; do
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID CHAIN_ID RPC_URL SIWE_DOMAIN SIWE_URI STATE_VIEW_ADDRESS V4_POOL_MANAGER_ADDRESS AETHERDEX_HOOK AETHERDEX_TREASURY AETHERDEX_ROUTER AETHERDEX_FACTORY AETHERDEX_POSITION_MANAGER AETHERDEX_POOL_MANAGER VITE_REOWN_PROJECT_ID VITE_API_URL VITE_WS_URL; do
             test -n "${!name:-}" || { echo "Missing production secret: $name" >&2; exit 1; }
           done
 
@@ -123,7 +130,17 @@ jobs:
       - name: Smoke test production API
         run: |
           curl --fail --connect-timeout 10 --max-time 30 --retry 5 --retry-delay 3 --retry-max-time 60 "$VITE_API_URL/ping"
-          curl --fail --connect-timeout 10 --max-time 30 --retry 5 --retry-delay 3 --retry-max-time 60 "${VITE_API_URL%/api/v1}/health"
+          # Strip a trailing slash first so `.../api/v1/` does not yield `//health`,
+          # then strip the /api/v1 suffix; a non-/api/v1 base hits /health as-is.
+          health_base="${VITE_API_URL%/}"
+          health_base="${health_base%/api/v1}"
+          curl --fail --connect-timeout 10 --max-time 30 --retry 5 --retry-delay 3 --retry-max-time 60 "${health_base}/health"
+
+      - name: Smoke test production web app
+        run: |
+          # 200 + the built app shell from the Pages origin; VITE_WS_URL non-emptiness
+          # is already enforced by the Validate production inputs step above.
+          curl --fail --connect-timeout 10 --max-time 30 --retry 5 --retry-delay 3 --retry-max-time 60 "$SIWE_URI" | grep -q '<div id="root"></div>'
 
   github-release:
     name: Create GitHub release

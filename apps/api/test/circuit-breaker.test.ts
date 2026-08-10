@@ -167,3 +167,49 @@ describe("circuit breaker", () => {
     expect(handlerCalls).toBe(2)
   })
 })
+
+describe("circuit breaker (atomic half-open trial)", () => {
+  const breakerEnv = { CACHE: env.CACHE, COUNTER: env.COUNTER }
+
+  afterEach(async () => {
+    await Promise.all([env.CACHE.delete(FAILURES_KEY), env.CACHE.delete(STATE_KEY)])
+    await env.COUNTER.get(env.COUNTER.idFromName(FAILURES_KEY)).fetch("https://counter/reset", { method: "POST" })
+    await env.COUNTER.get(env.COUNTER.idFromName(STATE_KEY)).fetch("https://counter/reset", { method: "POST" })
+    handlerCalls = 0
+    nextStatus = "boom"
+  })
+
+  it("admits exactly one trial request after cooldown under concurrency", async () => {
+    const app = makeApp()
+    await openCircuit(app)
+    expect((await app.request("/boom", { method: "POST" }, breakerEnv)).status).toBe(503)
+
+    await sleep(1150)
+
+    // All six requests observe cooldown elapsed at once; the atomic claim must
+    // let exactly one through as the recovery probe — the rest get 503.
+    const responses = await Promise.all(
+      Array.from({ length: 6 }, () => app.request("/boom", { method: "POST" }, breakerEnv)),
+    )
+
+    expect(responses.filter((response) => response.status === 500)).toHaveLength(1)
+    expect(responses.filter((response) => response.status === 503)).toHaveLength(5)
+    expect(handlerCalls).toBe(4) // 3 to open the circuit + exactly 1 trial
+  })
+
+  it("rejects requests while another trial is in flight (half_open)", async () => {
+    const app = makeApp()
+    await openCircuit(app)
+    await sleep(1150)
+
+    const responses = await Promise.all(
+      Array.from({ length: 4 }, () => app.request("/boom", { method: "POST" }, breakerEnv)),
+    )
+
+    // The single admitted trial fails (nextStatus is "boom") and re-opens; the
+    // circuit must not end up closed by a concurrent success that never ran.
+    expect(responses.filter((response) => response.status === 500)).toHaveLength(1)
+    expect(await env.CACHE.get(STATE_KEY)).not.toBeNull()
+    expect(handlerCalls).toBe(4)
+  })
+})

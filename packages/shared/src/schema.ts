@@ -4,11 +4,11 @@ export const PoolSchema = Schema.Struct({
   poolId: Schema.String,
   token0Address: Schema.String,
   token1Address: Schema.String,
-  fee: Schema.Number,
-  tickSpacing: Schema.Number,
+  fee: Schema.Int,
+  tickSpacing: Schema.Int,
   hookAddress: Schema.NullOr(Schema.String),
   sqrtPriceX96: Schema.String,
-  currentTick: Schema.Number,
+  currentTick: Schema.Int,
   liquidity: Schema.String,
   tvlUsd: Schema.Number,
   volume24hUsd: Schema.Number,
@@ -29,7 +29,7 @@ export type ListPoolsPayload = Schema.Schema.Type<typeof ListPoolsPayloadSchema>
 
 export const PoolListResponseSchema = Schema.Struct({
   pools: Schema.Array(PoolSchema),
-  count: Schema.Number,
+  count: Schema.Int,
 })
 
 export type PoolListResponse = Schema.Schema.Type<typeof PoolListResponseSchema>
@@ -40,11 +40,11 @@ export type PoolListResponse = Schema.Schema.Type<typeof PoolListResponseSchema>
  * chainId filter) before serving.
  */
 export const TokenSchema = Schema.Struct({
-  chainId: Schema.Number,
+  chainId: Schema.Int,
   address: Schema.String,
   symbol: Schema.String,
   name: Schema.String,
-  decimals: Schema.Number,
+  decimals: Schema.Int,
   logoUrl: Schema.NullOr(Schema.String),
   isVerified: Schema.Boolean,
   isNative: Schema.Boolean,
@@ -57,7 +57,7 @@ export type Token = Schema.Schema.Type<typeof TokenSchema>
 
 export const TokenListResponseSchema = Schema.Struct({
   tokens: Schema.Array(TokenSchema),
-  count: Schema.Number,
+  count: Schema.Int,
 })
 
 export type TokenListResponse = Schema.Schema.Type<typeof TokenListResponseSchema>

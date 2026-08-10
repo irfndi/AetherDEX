@@ -34,5 +34,7 @@ export const ALERT_RULES = {
   },
 }
 
-export type AlertSeverity = "warn" | "critical"
+// Severity union is derived from ALERT_RULES so adding a rule with a new
+// severity can't silently drift from the type (each rule's severity is `as const`).
+export type AlertSeverity = (typeof ALERT_RULES)[keyof typeof ALERT_RULES]["severity"]
 export type AlertRule = (typeof ALERT_RULES)[keyof typeof ALERT_RULES]

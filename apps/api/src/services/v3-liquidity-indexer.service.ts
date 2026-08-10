@@ -97,17 +97,23 @@ const makeV3LiquidityIndexer = (config: V3LiquidityIndexerConfig) =>
           }),
         )
         const timestampByBlock = new Map<bigint, number>()
-        for (const item of parsed) {
-          if (!timestampByBlock.has(item.blockNumber)) {
-            const block = yield* Effect.tryPromise({
-              try: () => client.getBlock({ blockNumber: item.blockNumber }),
+        const uniqueBlocks = [...new Set(parsed.map((item) => item.blockNumber))]
+        // One getBlock per unique block, fetched concurrently with a bounded
+        // limit instead of a serial round-trip per block (rate-limit safe).
+        const timestamps = yield* Effect.all(
+          uniqueBlocks.map((blockNumber) =>
+            Effect.tryPromise({
+              try: () => client.getBlock({ blockNumber }),
               catch: (error) =>
                 new V3LiquidityIndexerError(
                   `Unable to read block timestamp: ${error instanceof Error ? error.message : String(error)}`,
                 ),
-            })
-            timestampByBlock.set(item.blockNumber, Number(block.timestamp))
-          }
+            }),
+          ),
+          { concurrency: 20 },
+        )
+        for (let i = 0; i < uniqueBlocks.length; i += 1) {
+          timestampByBlock.set(uniqueBlocks[i], Number(timestamps[i].timestamp))
         }
         for (const item of parsed) {
           const event = item.event

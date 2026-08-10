@@ -79,11 +79,31 @@ describe("mevProtection", () => {
     expect(res.headers.get("x-mev-relay")).toBeNull()
   })
 
-  it("reports a configured private relay", async () => {
+  it("degrades private mode to client when the relay URL is set but no signing key exists", async () => {
+    // A placeholder/dead relay URL is NOT a capability: without a signing key
+    // no private submission can occur, so claiming "private" would be a false
+    // security assurance. This is the false-positive case the degrade guard
+    // used to miss (any non-empty URL claimed private routing).
     const res = await post(
       makeApp(),
       {},
       { MEV_PROTECTION_MODE: "private", PRIVATE_TX_RELAY_URL: "https://relay.example/submit" },
+    )
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get("x-mev-protection")).toBe("client")
+    expect(res.headers.get("x-mev-relay")).toBeNull()
+  })
+
+  it("claims private routing only when the relay URL AND a signing key are configured", async () => {
+    const res = await post(
+      makeApp(),
+      {},
+      {
+        MEV_PROTECTION_MODE: "private",
+        PRIVATE_TX_RELAY_URL: "https://relay.example/submit",
+        PRIVATE_TX_RELAY_SIGNING_KEY: "0xabcd",
+      },
     )
 
     expect(res.status).toBe(200)

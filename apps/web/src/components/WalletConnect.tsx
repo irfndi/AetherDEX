@@ -5,11 +5,11 @@ import { Address } from "./Address"
 export function WalletConnect() {
   const { open } = useAppKit()
   const { address, isConnected } = useAccount()
-  const { disconnect } = useDisconnect()
+  const { disconnect, error: disconnectError, isPending: isDisconnecting } = useDisconnect()
   const { data: ensName } = useEnsName({ address })
   const chainId = useChainId()
   const chains = useChains()
-  const { mutate: switchChain } = useSwitchChain()
+  const { mutate: switchChain, error: switchError, isPending: isSwitching } = useSwitchChain()
 
   if (!isConnected) {
     return (
@@ -18,6 +18,8 @@ export function WalletConnect() {
       </button>
     )
   }
+
+  const actionError = switchError ?? disconnectError
 
   return (
     <div className="dropdown dropdown-end">
@@ -31,13 +33,27 @@ export function WalletConnect() {
           <li key={chain.id}>
             <button
               type="button"
-              onClick={() => switchChain({ chainId: chain.id })}
+              disabled={chainId === chain.id}
+              onClick={() => {
+                if (chainId !== chain.id) switchChain({ chainId: chain.id })
+              }}
               className={chainId === chain.id ? "active" : ""}
             >
               {chain.name}
             </button>
           </li>
         ))}
+        {isSwitching || isDisconnecting ? (
+          <li className="disabled">
+            <span className="loading loading-spinner loading-xs" />
+            {isSwitching ? "Switching..." : "Disconnecting..."}
+          </li>
+        ) : null}
+        {actionError ? (
+          <li className="text-error px-2 py-1 text-xs" role="alert">
+            {"shortMessage" in actionError && actionError.shortMessage ? actionError.shortMessage : actionError.message}
+          </li>
+        ) : null}
         <div className="divider my-1" />
         <li>
           <button type="button" onClick={() => disconnect()} className="text-error">

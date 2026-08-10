@@ -74,6 +74,8 @@ export interface V3QuoteServiceDeps {
   readonly rpcUrl: string
   readonly factoryAddress: `0x${string}`
   readonly quoterAddress: `0x${string}`
+  /** Expected chain id (env CHAIN_ID) — the RPC is verified against it before quoting. */
+  readonly chainId: number
 }
 
 export const V3QuoteServiceDeps = Context.Service<V3QuoteServiceDeps>("@aetherdex/V3QuoteServiceDeps")
@@ -81,9 +83,30 @@ export const V3QuoteServiceDeps = Context.Service<V3QuoteServiceDeps>("@aetherde
 const makeV3QuoteService = (deps: V3QuoteServiceDeps): V3QuoteService => {
   const client = createPublicClient({ transport: http(deps.rpcUrl) })
 
+  // Verify the RPC chain once per service lifetime (cached), mirroring the
+  // sibling chain-bound readers — a misconfigured RPC (mainnet RPC pointed at a
+  // Sepolia factory/quoter) must never silently quote the wrong chain.
+  let verifiedChainId: number | null = null
+  const verifyChain = Effect.tryPromise({
+    try: () => client.getChainId(),
+    catch: (error) => new V3QuoteError("rpc_error", `V3 RPC chain read failed: ${String(error)}`),
+  }).pipe(
+    Effect.flatMap((rpcChainId) => {
+      if (rpcChainId !== deps.chainId) {
+        return Effect.fail(
+          new V3QuoteError("rpc_error", `V3 RPC chain ${rpcChainId} does not match configured chain ${deps.chainId}`),
+        )
+      }
+      return Effect.succeed(rpcChainId)
+    }),
+  )
+
   return {
     quote: (params) =>
       Effect.gen(function* () {
+        if (verifiedChainId === null) {
+          verifiedChainId = yield* verifyChain
+        }
         if (params.amountIn <= 0n) {
           return yield* Effect.fail(new V3QuoteError("invalid_amount", "amountIn must be positive"))
         }

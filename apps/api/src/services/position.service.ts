@@ -163,11 +163,11 @@ const makePositionService = Effect.gen(function* () {
         costBasis1: state.costBasis1.toString(),
         isActive: state.isActive,
       }).pipe(Effect.provideService(SqlClient.SqlClient, sql))
-      if (positionId === null) return null
+      if (!positionId.updated) return null
       const rows = yield* sql`
         SELECT liquidity_positions.*, pools.tick_spacing
         FROM liquidity_positions LEFT JOIN pools ON pools.chain_id = liquidity_positions.chain_id AND pools.pool_id = liquidity_positions.pool_id
-        WHERE liquidity_positions.id = ${positionId}
+        WHERE liquidity_positions.id = ${positionId.id}
       `
       const row = rows[0]
       return row ? rowToLiquidityPosition(row as Record<string, unknown>) : null
@@ -194,6 +194,7 @@ const makePositionService = Effect.gen(function* () {
           liquidity: state.liquidity.toString(),
         }).pipe(
           Effect.provideService(SqlClient.SqlClient, sql),
+          Effect.map((result) => (result.updated ? result.id : null)),
           Effect.catch((error) =>
             Effect.fail(error instanceof RecordPositionError ? error : new RecordPositionError(String(error))),
           ),

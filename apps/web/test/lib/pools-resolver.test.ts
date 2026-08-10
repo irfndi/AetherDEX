@@ -24,9 +24,11 @@ const samplePool = {
 const validPayload = { pools: [samplePool], count: 1 }
 
 const respondJson = (body: unknown) =>
-  vi.mocked(globalThis.fetch).mockResolvedValueOnce(
-    new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } }),
-  )
+  vi
+    .mocked(globalThis.fetch)
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } }),
+    )
 
 const queryContext = () => ({ signal: new AbortController().signal })
 

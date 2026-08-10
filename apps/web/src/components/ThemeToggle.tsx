@@ -1,27 +1,17 @@
-import { useEffect, useState } from "react"
-
-type Theme = "aetherdex" | "light"
-
-const STORAGE_KEY = "aetherdex-theme"
+import { useLayoutEffect, useState } from "react"
+import { getStoredTheme, persistTheme, type Theme } from "../lib/theme"
 
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>("aetherdex")
+  const [theme, setTheme] = useState<Theme>(() => getStoredTheme() ?? "aetherdex")
 
-  useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY) as Theme | null
-    if (stored === "light" || stored === "aetherdex") {
-      setTheme(stored)
-      document.documentElement.setAttribute("data-theme", stored)
-    } else {
-      document.documentElement.setAttribute("data-theme", "aetherdex")
-    }
-  }, [])
+  useLayoutEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme)
+  }, [theme])
 
   const toggle = () => {
     const next = theme === "aetherdex" ? "light" : "aetherdex"
     setTheme(next)
-    document.documentElement.setAttribute("data-theme", next)
-    localStorage.setItem(STORAGE_KEY, next)
+    persistTheme(next)
   }
 
   return (

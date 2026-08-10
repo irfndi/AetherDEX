@@ -23,6 +23,9 @@ const pools = new Hono<{ Bindings: Bindings }>()
 type SortField = "tvl" | "volume" | "fees" | "created"
 type SortDirection = "asc" | "desc"
 
+const SORT_FIELDS: readonly SortField[] = ["tvl", "volume", "fees", "created"]
+const SORT_DIRECTIONS: readonly SortDirection[] = ["asc", "desc"]
+
 const poolLayer = (db: D1Database) => PoolServiceLive.pipe(Layer.provide(makeDbLayer(db)))
 
 /**
@@ -39,11 +42,30 @@ pools.get("/", async (c) => {
   }
   if (offset === null) return c.json({ error: "offset must be a non-negative integer" }, 400)
   const limit = requestedLimit
-  const sortBy = (c.req.query("sortBy") ?? "tvl") as SortField
-  const sortDirection = (c.req.query("sortDirection") ?? "desc") as SortDirection
+  const sortBy = c.req.query("sortBy") ?? "tvl"
+  const sortDirection = c.req.query("sortDirection") ?? "desc"
+  if (
+    !(SORT_FIELDS as readonly string[]).includes(sortBy) ||
+    !(SORT_DIRECTIONS as readonly string[]).includes(sortDirection)
+  ) {
+    return c.json(
+      { error: "sortBy must be one of: tvl, volume, fees, created; sortDirection must be asc or desc" },
+      400,
+    )
+  }
   const filterToken = c.req.query("filterToken")
+  if (filterToken !== undefined && !/^0x[a-fA-F0-9]{40}$/.test(filterToken)) {
+    return c.json({ error: "Invalid filterToken (must be 0x + 40 hex chars)" }, 400)
+  }
 
-  const options: PoolQueryOptions = { chainId, limit, offset, sortBy, sortDirection, filterByToken: filterToken }
+  const options: PoolQueryOptions = {
+    chainId,
+    limit,
+    offset,
+    sortBy: sortBy as SortField,
+    sortDirection: sortDirection as SortDirection,
+    filterByToken: filterToken?.toLowerCase(),
+  }
 
   try {
     const program = Effect.gen(function* () {
@@ -53,7 +75,8 @@ pools.get("/", async (c) => {
     const poolList = await runEffect(program.pipe(Effect.provide(poolLayer(c.env.DB))))
     return c.json({ pools: poolList, count: poolList.length })
   } catch (err) {
-    return c.json({ error: String(err) }, 500)
+    console.error("[pools] listPools failed:", err)
+    return c.json({ error: "Internal error" }, 500)
   }
 })
 
@@ -61,10 +84,13 @@ pools.get("/", async (c) => {
  * GET /api/v1/pools/:poolId
  */
 pools.get("/:poolId", async (c) => {
-  const poolId = c.req.param("poolId")
-  if (!/^0x[a-fA-F0-9]{64}$/.test(poolId)) {
+  const poolIdParam = c.req.param("poolId")
+  if (!/^0x[a-fA-F0-9]{64}$/.test(poolIdParam)) {
     return c.json({ error: "Invalid poolId (must be 0x + 64 hex chars)" }, 400)
   }
+  // D1/SQLite string comparison is case-sensitive; on-chain ids are stored lowercase,
+  // so normalize the accepted input space to the lookup space.
+  const poolId = poolIdParam.toLowerCase()
   const chainId = parseChainId(c.env.CHAIN_ID)
   if (chainId === null) return c.json({ error: "Invalid chain configuration" }, 500)
 
@@ -81,7 +107,8 @@ pools.get("/:poolId", async (c) => {
 
     return c.json({ pool })
   } catch (err) {
-    return c.json({ error: String(err) }, 500)
+    console.error("[pools] getPool failed:", err)
+    return c.json({ error: "Internal error" }, 500)
   }
 })
 

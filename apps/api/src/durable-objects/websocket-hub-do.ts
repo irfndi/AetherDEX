@@ -49,6 +49,9 @@ export class WebSocketHubDO implements DurableObject {
   private subscribers: Map<WebSocket, Subscriber> = new Map()
   private knownTokens: Set<string> = new Set()
 
+  /** Storage key for the known-token registry — in-memory sets do not survive hibernation. */
+  private static readonly KNOWN_TOKENS_KEY = "knownTokens"
+
   constructor(ctx: DurableObjectState, env: Env) {
     this.ctx = ctx
     this.env = env
@@ -60,6 +63,7 @@ export class WebSocketHubDO implements DurableObject {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url)
+    await this.hydrateKnownTokens()
 
     // WebSocket upgrade
     if (request.headers.get("Upgrade") === "websocket") {
@@ -81,6 +85,9 @@ export class WebSocketHubDO implements DurableObject {
     if (request.method === "POST" && url.pathname === "/price") {
       const update = (await request.json()) as TokenPriceUpdate
       this.knownTokens.add(update.tokenAddress)
+      // Persist the registry so list_pools / stats survive hibernation and
+      // include tokens with no currently-connected subscriber.
+      await this.ctx.storage.put(WebSocketHubDO.KNOWN_TOKENS_KEY, Array.from(this.knownTokens))
       this.broadcastPrice(update)
       return new Response(JSON.stringify({ ok: true, subscribers: this.subscribers.size }), {
         headers: { "Content-Type": "application/json" },
@@ -103,38 +110,42 @@ export class WebSocketHubDO implements DurableObject {
   }
 
   async webSocketMessage(ws: WebSocket, rawMessage: string | ArrayBuffer): Promise<void> {
+    this.hydrateSubscribers()
+    let msg: SubscribeMessage
     try {
-      this.hydrateSubscribers()
-      const msg = JSON.parse(
+      msg = JSON.parse(
         typeof rawMessage === "string" ? rawMessage : new TextDecoder().decode(rawMessage),
       ) as SubscribeMessage
-      const subscriber = this.subscribers.get(ws)
-      if (!subscriber) return
-
-      switch (msg.type) {
-        case "ping":
-          this.sendToSocket(ws, { type: "pong" })
-          break
-        case "subscribe":
-          if (msg.poolId) {
-            subscriber.watchedKeys.add(msg.poolId)
-            this.persistWatched(ws, subscriber)
-            this.sendToSocket(ws, { type: "subscribed", data: { poolId: msg.poolId } })
-          }
-          break
-        case "unsubscribe":
-          if (msg.poolId) {
-            subscriber.watchedKeys.delete(msg.poolId)
-            this.persistWatched(ws, subscriber)
-            this.sendToSocket(ws, { type: "unsubscribed", data: { poolId: msg.poolId } })
-          }
-          break
-        case "list_pools":
-          this.sendToSocket(ws, { type: "pool_list", pools: Array.from(this.knownTokens) })
-          break
-      }
     } catch (err) {
-      this.sendToSocket(ws, { type: "error", message: `Invalid message: ${err}` })
+      console.error("WebSocketHubDO invalid message:", err)
+      this.sendToSocket(ws, { type: "error", message: "Invalid message" })
+      return
+    }
+    const subscriber = this.subscribers.get(ws)
+    if (!subscriber) return
+
+    switch (msg.type) {
+      case "ping":
+        this.sendToSocket(ws, { type: "pong" })
+        break
+      case "subscribe":
+        if (msg.poolId) {
+          subscriber.watchedKeys.add(msg.poolId)
+          this.persistWatched(ws, subscriber)
+          this.sendToSocket(ws, { type: "subscribed", data: { poolId: msg.poolId } })
+        }
+        break
+      case "unsubscribe":
+        if (msg.poolId) {
+          subscriber.watchedKeys.delete(msg.poolId)
+          this.persistWatched(ws, subscriber)
+          this.sendToSocket(ws, { type: "unsubscribed", data: { poolId: msg.poolId } })
+        }
+        break
+      case "list_pools":
+        await this.hydrateKnownTokens()
+        this.sendToSocket(ws, { type: "pool_list", pools: Array.from(this.knownTokens) })
+        break
     }
   }
 
@@ -173,6 +184,19 @@ export class WebSocketHubDO implements DurableObject {
         watchedKeys: new Set(attachment?.watchedKeys ?? []),
         connectedAt: Date.now(),
       })
+    }
+  }
+
+  /**
+   * Rebuild the known-token registry from durable storage after hibernation.
+   * Unlike subscribers (recoverable from socket attachments), tokens with no
+   * currently-connected subscriber cannot be reconstructed — so the set is
+   * persisted on every /price broadcast and merged back on wake.
+   */
+  private async hydrateKnownTokens(): Promise<void> {
+    const stored = await this.ctx.storage.get<string[]>(WebSocketHubDO.KNOWN_TOKENS_KEY)
+    if (stored) {
+      for (const token of stored) this.knownTokens.add(token)
     }
   }
 

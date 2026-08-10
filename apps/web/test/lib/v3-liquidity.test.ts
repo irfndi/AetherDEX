@@ -1,13 +1,15 @@
 import { FeeAmount } from "@uniswap/v3-sdk"
+import { decodeFunctionData, toFunctionSelector } from "viem"
 import { describe, expect, it } from "vitest"
 import {
   buildV3MintCall,
-  buildV3PoolCreateCall,
   buildV3PoolContext,
+  buildV3PoolCreateCall,
   buildV3RebalancePlan,
-  buildV3SingleSidedZapCall,
   buildV3SingleSidedPlan,
+  buildV3SingleSidedZapCall,
   snapV3Tick,
+  V3_ZAP_ABI,
 } from "../../src/lib/v3-liquidity"
 
 const pool = buildV3PoolContext({
@@ -125,5 +127,94 @@ describe("v3 liquidity adapter", () => {
     expect(call.execution).toBe("v3-zap-executor")
     expect(call.method.calldata).toMatch(/^0x[0-9a-f]+$/)
     expect(call.amountIn).toBe(100n)
+  })
+
+  it("rejects a non-positive deadline across mint, rebalance, and zap builders", () => {
+    expect(() =>
+      buildV3MintCall({
+        pool,
+        tickLower: -600,
+        tickUpper: 600,
+        amount0: 1_000_000_000n,
+        amount1: 1_000_000_000n,
+        slippageBps: 50,
+        deadline: 0n,
+        recipient,
+      }),
+    ).toThrow("V3 deadline must be positive")
+
+    expect(() =>
+      buildV3RebalancePlan({
+        pool,
+        tokenId: 42n,
+        currentLiquidity: 1_000_000n,
+        expectedOwed0: 10n,
+        expectedOwed1: 20n,
+        recipient,
+        currentRange: { tickLower: -600, tickUpper: 600 },
+        newRange: { tickLower: -1200, tickUpper: 1200 },
+        amount0: 1_000_000_000n,
+        amount1: 1_000_000_000n,
+        slippageBps: 50,
+        deadline: 0n,
+      }),
+    ).toThrow("V3 deadline must be positive")
+
+    expect(() =>
+      buildV3SingleSidedZapCall({
+        executor: "0x0000000000000000000000000000000000000001",
+        pool,
+        tokenIn: pool.token0.address as `0x${string}`,
+        amountIn: 100n,
+        swapAmountIn: 40n,
+        minSwapAmountOut: 30n,
+        amount0Min: 1n,
+        amount1Min: 1n,
+        tickLower: -600,
+        tickUpper: 600,
+        slippageBps: 50,
+        deadline: 0n,
+      }),
+    ).toThrow("V3 deadline must be positive")
+  })
+
+  it("encodes zap calldata matching the executor signature and input args", () => {
+    const call = buildV3SingleSidedZapCall({
+      executor: "0x0000000000000000000000000000000000000001",
+      pool,
+      tokenIn: pool.token0.address as `0x${string}`,
+      amountIn: 100n,
+      swapAmountIn: 40n,
+      minSwapAmountOut: 30n,
+      amount0Min: 1n,
+      amount1Min: 1n,
+      tickLower: -600,
+      tickUpper: 600,
+      slippageBps: 50,
+      deadline: 123n,
+    })
+
+    expect(call.method.calldata.slice(0, 10)).toBe(
+      toFunctionSelector(
+        "zap((address,address,address,uint24,int24,int24,uint256,uint256,uint256,uint256,uint256,uint160,uint256))",
+      ),
+    )
+    const decoded = decodeFunctionData({ abi: V3_ZAP_ABI, data: call.method.calldata as `0x${string}` })
+    expect(decoded.functionName).toBe("zap")
+    const params = decoded.args[0]
+    if (!params) throw new Error("Expected decoded zap params")
+    expect(params.token0).toBe(pool.token0.address as `0x${string}`)
+    expect(params.token1).toBe(pool.token1.address as `0x${string}`)
+    expect(params.tokenIn).toBe(pool.token0.address as `0x${string}`)
+    expect(params.fee).toBe(pool.pool.fee)
+    expect(params.tickLower).toBe(-600)
+    expect(params.tickUpper).toBe(600)
+    expect(params.amountIn).toBe(100n)
+    expect(params.swapAmountIn).toBe(40n)
+    expect(params.minSwapAmountOut).toBe(30n)
+    expect(params.amount0Min).toBe(1n)
+    expect(params.amount1Min).toBe(1n)
+    expect(params.sqrtPriceLimitX96).toBe(0n)
+    expect(params.deadline).toBe(123n)
   })
 })

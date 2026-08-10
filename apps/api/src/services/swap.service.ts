@@ -59,7 +59,7 @@ export interface SwapService {
   readonly buildCalldata: (
     quote: SwapQuote,
     recipient: string,
-  ) => Effect.Effect<{ to: string; data: string; value: string }>
+  ) => Effect.Effect<{ to: string; data: string; value: string }, SwapQuoteError>
 }
 
 export const SwapService = Context.Service<SwapService>("@aetherdex/SwapService")
@@ -152,7 +152,9 @@ function finishQuote(
     priceImpact,
     fee,
     gasEstimate: "250000", // Conservative estimate for V4 swap
-    expiresAt: Date.now() + 60_000,
+    // The quote's advertised validity: the caller's requested deadline when
+    // given (getQuote rejects already-past deadlines), else 60s from now.
+    expiresAt: params.deadline ?? Date.now() + 60_000,
   }
 }
 
@@ -302,6 +304,9 @@ const makeSwapService = (deps: SwapServiceDeps, pools: PoolService, reader: Chai
       if (amountIn <= 0n) {
         return yield* Effect.fail(new SwapQuoteError("invalid_amount", "amountIn must be positive"))
       }
+      if (params.deadline !== undefined && params.deadline <= Date.now()) {
+        return yield* Effect.fail(new SwapQuoteError("expired", "Requested deadline has already passed"))
+      }
 
       const { token0 } = sortTokens(params.tokenIn, params.tokenOut)
       const zeroForOne = params.tokenIn.toLowerCase() === token0.toLowerCase()
@@ -319,7 +324,7 @@ const makeSwapService = (deps: SwapServiceDeps, pools: PoolService, reader: Chai
   const buildCalldata = (
     quote: SwapQuote,
     recipient: string,
-  ): Effect.Effect<{ to: string; data: string; value: string }, never, never> =>
+  ): Effect.Effect<{ to: string; data: string; value: string }, SwapQuoteError> =>
     Effect.gen(function* () {
       if (!quote.poolId || quote.poolId === `0x${"0".repeat(64)}`) {
         return yield* Effect.fail(new SwapQuoteError("invalid_amount", "Invalid poolId — get a quote first"))
@@ -327,8 +332,19 @@ const makeSwapService = (deps: SwapServiceDeps, pools: PoolService, reader: Chai
       if (!recipient?.startsWith("0x")) {
         return yield* Effect.fail(new SwapQuoteError("invalid_amount", "Invalid recipient address"))
       }
+      if (Date.now() > quote.expiresAt) {
+        return yield* Effect.fail(
+          new SwapQuoteError("expired", "Quote has expired — request a fresh quote before building calldata"),
+        )
+      }
 
-      const pool = yield* pools.getPool(quote.poolId, chainId)
+      const pool = yield* pools
+        .getPool(quote.poolId, chainId)
+        .pipe(
+          Effect.catch((e) =>
+            Effect.fail(new SwapQuoteError("no_pool", `Pool ${quote.poolId} read failed: ${e.cause}`)),
+          ),
+        )
       if (!pool) {
         return yield* Effect.fail(new SwapQuoteError("no_pool", `Pool ${quote.poolId} not found`))
       }
@@ -347,7 +363,10 @@ const makeSwapService = (deps: SwapServiceDeps, pools: PoolService, reader: Chai
         zeroForOne,
         amountIn: BigInt(quote.amountIn),
         minAmountOut: BigInt(quote.minAmountOut),
-        deadline: BigInt(Math.floor(Date.now() / 1000) + 1200),
+        // The on-chain deadline is the quote's advertised expiry (not a fresh
+        // now+20min) — otherwise a stale quote would get a brand-new deadline
+        // with minAmountOut computed against the old price.
+        deadline: BigInt(Math.floor(quote.expiresAt / 1000)),
         hookData: "0x" as Hex,
       }
 
@@ -362,7 +381,7 @@ const makeSwapService = (deps: SwapServiceDeps, pools: PoolService, reader: Chai
         data,
         value: "0", // ERC-20 swap, no ETH value
       }
-    }).pipe(Effect.catch((err) => Effect.die(err)))
+    })
 
   return {
     getQuote,

@@ -253,13 +253,22 @@ export const makeStateViewReaderLayer = (
             candidates.push(anchor + k * spacing)
           }
 
-          // Parallel per-tick `getTickLiquidity` probes (Phase-3 indexer replaces
-          // this windowed scan; no multicall3 dependency needed for the probes).
-          const tickResults = yield* Effect.tryPromise({
-            try: () => Promise.all(candidates.map((t) => client.getTickLiquidity(poolId, t, blockNumber))),
-            catch: (e) =>
-              new OnChainReadError("rpc_error", `Tick scan failed: ${e instanceof Error ? e.message : String(e)}`),
-          })
+          // Windowed per-tick `getTickLiquidity` probes (Phase-3 indexer replaces
+          // this scan; no multicall3 dependency needed for the probes). Bounded
+          // concurrency: scan can reach 2*512+1 candidates, and firing all of
+          // them at once would trip public RPC rate limits (the whole scan then
+          // fails with rpc_error instead of degrading).
+          const TICK_SCAN_CONCURRENCY = 20
+          const tickResults: (readonly [bigint, bigint])[] = []
+          for (let i = 0; i < candidates.length; i += TICK_SCAN_CONCURRENCY) {
+            const chunk = candidates.slice(i, i + TICK_SCAN_CONCURRENCY)
+            const chunkResults = yield* Effect.tryPromise({
+              try: () => Promise.all(chunk.map((t) => client.getTickLiquidity(poolId, t, blockNumber))),
+              catch: (e) =>
+                new OnChainReadError("rpc_error", `Tick scan failed: ${e instanceof Error ? e.message : String(e)}`),
+            })
+            tickResults.push(...chunkResults)
+          }
 
           const initializedTicks: InitializedTick[] = candidates
             .map((t, i) => {

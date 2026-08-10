@@ -10,7 +10,7 @@ import { cors } from "hono/cors"
 import { logger } from "hono/logger"
 import { type AuthVariables, authMiddleware } from "./auth/middleware"
 import { auth } from "./auth/routes"
-import { OrderBookDO, SiweNonceDO, VolumeAlertHubDO, WebSocketHubDO } from "./durable-objects"
+import { AtomicCounterDO, OrderBookDO, SiweNonceDO, VolumeAlertHubDO, WebSocketHubDO } from "./durable-objects"
 import { liquidity } from "./routes/liquidity"
 import { pools } from "./routes/pools"
 import { positions } from "./routes/positions"
@@ -29,6 +29,7 @@ type Bindings = {
   WEBSOCKET_HUB: DurableObjectNamespace
   SIWE_NONCE: DurableObjectNamespace
   VOLUME_ALERT_HUB: DurableObjectNamespace
+  COUNTER: DurableObjectNamespace
   PRICE_QUEUE: Queue
   SETTLE_QUEUE: Queue
   KEEPER_QUEUE: Queue
@@ -79,7 +80,9 @@ type Bindings = {
   TELEGRAM_CHAT_ID?: string
 }
 
-const app = new Hono<{ Bindings: Bindings; Variables: AuthVariables }>()
+// Export the app for entry-point tests (stubbed bindings via app.request);
+// the worker export below is what Cloudflare actually runs.
+export const app = new Hono<{ Bindings: Bindings; Variables: AuthVariables }>()
 
 // Middleware
 app.use("*", logger())
@@ -87,7 +90,11 @@ app.use(
   "*",
   cors({
     origin: (origin, c) => {
-      const allowedOrigins = (c.env.CORS_ORIGINS ?? "http://localhost:3000,https://aetherdex.io")
+      // localhost is a dev-only origin: production must not inherit it when
+      // CORS_ORIGINS is unset (staging/production set it explicitly in wrangler.jsonc).
+      const fallback =
+        c.env.ENVIRONMENT === "production" ? "https://aetherdex.io" : "http://localhost:3000,https://aetherdex.io"
+      const allowedOrigins = (c.env.CORS_ORIGINS ?? fallback)
         .split(",")
         .map((value: string) => value.trim())
         .filter((value: string) => value.length > 0)
@@ -106,40 +113,46 @@ app.use("*", async (c, next) => {
   const path = c.req.path
   const method = c.req.method
 
-  await next()
+  let status = 500
+  try {
+    await next()
+    status = c.res.status
+  } finally {
+    // finally: also emit the request line for 500s whose handler threw — the
+    // error is rethrown below for app.onError to respond with the generic 500.
+    const duration = Date.now() - start
 
-  const status = c.res.status
-  const duration = Date.now() - start
-
-  console.log(
-    JSON.stringify({
-      timestamp: new Date().toISOString(),
-      level: status >= 500 ? "error" : status >= 400 ? "warn" : "info",
-      method,
-      path,
-      status,
-      durationMs: duration,
-      env: c.env.ENVIRONMENT,
-    }),
-  )
+    console.log(
+      JSON.stringify({
+        timestamp: new Date().toISOString(),
+        level: status >= 500 ? "error" : status >= 400 ? "warn" : "info",
+        method,
+        path,
+        status,
+        durationMs: duration,
+        env: c.env.ENVIRONMENT,
+      }),
+    )
+  }
 })
 
 // Health check with deep dependency probes
 app.get("/health", async (c) => {
-  const checks = {
-    status: "ok" as const,
-    timestamp: Date.now(),
-    environment: c.env.ENVIRONMENT,
-    chainId: c.env.CHAIN_ID,
-    checks: {
-      d1: await checkD1(c.env.DB),
-      kv: await checkKV(c.env.CACHE),
-      r2: await checkR2(c.env.STORAGE),
+  const d1 = await checkD1(c.env.DB)
+  const kv = await checkKV(c.env.CACHE)
+  const r2 = await checkR2(c.env.STORAGE)
+  const checks = { d1, kv, r2 }
+  const allHealthy = Object.values(checks).every((check) => check.healthy)
+  return c.json(
+    {
+      status: allHealthy ? "ok" : "degraded",
+      timestamp: Date.now(),
+      environment: c.env.ENVIRONMENT,
+      chainId: c.env.CHAIN_ID,
+      checks,
     },
-  }
-
-  const allHealthy = Object.values(checks.checks).every((c) => c.healthy)
-  return c.json(checks, allHealthy ? 200 : 503)
+    allHealthy ? 200 : 503,
+  )
 })
 
 async function checkD1(db: D1Database): Promise<{ healthy: boolean; latencyMs: number }> {
@@ -248,7 +261,7 @@ app.onError((err, c) => {
 
 // ─── Durable Object classes — imported from dedicated modules ─────────────────
 
-export { OrderBookDO, SiweNonceDO, VolumeAlertHubDO, WebSocketHubDO }
+export { AtomicCounterDO, OrderBookDO, SiweNonceDO, VolumeAlertHubDO, WebSocketHubDO }
 
 // ─── Worker entry — combined Hono + DOs + Queue + Cron ────────────────────────
 

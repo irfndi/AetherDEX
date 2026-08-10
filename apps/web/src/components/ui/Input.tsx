@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes } from "react"
+import { type InputHTMLAttributes, useId } from "react"
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string
@@ -6,7 +6,9 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 export function Input({ label, error, className = "", id, ...rest }: InputProps) {
-  const inputId = id ?? `input-${Math.random().toString(36).slice(2, 9)}`
+  const generatedId = useId()
+  const inputId = id ?? generatedId
+  const errorId = error ? `${inputId}-error` : undefined
   const errorClass = error ? "input-error" : ""
   return (
     <div className="form-control min-w-0 w-full">
@@ -17,11 +19,13 @@ export function Input({ label, error, className = "", id, ...rest }: InputProps)
       ) : null}
       <input
         id={inputId}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={errorId}
         className={`input input-bordered min-w-0 max-w-full w-full ${errorClass} ${className}`.trim()}
         {...rest}
       />
       {error ? (
-        <label className="label" htmlFor={inputId}>
+        <label className="label" htmlFor={inputId} id={errorId}>
           <span className="label-text-alt text-error">{error}</span>
         </label>
       ) : null}

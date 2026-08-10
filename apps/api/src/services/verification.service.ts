@@ -186,10 +186,16 @@ const makeVerificationService = Effect.gen(function* () {
       const priceX96 = (sqrtP * sqrtP) / 2n ** 96n
       const spotPriceX18 = (priceX96 * 10n ** 18n) / 2n ** 96n
 
-      // TODO: Read TWAP from AetherHook contract
-      // For now, use spot price as TWAP placeholder
+      // TODO: #323 - Read TWAP from AetherHook contract
+      // Until a TWAP source is wired in, the dual trigger cannot be evaluated.
+      // Fail loudly instead of returning a successful isTriggered:false verdict
+      // that callers would read as "trigger never fired".
       const twapPriceX18: bigint | null = null
-      errors.push("TWAP unavailable until Phase-0 G2.5 is deployed")
+      if (twapPriceX18 === null) {
+        return yield* Effect.fail(
+          new VerificationError("twap_unavailable", "TWAP unavailable — cannot verify dual trigger"),
+        )
+      }
 
       // Evaluate trigger condition
       let isTriggered = false

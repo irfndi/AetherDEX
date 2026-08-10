@@ -12,6 +12,7 @@ import { Hono } from "hono"
 import { getAddress } from "viem"
 import { type AuthVariables, requireAuth } from "../auth/middleware"
 import { makeDbLayer } from "../db/client"
+import { parseChainId } from "../lib/chain-id"
 import { runEffect } from "../lib/effect-bridge"
 import { circuitBreaker } from "../middleware/circuit-breaker"
 import { rateLimit } from "../middleware/rate-limit"
@@ -87,14 +88,43 @@ positions.post("/positions", rateLimit(), circuitBreaker({ name: "positions" }),
     return c.json({ error: "poolId, tickLower, tickUpper, liquidity required" }, 400)
   }
 
+  const chainId = parseChainId(c.env.CHAIN_ID)
+  if (chainId === null) return c.json({ error: "Invalid chain configuration" }, 500)
+
   const { poolId, tickLower, tickUpper, liquidity } = body
+
+  // Format validation: fabricated or malformed values must not be persisted and
+  // later served back by the public GET positions endpoint.
+  const POOL_KEY_RE = /^0x[a-fA-F0-9]{64}$/
+  const UINT_RE = /^\d+$/
+  const TICK_MIN = -887_272
+  const TICK_MAX = 887_272
+  if (
+    !POOL_KEY_RE.test(poolId) ||
+    !Number.isInteger(tickLower) ||
+    tickLower < TICK_MIN ||
+    tickLower > TICK_MAX ||
+    !Number.isInteger(tickUpper) ||
+    tickUpper < TICK_MIN ||
+    tickUpper > TICK_MAX ||
+    tickLower >= tickUpper ||
+    !UINT_RE.test(liquidity)
+  ) {
+    return c.json({ error: "Invalid position values (poolId, ticks, or liquidity)" }, 400)
+  }
+  if (body.protocol !== undefined && body.protocol !== "v3" && body.protocol !== "v4") {
+    return c.json({ error: "protocol must be 'v3' or 'v4'" }, 400)
+  }
+  if (body.tokenId !== undefined && !UINT_RE.test(body.tokenId)) {
+    return c.json({ error: "Invalid tokenId (must be a non-negative integer string)" }, 400)
+  }
 
   try {
     const program = Effect.gen(function* () {
       const positionService = yield* PositionService
       return yield* positionService.recordPosition({
         userAddress: session.userAddress,
-        chainId: Number(c.env.CHAIN_ID),
+        chainId,
         protocol: body.protocol,
         tokenId: body.tokenId,
         poolId,
@@ -172,17 +202,23 @@ positions.post(
           }),
         ),
       )
+      const state = await runEffect(
+        Effect.gen(function* () {
+          const reader = yield* V4PositionReader
+          return yield* reader.read(tokenId)
+        }).pipe(Effect.provide(readerLayer)),
+      )
+      // Ownership mismatch is a client authorization failure (403), not an upstream
+      // read failure — mirror the V3 reconcile path instead of 502.
+      if (state.owner.toLowerCase() !== session.userAddress.toLowerCase()) {
+        return c.json({ error: "Position is not owned by the authenticated wallet" }, 403)
+      }
       const program = Effect.gen(function* () {
-        const reader = yield* V4PositionReader
-        const state = yield* reader.read(tokenId)
-        if (state.owner.toLowerCase() !== session.userAddress.toLowerCase()) {
-          return yield* Effect.fail(new V4PositionReadError("Position is not owned by the authenticated wallet"))
-        }
         const positionService = yield* PositionService
         const positionId = yield* positionService.reconcileV4Position(session.userAddress, tokenId, chainId, state)
         return { positionId, state }
       })
-      const result = await runEffect(program.pipe(Effect.provide(Layer.merge(positionLayer(c.env.DB), readerLayer))))
+      const result = await runEffect(program.pipe(Effect.provide(positionLayer(c.env.DB))))
       if (result.positionId === null) return c.json({ error: "Position not indexed for this owner" }, 404)
       return c.json({
         ok: true,

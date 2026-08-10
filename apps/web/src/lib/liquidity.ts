@@ -26,13 +26,15 @@ export type LiquidityTransactionRequest = {
   readonly upperTick: number
   readonly slippageBps: number
   readonly deadlineSeconds: number
-  readonly execution: {
-    readonly status: "not-configured"
-    readonly reason: "router-address-not-configured" | "v3-position-manager-not-configured"
-  } | {
-    readonly status: "submitted"
-    readonly txHash: `0x${string}`
-  }
+  readonly execution:
+    | {
+        readonly status: "not-configured"
+        readonly reason: "router-address-not-configured" | "v3-position-manager-not-configured"
+      }
+    | {
+        readonly status: "submitted"
+        readonly txHash: `0x${string}`
+      }
 }
 
 export type LiquidityValidation = {
@@ -107,8 +109,7 @@ export function buildLiquidityRequest(
     deadlineSeconds: Number(values.deadline),
     execution: {
       status: "not-configured",
-      reason:
-        values.protocol === "v3" ? "v3-position-manager-not-configured" : "router-address-not-configured",
+      reason: values.protocol === "v3" ? "v3-position-manager-not-configured" : "router-address-not-configured",
     },
   }
 }

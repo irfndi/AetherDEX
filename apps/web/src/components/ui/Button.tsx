@@ -19,6 +19,7 @@ export function Button({
   fullWidth = false,
   loading = false,
   disabled,
+  type = "button",
   ...rest
 }: ButtonProps) {
   const variantClass = `btn-${variant}`
@@ -28,11 +29,12 @@ export function Button({
 
   return (
     <button
+      type={type}
       className={`btn ${variantClass} ${sizeClass} ${widthClass} ${loadingClass} ${className}`.trim()}
       disabled={disabled || loading}
+      aria-busy={loading}
       {...rest}
     >
-      {loading ? <span className="loading loading-spinner loading-sm" /> : null}
       {children}
     </button>
   )

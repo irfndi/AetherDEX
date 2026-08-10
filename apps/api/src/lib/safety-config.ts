@@ -10,6 +10,8 @@
 /** Env vars the safety middlewares understand. All optional — defaults apply. */
 export interface SafetyEnv {
   CACHE?: KVNamespace
+  /** Atomic-counter Durable Object binding (rate limits / breaker counters). */
+  COUNTER?: DurableObjectNamespace
   RATE_LIMIT_MAX?: string
   RATE_LIMIT_WINDOW_SECONDS?: string
   CIRCUIT_FAILURE_THRESHOLD?: string
@@ -18,6 +20,10 @@ export interface SafetyEnv {
   MEV_PROTECTION_MODE?: string
   MEV_MAX_SLIPPAGE_BPS?: string
   PRIVATE_TX_RELAY_URL?: string
+  /** Secret binding: hex-encoded key that signs relay submissions. Private MEV
+   *  mode requires BOTH this and PRIVATE_TX_RELAY_URL, else it degrades to
+   *  client-side protection. */
+  PRIVATE_TX_RELAY_SIGNING_KEY?: string
 }
 
 export interface RateLimitConfig {
@@ -47,7 +53,11 @@ export interface MevProtectionConfig {
 }
 
 export const RATE_LIMIT_DEFAULTS: RateLimitConfig = { max: 60, windowSeconds: 60 }
-export const CIRCUIT_DEFAULTS: CircuitBreakerConfig = { failureThreshold: 5, cooldownSeconds: 30, highValueUsdThreshold: undefined }
+export const CIRCUIT_DEFAULTS: CircuitBreakerConfig = {
+  failureThreshold: 5,
+  cooldownSeconds: 30,
+  highValueUsdThreshold: undefined,
+}
 export const MEV_DEFAULTS: MevProtectionConfig = { mode: "client", maxSlippageBps: 500, privateRelayUrl: null }
 
 /** Workers KV enforces a 60s minimum TTL; helper keeps callers honest. */
@@ -86,9 +96,19 @@ export function readCircuitBreakerConfig(env: SafetyEnv): CircuitBreakerConfig {
 
 export function readMevProtectionConfig(env: SafetyEnv): MevProtectionConfig {
   const rawMode = env.MEV_PROTECTION_MODE
-  const mode: MevProtectionMode = rawMode === "off" || rawMode === "client" || rawMode === "private" ? rawMode : "client"
+  const mode: MevProtectionMode =
+    rawMode === "off" || rawMode === "client" || rawMode === "private" ? rawMode : "client"
   const relay = env.PRIVATE_TX_RELAY_URL?.trim() ?? ""
-  const privateRelayUrl = /^https?:\/\//.test(relay) ? relay : null
+  // https-only, mirroring keeper-signer.parseRelayUrl: private submission over
+  // cleartext is never allowed (MEV Tier-B), and a bare scheme with no host is invalid.
+  let privateRelayUrl: string | null = null
+  if (relay.length > 0) {
+    try {
+      if (new URL(relay).protocol === "https:") privateRelayUrl = relay
+    } catch {
+      privateRelayUrl = null
+    }
+  }
   return {
     mode,
     maxSlippageBps: parsePositiveInt(env.MEV_MAX_SLIPPAGE_BPS, MEV_DEFAULTS.maxSlippageBps),

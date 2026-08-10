@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { AnimatePresence, motion } from "framer-motion"
 import { AlertCircle, ArrowDown, CheckCircle2, Settings2 } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useAccount, useWaitForTransactionReceipt, useWalletClient } from "wagmi"
 import { TokenChip } from "../components/TokenChip"
 import { type Token, TokenSearch } from "../components/TokenSearch"
@@ -13,7 +13,7 @@ export const Route = createFileRoute("/swap")({
   component: SwapPage,
 })
 
-interface SwapQuote {
+export interface SwapQuote {
   poolId: string
   tokenIn: string
   tokenOut: string
@@ -28,7 +28,27 @@ interface SwapQuote {
 
 type SwapState = "idle" | "building" | "signing" | "pending" | "success" | "error"
 
+interface RecordSwapPayload {
+  txHash: `0x${string}`
+  poolId: string
+  tokenIn: string
+  tokenOut: string
+  amountIn: string
+  amountOut: string
+  blockNumber?: number
+  blockTimestamp?: number
+  authToken: string
+}
+
 const SLIPPAGE_OPTIONS = [0.1, 0.5, 1.0] as const
+
+/**
+ * Quotes carry an `expiresAt` (ms epoch) from the API; the swap must be built
+ * and signed against a fresh quote, so an expired quote is rejected up front.
+ */
+export function isQuoteExpired(quote: SwapQuote, now = Date.now()): boolean {
+  return quote.expiresAt <= now
+}
 
 function SwapPage() {
   const { isConnected, address } = useAccount()
@@ -41,8 +61,12 @@ function SwapPage() {
   const [quote, setQuote] = useState<SwapQuote | null>(null)
   const [quoteLoading, setQuoteLoading] = useState(false)
   const [quoteError, setQuoteError] = useState<string | null>(null)
+  const [quoteNonce, setQuoteNonce] = useState(0)
   const [swapState, setSwapState] = useState<SwapState>("idle")
   const [txHash, setTxHash] = useState<`0x${string}` | undefined>(undefined)
+  const [recordError, setRecordError] = useState<string | null>(null)
+  const [recordPending, setRecordPending] = useState(false)
+  const recordPayloadRef = useRef<RecordSwapPayload | null>(null)
 
   const { data: walletClient } = useWalletClient()
   const {
@@ -51,10 +75,7 @@ function SwapPage() {
     data: receipt,
   } = useWaitForTransactionReceipt({ hash: txHash })
 
-  const apiUrl = import.meta.env.VITE_API_URL
-  if (!apiUrl) {
-    throw new Error("VITE_API_URL environment variable is required")
-  }
+  const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8080/api/v1"
 
   // Fetch quote when tokens + amount change (400ms debounce)
   useEffect(() => {
@@ -78,7 +99,7 @@ function SwapPage() {
         slippage: slippage.toString(),
       })
 
-      fetch(`${apiUrl}/quote?${params}`, { signal: controller.signal })
+      fetch(`${apiUrl}/quote?${params}&nonce=${quoteNonce}`, { signal: controller.signal })
         .then((res) => {
           if (!res.ok) throw new Error(`HTTP ${res.status}`)
           return res.json()
@@ -101,7 +122,7 @@ function SwapPage() {
       controller.abort()
       clearTimeout(handle)
     }
-  }, [tokenIn, tokenOut, amountIn, slippage])
+  }, [tokenIn, tokenOut, amountIn, slippage, quoteNonce])
 
   const handleSwitchTokens = () => {
     const prev = tokenIn
@@ -113,6 +134,12 @@ function SwapPage() {
   const handleSwap = async () => {
     if (!quote || !tokenIn || !tokenOut) return
 
+    if (isQuoteExpired(quote)) {
+      setQuoteError("Quote expired \u2014 refreshing\u2026")
+      setQuoteNonce((n) => n + 1)
+      return
+    }
+
     if (!isConnected || !address) return
 
     if (!isAuthenticated) {
@@ -123,7 +150,7 @@ function SwapPage() {
     setSwapState("building")
     setQuoteError(null)
     try {
-      const buildRes = await fetch(`${apiUrl}/swap/build`, {
+      const buildRes = await fetch(`${apiUrl}/build`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ quote, recipient: address }),
@@ -150,39 +177,70 @@ function SwapPage() {
     }
   }
 
+  /**
+   * POST the confirmed swap to the indexer. Failures are surfaced as a
+   * visible banner with a manual retry instead of a silent `.catch(console.error)`.
+   */
+  const recordSwap = useCallback(async () => {
+    const payload = recordPayloadRef.current
+    if (!payload) return
+
+    setRecordPending(true)
+    setRecordError(null)
+    try {
+      const res = await fetch(`${apiUrl}/record`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${payload.authToken}`,
+        },
+        body: JSON.stringify({
+          txHash: payload.txHash,
+          poolId: payload.poolId,
+          tokenIn: payload.tokenIn,
+          tokenOut: payload.tokenOut,
+          amountIn: payload.amountIn,
+          amountOut: payload.amountOut,
+          blockNumber: payload.blockNumber,
+          blockTimestamp: payload.blockTimestamp,
+        }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    } catch {
+      setRecordError("Swap confirmed, but index sync failed \u2014 retry to update your portfolio")
+    } finally {
+      setRecordPending(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (!(isConfirmed && swapState === "pending" && txHash && quote && tokenIn && tokenOut)) return
 
     setSwapState("success")
 
     if (authToken) {
-      fetch(`${apiUrl}/swap/record`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({
-          txHash,
-          poolId: quote.poolId,
-          tokenIn: tokenIn.address,
-          tokenOut: tokenOut.address,
-          amountIn: quote.amountIn,
-          amountOut: quote.amountOut,
-          blockNumber: receipt?.blockNumber ? Number(receipt.blockNumber) : undefined,
-          blockTimestamp: receipt?.blockTimestamp ? Number(receipt.blockTimestamp) : undefined,
-        }),
-      }).catch(console.error)
+      recordPayloadRef.current = {
+        txHash,
+        poolId: quote.poolId,
+        tokenIn: tokenIn.address,
+        tokenOut: tokenOut.address,
+        amountIn: quote.amountIn,
+        amountOut: quote.amountOut,
+        ...(receipt?.blockNumber ? { blockNumber: Number(receipt.blockNumber) } : {}),
+        ...(receipt?.blockTimestamp ? { blockTimestamp: Number(receipt.blockTimestamp) } : {}),
+        authToken,
+      }
+      recordSwap()
     }
 
     const timer = setTimeout(() => {
       setSwapState("idle")
       setAmountIn("")
-      setTxHash(undefined)
+      // Keep txHash + record payload so a failed /record stays retryable.
     }, 3000)
 
     return () => clearTimeout(timer)
-  }, [isConfirmed, swapState, txHash, quote, tokenIn, tokenOut, authToken, receipt])
+  }, [isConfirmed, swapState, txHash, quote, tokenIn, tokenOut, authToken, receipt, recordSwap])
 
   const isQuoteValid = quote !== null && quoteError === null && !quoteLoading
   const needsAuth = isConnected && !isAuthenticated
@@ -379,6 +437,16 @@ function SwapPage() {
                 {swapButtonLabel}
               </Button>
             )}
+            {/* Index sync failure — retryable */}
+            {recordError && (
+              <div className="alert alert-warning text-sm">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span className="flex-1">{recordError}</span>
+                <Button variant="primary" size="sm" onClick={() => recordSwap()} loading={recordPending}>
+                  Retry
+                </Button>
+              </div>
+            )}
           </div>
         </CardBody>
       </Card>
@@ -388,8 +456,10 @@ function SwapPage() {
 
 /**
  * Format a raw bigint string (smallest unit) to a human-readable decimal.
+ * Fractions are trimmed of trailing zeros, capped at 6 digits, and padded
+ * to at least 2 digits so short values do not overflow the fixed-width card.
  */
-function formatAmount(raw: string, decimals: number): string {
+export function formatAmount(raw: string, decimals: number): string {
   try {
     const negative = raw.startsWith("-")
     const digits = negative ? raw.slice(1) : raw
@@ -400,9 +470,8 @@ function formatAmount(raw: string, decimals: number): string {
     const intPart = padded.slice(0, padded.length - decimals)
     const fracPart = padded.slice(padded.length - decimals)
 
-    // Trim trailing zeros but keep at least 2 decimals
-    const trimmed = fracPart.replace(/0+$/, "")
-    const displayFrac = trimmed.length > 0 ? trimmed.slice(0, Math.max(trimmed.length, 2)) : "0"
+    const trimmed = fracPart.replace(/0+$/, "").slice(0, 6)
+    const displayFrac = (trimmed || "0").padEnd(2, "0")
 
     return `${negative ? "-" : ""}${intPart}.${displayFrac}`
   } catch {

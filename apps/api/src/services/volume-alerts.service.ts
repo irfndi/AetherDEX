@@ -252,6 +252,11 @@ export async function runVolumeAlertsTick(
   const fetchImpl = sink.fetchImpl ?? fetch
   const emitted: VolumeAlert[] = []
   for (const spike of spikes) {
+    // ponytail: KV has no compare-and-set, so the isInCooldown check + markCooldown
+    // write is check-then-act — two overlapping ticks (cron overlap, retries,
+    // concurrent isolates) can both pass the check and emit a duplicate alert for
+    // the same pool. "Announced once per cooldown" is guaranteed per single-threaded
+    // tick only; dedupe at the hub/envelope level if duplicates become observable.
     if (await isInCooldown(kv, config.chainId, spike.poolId)) continue
 
     const alert = formatVolumeAlert(config.chainId, spike, now)

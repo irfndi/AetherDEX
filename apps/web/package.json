@@ -5,18 +5,21 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 3000",
-    "build": "tsr generate && vite build",
+    "build": "tsr generate && tsc --noEmit && vite build",
     "preview": "vite preview",
+    "predeploy": "bun run build",
     "deploy": "wrangler pages deploy dist --project-name aether-dex",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "vitest run --coverage.provider=istanbul",
     "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install chromium",
     "test:e2e:ui": "playwright test --ui",
-    "typecheck": "tsc --noEmit",
-    "lint": "biome check src/ test/",
-    "lint:fix": "biome check --write src/ test/",
-    "format": "biome format --write src/ test/"
+    "typecheck": "tsr generate && tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome check --write .",
+    "format:check": "biome check ."
   },
   "dependencies": {
     "@aetherdex/shared": "workspace:*",
@@ -27,7 +30,7 @@
     "@tanstack/react-router": "^1.170.18",
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.14.7",
-    "@tanstack/router-devtools": "^1.167.0",
+    "@tanstack/router-devtools": "^1.167.1",
     "@uniswap/sdk-core": "^7.18.0",
     "@uniswap/v3-sdk": "^3.31.0",
     "@uniswap/v4-sdk": "^2.3.0",
@@ -44,8 +47,8 @@
   "devDependencies": {
     "@biomejs/biome": "^2.5.5",
     "@playwright/test": "^1.61.1",
-    "@tanstack/router-cli": "^1.167.21",
-    "@tanstack/router-plugin": "^1.168.23",
+    "@tanstack/router-cli": "^1.167.27",
+    "@tanstack/router-plugin": "^1.168.29",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -54,7 +57,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
     "@vitest/coverage-istanbul": "4.1.10",
-    "@vitest/coverage-v8": "^4.1.10",
+    "wrangler": "^4.113.0",
     "@vitest/ui": "^4.1.10",
     "autoprefixer": "^10.5.4",
     "happy-dom": "^20.11.0",
@@ -62,8 +65,7 @@
     "tailwindcss": "^3.4.19",
     "typescript": "^7.0.2",
     "vite": "^8.1.5",
-    "vitest": "^4.1.10",
-    "wrangler": "^4.113.0"
+    "vitest": "^4.1.10"
   },
   "engines": {
     "bun": ">=1.4.0",

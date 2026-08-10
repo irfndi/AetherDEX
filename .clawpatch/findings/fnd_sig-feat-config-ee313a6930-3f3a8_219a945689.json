@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "findingId": "fnd_sig-feat-config-ee313a6930-3f3a8_219a945689",
+  "featureId": "feat_config_ee313a6930",
+  "title": "RENOVATE_DRY_RUN is exported as an empty string rather than unset when dryRun is false or on scheduled triggers",
+  "category": "maintainability",
+  "severity": "low",
+  "confidence": "low",
+  "triage": "risk",
+  "evidence": [
+    {
+      "path": ".github/workflows/renovate.yml",
+      "startLine": 61,
+      "endLine": 61,
+      "symbol": null,
+      "quote": null
+    }
+  ],
+  "reasoning": "The expression `${{ inputs.dryRun && 'full' || '' }}` evaluates to `''` both when the boolean input is false and on `schedule` runs (where the `inputs` context is empty), so the env var is always present with an empty-string value in the Renovate container. Renovate's documented dryRun values are true/full/extract; correct behavior today depends on Renovate's env parser treating an empty string as unset (falsy). That is an undocumented parsing semantic that could change across Renovate versions or when the option gains strict enum validation, silently enabling a real (non-dry) run or failing the job. This is fragile contract-on-empty-string behavior, not a demonstrated current failure, so confidence is low. Note the same pattern on line 59 (`inputs.logLevel || 'info'`) is safe because it always yields a valid enum value from the choice input default.",
+  "reproduction": null,
+  "recommendation": "Avoid relying on empty-string env semantics: for example, set the env var only when the input is true via a dedicated step (`if: inputs.dryRun` with `echo \"RENOVATE_DRY_RUN=full\" >> \"$GITHUB_ENV\"`), or explicitly map the false case to a documented value. At minimum, add a comment documenting that empty string is intentionally treated as no dry run, and pin/verify behavior when bumping `renovate-version`.",
+  "whyTestsDoNotAlreadyCoverThis": "No tests exist for this workflow (tests list is empty), and the repo's vitest suite does not exercise GitHub Actions expression evaluation or Renovate env parsing.",
+  "suggestedRegressionTest": "A CI check that runs actionlint on .github/workflows/renovate.yml plus a unit test asserting the dryRun->RENOVATE_DRY_RUN mapping for true/false/schedule cases, and a Renovate dry-run smoke job on PRs.",
+  "minimumFixScope": "Lines 58-61 env block in .github/workflows/renovate.yml",
+  "status": "open",
+  "history": [],
+  "signature": "sig_feat-config-ee313a6930_3f3a871b27",
+  "linkedPatchAttemptIds": [],
+  "createdByRunId": "20260810T032502-239ff8",
+  "createdAt": "2026-08-10T03:30:10.762Z",
+  "updatedAt": "2026-08-10T03:30:10.762Z"
+}

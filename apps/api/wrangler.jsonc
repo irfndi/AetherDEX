@@ -58,6 +58,10 @@
       {
         "name": "VOLUME_ALERT_HUB",
         "class_name": "VolumeAlertHubDO"
+      },
+      {
+        "name": "COUNTER",
+        "class_name": "AtomicCounterDO"
       }
     ]
   },
@@ -73,6 +77,10 @@
     {
       "tag": "v3",
       "new_sqlite_classes": ["VolumeAlertHubDO"]
+    },
+    {
+      "tag": "v4",
+      "new_sqlite_classes": ["AtomicCounterDO"]
     }
   ],
 
@@ -185,6 +193,11 @@
   // Submission stays evaluation-only unless PRIVATE_TX_RELAY_URL (https-only,
   // MEV Tier-B private relay; preferred) or KEEPER_ALLOW_PUBLIC_SUBMISSION="true".
   //
+  // MEV private submission (MEV_PROTECTION_MODE=private) additionally requires
+  //   PRIVATE_TX_RELAY_SIGNING_KEY — hex-encoded key signing relay submissions;
+  //   until both it and PRIVATE_TX_RELAY_URL are configured, private mode
+  //   degrades to client-side protection.
+  //
   // Phase 3 volume-alert Telegram notifications (set via `wrangler secret put`):
   //   TELEGRAM_BOT_TOKEN — bot API token; alerts stay off until this is set
   //   TELEGRAM_CHAT_ID — destination chat id; both are required to enable sends
@@ -289,7 +302,8 @@
           { "name": "ORDER_BOOK", "class_name": "OrderBookDO" },
           { "name": "WEBSOCKET_HUB", "class_name": "WebSocketHubDO" },
           { "name": "SIWE_NONCE", "class_name": "SiweNonceDO" },
-          { "name": "VOLUME_ALERT_HUB", "class_name": "VolumeAlertHubDO" }
+          { "name": "VOLUME_ALERT_HUB", "class_name": "VolumeAlertHubDO" },
+          { "name": "COUNTER", "class_name": "AtomicCounterDO" }
         ]
       }
     },
@@ -391,7 +405,8 @@
           { "name": "ORDER_BOOK", "class_name": "OrderBookDO" },
           { "name": "WEBSOCKET_HUB", "class_name": "WebSocketHubDO" },
           { "name": "SIWE_NONCE", "class_name": "SiweNonceDO" },
-          { "name": "VOLUME_ALERT_HUB", "class_name": "VolumeAlertHubDO" }
+          { "name": "VOLUME_ALERT_HUB", "class_name": "VolumeAlertHubDO" },
+          { "name": "COUNTER", "class_name": "AtomicCounterDO" }
         ]
       }
     }

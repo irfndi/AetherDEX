@@ -11,6 +11,13 @@ import { SiweMessage, type SiweMessage as SiweMessageObj } from "siwe"
 import { verifyMessage } from "viem"
 import { KVCacheService, type SessionEntry } from "../services/kv"
 
+/**
+ * Client-fault verification error: bad signature, expired/reused/invalid
+ * nonce, domain/URI/chain mismatch, malformed message. Route handlers map
+ * these to 401; any other failure (KV/DO/parse) is a server error → 500.
+ */
+export class VerificationError extends Error {}
+
 export interface NonceResponse {
   nonce: string
   issuedAt: string
@@ -71,14 +78,14 @@ export function verifyAndCreateSession(
     try {
       siweParsed = new SiweMessage(request.message)
     } catch {
-      return yield* Effect.fail(new Error("Invalid SIWE message format"))
+      return yield* Effect.fail(new VerificationError("Invalid SIWE message format"))
     }
 
     if (siweParsed.domain !== config.domain || siweParsed.uri !== config.uri) {
-      return yield* Effect.fail(new Error("SIWE domain or URI mismatch"))
+      return yield* Effect.fail(new VerificationError("SIWE domain or URI mismatch"))
     }
     if (siweParsed.chainId !== config.chainId) {
-      return yield* Effect.fail(new Error("SIWE chain mismatch"))
+      return yield* Effect.fail(new VerificationError("SIWE chain mismatch"))
     }
     const now = Date.now()
     const parsedIssuedAt = Date.parse(siweParsed.issuedAt ?? "")
@@ -89,13 +96,13 @@ export function verifyAndCreateSession(
       parsedIssuedAt < now - 5 * 60 * 1000 ||
       parsedIssuedAt > now + 5 * 60 * 1000
     ) {
-      return yield* Effect.fail(new Error("SIWE issued-at time is invalid"))
+      return yield* Effect.fail(new VerificationError("SIWE issued-at time is invalid"))
     }
     if (Number.isFinite(expirationTime) && expirationTime <= now) {
-      return yield* Effect.fail(new Error("SIWE message expired"))
+      return yield* Effect.fail(new VerificationError("SIWE message expired"))
     }
     if (Number.isFinite(notBefore) && notBefore > now) {
-      return yield* Effect.fail(new Error("SIWE message is not yet valid"))
+      return yield* Effect.fail(new VerificationError("SIWE message is not yet valid"))
     }
 
     const valid = yield* Effect.tryPromise({
@@ -109,7 +116,7 @@ export function verifyAndCreateSession(
     })
 
     if (!valid) {
-      return yield* Effect.fail(new Error("Invalid signature"))
+      return yield* Effect.fail(new VerificationError("Invalid signature"))
     }
 
     const consumed = yield* Effect.tryPromise({
@@ -123,7 +130,7 @@ export function verifyAndCreateSession(
       },
       catch: () => new Error("Nonce consumption failed"),
     })
-    if (!consumed) return yield* Effect.fail(new Error("Invalid or expired nonce"))
+    if (!consumed) return yield* Effect.fail(new VerificationError("Invalid or expired nonce"))
 
     const token = randomBytes(32).toString("hex")
     const issuedAt = Date.now()

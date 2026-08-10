@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "findingId": "fnd_sig-feat-library-4a1871bbb1-9464_e918dd68ef",
+  "featureId": "feat_library_4a1871bbb1",
+  "title": "listTokens lacks the NaN/negative limit defense the sibling service has — NaN yields 500s, negative limits return unbounded results",
+  "category": "bug",
+  "severity": "low",
+  "confidence": "medium",
+  "triage": "risk",
+  "evidence": [
+    {
+      "path": "apps/api/src/services/token.service.ts",
+      "startLine": 86,
+      "endLine": 127,
+      "symbol": "listTokens",
+      "quote": null
+    },
+    {
+      "path": "apps/api/src/services/token-list.service.ts",
+      "startLine": 199,
+      "endLine": 206,
+      "symbol": "applyOptions",
+      "quote": null
+    }
+  ],
+  "reasoning": "token.service.listTokens computes `Math.min(options?.limit ?? 100, 500)` (line 88) with no finite/negative guard: a NaN limit becomes `LIMIT NaN` → SQL error → TokenListError (500); a negative limit is passed to SQLite, where a negative LIMIT means 'no limit', returning the entire table contrary to the caller's intent. The sibling applyOptions (lines 199-206) explicitly defends against exactly these cases with an explanatory comment, and the same file's searchTokens returns [] for queries shorter than 2 chars while listTokens silently ignores a 1-char query and returns the unfiltered full listing (falls through the `search.length >= 2` branches to the general branch, lines 117-124) — inconsistent short-input handling between the two functions. If limit/query are ever sourced from request parameters without strict parsing, these paths are reachable.",
+  "reproduction": "Call listTokens({ limit: NaN }) → 500 TokenListError; listTokens({ limit: -1 }) → all rows returned.",
+  "recommendation": "Apply the same clamping used in applyOptions (treat non-finite/negative limits as the default, cap at 500) in token.service.listTokens, and decide one consistent policy for sub-2-char queries (either filter with the query or return [] as searchTokens does).",
+  "whyTestsDoNotAlreadyCoverThis": "No tests are included for either service; the defensive behavior exists only in token-list.service.ts and is not exercised by any included test.",
+  "suggestedRegressionTest": "Call listTokens with limit NaN, -1, and 0 and assert bounded, non-erroring results consistent with applyOptions.",
+  "minimumFixScope": "apps/api/src/services/token.service.ts listTokens (limit normalization; optionally the 1-char query branch).",
+  "status": "open",
+  "history": [],
+  "signature": "sig_feat-library-4a1871bbb1_94645847e1",
+  "linkedPatchAttemptIds": [],
+  "createdByRunId": "20260810T032502-239ff8",
+  "createdAt": "2026-08-10T03:31:10.077Z",
+  "updatedAt": "2026-08-10T03:31:10.077Z"
+}

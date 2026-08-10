@@ -1,7 +1,9 @@
 import { Effect, Layer } from "effect"
 import { Hono } from "hono"
+import type { AuthVariables } from "../auth/middleware"
 import { parseChainId } from "../lib/chain-id"
 import { runEffect } from "../lib/effect-bridge"
+import { rateLimit } from "../middleware/rate-limit"
 import { PriceService, PriceServiceDeps, PriceServiceLive } from "../services/price.service"
 
 type Bindings = {
@@ -14,6 +16,11 @@ const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/
 const DECIMAL_RE = /^\d+(\.\d+)?$/
 const DEFAULT_MAX_DEVIATION_BPS = 500
 const MAX_DEVIATION_BPS = 2_000
+
+/** Fetched prices were unusable (non-positive / non-finite) — a data-level 422, not an outage. */
+export class PriceGuardDataError {
+  readonly _tag = "PriceGuardDataError"
+}
 
 export interface PriceGuardResult {
   readonly valid: boolean
@@ -57,9 +64,9 @@ export function evaluatePriceGuard(
   }
 }
 
-const priceGuard = new Hono<{ Bindings: Bindings }>()
+const priceGuard = new Hono<{ Bindings: Bindings; Variables: AuthVariables }>()
 
-priceGuard.get("/price-guard", async (c) => {
+priceGuard.get("/price-guard", rateLimit(), async (c) => {
   const token0 = c.req.query("token0")
   const token1 = c.req.query("token1")
   const requestedPriceRaw = c.req.query("price")
@@ -99,12 +106,21 @@ priceGuard.get("/price-guard", async (c) => {
           [service.refreshPrice(token0, chainId), service.refreshPrice(token1, chainId)],
           { concurrency: 2 },
         )
-        return evaluatePriceGuard(token0Price.priceUsd, token1Price.priceUsd, requestedPrice, maxDeviationBps)
+        // evaluatePriceGuard throws on non-positive/non-finite fetched prices — tag that
+        // as a data-level failure so it maps to 422, not "service unavailable".
+        return yield* Effect.try({
+          try: () => evaluatePriceGuard(token0Price.priceUsd, token1Price.priceUsd, requestedPrice, maxDeviationBps),
+          catch: () => new PriceGuardDataError(),
+        })
       }).pipe(Effect.provide(layer)),
     )
     return c.json(result, result.valid ? 200 : 422)
   } catch (error) {
-    return c.json({ error: `Price guard unavailable: ${String(error)}` }, 503)
+    console.error("[price-guard] failed:", error)
+    if (error instanceof PriceGuardDataError) {
+      return c.json({ error: "Unable to verify price for one or more tokens" }, 422)
+    }
+    return c.json({ error: "Price guard unavailable" }, 503)
   }
 })
 

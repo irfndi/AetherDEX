@@ -48,6 +48,11 @@ function PoolsIndexPage() {
   const [tokens, setTokens] = useState<Record<string, Token>>({})
   const [search, setSearch] = useState(filterToken)
 
+  // Keep the input in sync when the URL filter changes (e.g. header navigation).
+  useEffect(() => {
+    setSearch(filterToken)
+  }, [filterToken])
+
   const { data, isPending, isError, refetch } = useQuery(
     poolsQueryOptions(50, 0, {
       sortBy,

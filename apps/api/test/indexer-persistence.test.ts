@@ -20,7 +20,12 @@ import m0005 from "../migrations/0005_chain_qualified_pool_keys.sql?raw"
 import m0006 from "../migrations/0006_chain_qualified_price_cache.sql?raw"
 import m0007 from "../migrations/0007_v3_indexer_cursor.sql?raw"
 import { makeDbLayer } from "../src/db/client"
-import { type IndexerChainConfig, IndexerService, IndexerServiceLive } from "../src/services/indexer.service"
+import {
+  type IndexerChainConfig,
+  IndexerError,
+  IndexerService,
+  IndexerServiceLive,
+} from "../src/services/indexer.service"
 import { V4_POOL_MANAGER_ABI } from "../src/services/indexer-events"
 
 const MIGRATIONS = [m0001, m0002, m0003, m0004, m0005, m0006, m0007]
@@ -315,5 +320,264 @@ describe("IndexerService v3_position_manager persistence", () => {
 
     const cursor = await runWithService(chainConfig, (svc) => svc.getCursor(2, "v3_position_manager"))
     expect(cursor?.nextBlock).toBe(161n)
+  })
+})
+
+// ─── Service invariants: cursor resolution, persist-before-cursor, swapSides ──
+// Regression coverage for the indexer-service audit (cursor resolution,
+// persist-before-cursor ordering, swapSides sign mapping, the pool-missing swap
+// path, and batched getBlock timestamp loads).
+
+const encodeV4Event = (
+  eventName: "Initialize" | "Swap",
+  indexedArgs: Record<string, unknown>,
+  types: readonly string[],
+  values: readonly unknown[],
+): { data: Hex; topics: readonly Hex[] } => ({
+  topics: encodeEventTopics({ abi: V4_POOL_MANAGER_ABI, eventName, args: indexedArgs }),
+  data: encodeAbiParameters(
+    types.map((type) => ({ type })),
+    values,
+  ),
+})
+
+const v4InitLog = (
+  address: `0x${string}`,
+  poolId: string,
+  currency0: string,
+  currency1: string,
+  hooks: string,
+  blockNumber: bigint,
+): FakeLog =>
+  fakeLog(
+    address,
+    encodeV4Event(
+      "Initialize",
+      { id: poolId, currency0, currency1 },
+      ["uint24", "int24", "address", "uint160", "int24"],
+      [3000, 60, hooks, 79228162514264337593543950336n, -7],
+    ),
+    { transactionHash: `0x${"a0".repeat(32)}` as const, logIndex: 0, blockNumber },
+  )
+
+const v4SwapLog = (
+  address: `0x${string}`,
+  poolId: string,
+  trader: string,
+  amount0: bigint,
+  amount1: bigint,
+  blockNumber: bigint,
+  txHash: `0x${string}`,
+): FakeLog =>
+  fakeLog(
+    address,
+    encodeV4Event(
+      "Swap",
+      { id: poolId, sender: trader },
+      ["int128", "int128", "uint160", "uint128", "int24", "uint24"],
+      [amount0, amount1, 79328000000000000000000000000n, 777777n, 5, 3000],
+    ),
+    { transactionHash: txHash, logIndex: 0, blockNumber },
+  )
+
+describe("IndexerService cursor resolution", () => {
+  it("starts at genesisBlock when no cursor exists", async () => {
+    const client = makeFakeClient({ logs: [], startHead: 200n, headStep: 0n })
+    const config: IndexerChainConfig = {
+      chainId: 3,
+      rpcUrl: "http://fake-rpc.invalid",
+      batchSize: 500,
+      contracts: {},
+      genesisBlock: 50n,
+      clientFactory: () => client,
+    }
+    const r = await runWithService(config, (svc) => svc.indexBatch(3, "v4_pool_manager"))
+    expect(r.fromBlock).toBe(50n)
+  })
+
+  it("falls back to head - 10_000 (clamped to 0) without a cursor or genesisBlock", async () => {
+    const client = makeFakeClient({ logs: [], startHead: 1_000n, headStep: 0n })
+    const config: IndexerChainConfig = {
+      chainId: 4,
+      rpcUrl: "http://fake-rpc.invalid",
+      batchSize: 500,
+      contracts: {},
+      clientFactory: () => client,
+    }
+    const r = await runWithService(config, (svc) => svc.indexBatch(4, "v4_pool_manager"))
+    expect(r.fromBlock).toBe(0n)
+
+    const client2 = makeFakeClient({ logs: [], startHead: 25_000n, headStep: 0n })
+    const config2: IndexerChainConfig = {
+      chainId: 5,
+      rpcUrl: "http://fake-rpc.invalid",
+      batchSize: 500,
+      contracts: {},
+      clientFactory: () => client2,
+    }
+    const r2 = await runWithService(config2, (svc) => svc.indexBatch(5, "v4_pool_manager"))
+    expect(r2.fromBlock).toBe(15_000n)
+  })
+
+  it("a persisted cursor wins over genesisBlock, and fromBlock > head short-circuits", async () => {
+    const client = makeFakeClient({ logs: [], startHead: 200n, headStep: 0n })
+    const config: IndexerChainConfig = {
+      chainId: 6,
+      rpcUrl: "http://fake-rpc.invalid",
+      batchSize: 500,
+      contracts: {},
+      genesisBlock: 50n,
+      clientFactory: () => client,
+    }
+    const r1 = await runWithService(config, (svc) => svc.indexBatch(6, "v4_pool_manager"))
+    expect(r1).toMatchObject({ fromBlock: 50n, toBlock: 200n, cursorAdvanced: true })
+
+    const r2 = await runWithService(config, (svc) => svc.indexBatch(6, "v4_pool_manager"))
+    expect(r2).toMatchObject({ fromBlock: 201n, toBlock: 200n, eventsProcessed: 0, cursorAdvanced: false })
+  })
+})
+
+describe("IndexerService pool-missing swap path", () => {
+  const PM = "0x0000000000000000000000000000000000055555" as const
+  const POOL_ID = `0x${"cd".repeat(32)}`
+  const TRADER = "0x000000000000000000000000000000000000beef"
+  const TX = `0x${"d1".repeat(32)}` as const
+
+  const swapLog = v4SwapLog(PM, POOL_ID, TRADER, -1000n, 2500n, 120n, TX)
+  const client = makeFakeClient({ logs: [swapLog], startHead: 200n, headStep: 0n })
+  const config: IndexerChainConfig = {
+    chainId: 8,
+    rpcUrl: "http://fake-rpc.invalid",
+    batchSize: 500,
+    contracts: { v4PoolManager: PM },
+    genesisBlock: 100n,
+    clientFactory: () => client,
+  }
+
+  it("fails loudly instead of persisting an unlinkable swap, and leaves the cursor unchanged", async () => {
+    await expect(runWithService(config, (svc) => svc.indexBatch(8, "v4_pool_manager"))).rejects.toSatisfy(
+      (error: unknown) => error instanceof IndexerError && error.reason.includes("Persist failed"),
+    )
+    expect(await count("transactions", 8)).toBe(0)
+    const cursor = await env.DB.prepare("SELECT * FROM indexer_cursors WHERE chain_id = ? AND indexer = ?")
+      .bind(8, "v4_pool_manager")
+      .all()
+    expect(cursor.results).toHaveLength(0)
+  })
+})
+
+describe("IndexerService swapSides mapping", () => {
+  const PM = "0x0000000000000000000000000000000000066666" as const
+  const POOL_ID = `0x${"ef".repeat(32)}`
+  const CURRENCY0 = "0x000000000000000000000000000000000000c0a1"
+  const CURRENCY1 = "0x000000000000000000000000000000000000d0b2"
+  const HOOKS = "0x00000000000000000000000000000000000deaf0"
+  const TRADER = "0x000000000000000000000000000000000000cafe"
+
+  const logs: readonly FakeLog[] = [
+    v4InitLog(PM, POOL_ID, CURRENCY0, CURRENCY1, HOOKS, 10n),
+    v4SwapLog(PM, POOL_ID, TRADER, 1000n, -2500n, 11n, `0x${"e1".repeat(32)}`),
+    v4SwapLog(PM, POOL_ID, TRADER, -7n, 999n, 12n, `0x${"e2".repeat(32)}`),
+    v4SwapLog(PM, POOL_ID, TRADER, 0n, 123n, 13n, `0x${"e3".repeat(32)}`),
+  ]
+  const client = makeFakeClient({ logs, startHead: 200n, headStep: 0n })
+  const config: IndexerChainConfig = {
+    chainId: 9,
+    rpcUrl: "http://fake-rpc.invalid",
+    batchSize: 500,
+    contracts: { v4PoolManager: PM },
+    genesisBlock: 1n,
+    clientFactory: () => client,
+  }
+
+  it("maps amount0 > 0 / < 0 / == 0 to the correct token sides", async () => {
+    const r = await runWithService(config, (svc) => svc.indexBatch(9, "v4_pool_manager"))
+    expect(r.eventsProcessed).toBe(4)
+
+    // amount0 > 0 ⇒ currency0 flows INTO the pool: trader spends currency0 (tokenIn).
+    const s1 = await env.DB.prepare("SELECT * FROM transactions WHERE chain_id = ? AND block_number = ?")
+      .bind(9, 11)
+      .first<Record<string, unknown>>()
+    expect(s1).toMatchObject({
+      pool_id: POOL_ID,
+      token_in: getAddress(CURRENCY0),
+      token_out: getAddress(CURRENCY1),
+      amount_in: "1000",
+      amount_out: "2500",
+    })
+
+    // amount0 < 0 ⇒ currency1 is the trader's tokenIn.
+    const s2 = await env.DB.prepare("SELECT * FROM transactions WHERE chain_id = ? AND block_number = ?")
+      .bind(9, 12)
+      .first<Record<string, unknown>>()
+    expect(s2).toMatchObject({
+      token_in: getAddress(CURRENCY1),
+      token_out: getAddress(CURRENCY0),
+      amount_in: "999",
+      amount_out: "7",
+    })
+
+    // amount0 == 0 ⇒ sides cannot be inferred; linkage stays null rather than guessed.
+    const s3 = await env.DB.prepare("SELECT * FROM transactions WHERE chain_id = ? AND block_number = ?")
+      .bind(9, 13)
+      .first<Record<string, unknown>>()
+    expect(s3).toMatchObject({ pool_id: POOL_ID, token_in: null, token_out: null, amount_in: null, amount_out: null })
+  })
+})
+
+describe("IndexerService loadTimestamps batching", () => {
+  it("fetches block timestamps concurrently instead of one sequential RPC per block", async () => {
+    const PM = "0x0000000000000000000000000000000000077777" as const
+    const POOL_ID = `0x${"12".repeat(32)}`
+    const CURRENCY0 = "0x000000000000000000000000000000000000e0a1"
+    const CURRENCY1 = "0x000000000000000000000000000000000000f0b2"
+    const HOOKS = "0x00000000000000000000000000000000000f00d0"
+    const TRADER = "0x000000000000000000000000000000000000dad0"
+
+    let active = 0
+    let maxActive = 0
+    const logs: readonly FakeLog[] = [
+      v4InitLog(PM, POOL_ID, CURRENCY0, CURRENCY1, HOOKS, 10n),
+      ...Array.from({ length: 8 }, (_, i) =>
+        v4SwapLog(
+          PM,
+          POOL_ID,
+          TRADER,
+          -1000n,
+          2500n,
+          20n + BigInt(i),
+          `0x${(0x100 + i).toString(16).padStart(64, "0")}`,
+        ),
+      ),
+    ]
+    const client = {
+      getBlockNumber: async () => 100n,
+      getLogs: async () => logs,
+      getBlock: async () => {
+        // Deterministic overlap probe: the prologue (increment) runs synchronously
+        // when the fiber starts, and the continuation (decrement) only runs after a
+        // microtask yield — so a batched loader observes all N in flight before any
+        // completes, while a sequential loader never exceeds 1. No wall-clock delay.
+        active += 1
+        maxActive = Math.max(maxActive, active)
+        await Promise.resolve()
+        active -= 1
+        return { timestamp: 1_700_000_000n }
+      },
+    } as unknown as PublicClient
+    const config: IndexerChainConfig = {
+      chainId: 10,
+      rpcUrl: "http://fake-rpc.invalid",
+      batchSize: 500,
+      contracts: { v4PoolManager: PM },
+      genesisBlock: 1n,
+      clientFactory: () => client,
+    }
+
+    const r = await runWithService(config, (svc) => svc.indexBatch(10, "v4_pool_manager"))
+    expect(r.eventsProcessed).toBe(9)
+    // 9 unique blocks (1 Initialize + 8 Swaps): sequential loading would never
+    // exceed 1 in-flight getBlock; the batched loader must overlap them.
+    expect(maxActive).toBeGreaterThan(1)
   })
 })
