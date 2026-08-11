@@ -50,7 +50,8 @@ function getAppKitConfig(): Config | null {
     },
     themeMode: "dark",
     themeVariables: {
-      "--w3m-accent": "#0EA5E9",
+      "--apkt-accent": "#7c6cff",
+      "--w3m-accent": "#7c6cff",
       "--w3m-font-family": '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     },
   })

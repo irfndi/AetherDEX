@@ -11,23 +11,23 @@ export function Input({ label, error, className = "", id, ...rest }: InputProps)
   const errorId = error ? `${inputId}-error` : undefined
   const errorClass = error ? "input-error" : ""
   return (
-    <div className="form-control min-w-0 w-full">
+    <div className="min-w-0 w-full">
       {label ? (
-        <label className="label min-w-0 max-w-full" htmlFor={inputId}>
-          <span className="label-text min-w-0 max-w-full flex-1 whitespace-normal break-words">{label}</span>
+        <label className="mb-1.5 block text-sm font-medium text-base-content/80" htmlFor={inputId}>
+          {label}
         </label>
       ) : null}
       <input
         id={inputId}
         aria-invalid={error ? true : undefined}
         aria-describedby={errorId}
-        className={`input input-bordered min-w-0 max-w-full w-full ${errorClass} ${className}`.trim()}
+        className={`input min-w-0 max-w-full w-full ${errorClass} ${className}`.trim()}
         {...rest}
       />
       {error ? (
-        <label className="label" htmlFor={inputId} id={errorId}>
-          <span className="label-text-alt text-error">{error}</span>
-        </label>
+        <p id={errorId} className="mt-1 text-sm text-error">
+          {error}
+        </p>
       ) : null}
     </div>
   )

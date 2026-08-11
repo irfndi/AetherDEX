@@ -9,7 +9,7 @@ interface CardProps extends HTMLAttributes<HTMLDivElement> {
 export function Card({ children, className = "", variant = "default", bordered = true, ...rest }: CardProps) {
   const base = "card bg-base-200"
   const border = bordered || variant === "bordered" ? "border border-base-300" : ""
-  const compact = variant === "compact" ? "card-compact" : ""
+  const compact = variant === "compact" ? "card-sm" : ""
   return (
     <div className={[base, border, compact, className].filter(Boolean).join(" ")} {...rest}>
       {children}

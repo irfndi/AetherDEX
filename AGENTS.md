@@ -69,7 +69,7 @@
   - **TanStack Table** — pools, positions, PnL/history tables (sort/filter/paginate).
   - **TanStack Virtual** — virtualize long pool/transaction lists.
 - Wagmi v3 + Viem v2 + Reown AppKit (multi-wallet UI)
-- DaisyUI 5 (**Tailwind 3** — v4 deferred to preserve the working UI; separate migration) — theme: `aetherdex`
+- DaisyUI 5 (**Tailwind 4**) — theme: `aetherdex` (dark) + `light`
 - Framer Motion (animations)
 - Lucide icons
 - Vitest + Playwright for tests
@@ -199,7 +199,7 @@ bun run contracts:deploy:sepolia
 ### Dependencies
 - Prefer Bun canary + TypeScript 7 native `tsc` over Node + tsc
 - **Use the latest available version of every dependency** (no pinning to old versions); **any newly added dependency starts at latest.**
-- Deliberate, owner-flagged exceptions: Tailwind kept at v3 (DaisyUI-5 UI; v4 is a separate visual migration), Effect pinned to the chosen v4 build.
+- Deliberate, owner-flagged exceptions: Effect pinned to the chosen v4 build.
 - **Dependency automation = Renovate** (open-source, free; self-hosted via `renovatebot/github-action` + `renovate.json` grouping by lockfile). Replaces Dependabot for npm/bun + github-actions — Dependabot's per-app npm updates caused conflicting PR storms against the single root `bun.lock`.
 
 ### CI/CD

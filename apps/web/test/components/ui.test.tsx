@@ -110,7 +110,7 @@ describe("Card", () => {
 
   it("applies compact variant", () => {
     const { container } = render(<Card variant="compact">Compact</Card>)
-    expect((container.firstElementChild as HTMLElement)?.className).toContain("card-compact")
+    expect((container.firstElementChild as HTMLElement)?.className).toContain("card-sm")
   })
 
   it("emits base classes and merges className with rest passthrough", () => {
@@ -120,14 +120,14 @@ describe("Card", () => {
       </Card>,
     )
     const card = container.firstElementChild as HTMLElement
-    expect(card.className).toBe("card bg-base-200 card-compact custom")
+    expect(card.className).toBe("card bg-base-200 card-sm custom")
     expect(card).toHaveAttribute("data-testid", "card")
   })
 
   it("default variant emits no compact or bordered-variant classes", () => {
     const { container } = render(<Card>Default</Card>)
     const className = (container.firstElementChild as HTMLElement)?.className
-    expect(className).not.toContain("card-compact")
+    expect(className).not.toContain("card-sm")
   })
 
   it("bordered variant forces the border even when bordered=false", () => {

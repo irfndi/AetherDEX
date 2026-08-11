@@ -59,5 +59,10 @@
       "trailingCommas": "all",
       "arrowParentheses": "always"
     }
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
   }
 }
