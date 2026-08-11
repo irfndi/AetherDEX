@@ -69,14 +69,9 @@ export function PriceTicker({
 
   // The hub broadcasts ALL token prices (it is a single shared instance); keep the
   // latest payload for THIS ticker's token, unwrapped out of the frame envelope.
+  // The parent remounts this component with a `key` whenever the token changes, so
+  // no state-reset effect is needed.
   const [data, setData] = useState<PricePayload | null>(null)
-
-  // Reset to the placeholder whenever the subscription identity changes so a
-  // previous token's price is never shown under the new token's label.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: these props are the subscription identity; a reset must run when they change.
-  useEffect(() => {
-    setData(null)
-  }, [tokenAddress, chainId, wsUrl])
 
   useEffect(() => {
     const payload = envelope?.data

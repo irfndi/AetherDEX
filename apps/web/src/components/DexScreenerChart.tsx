@@ -6,6 +6,13 @@ interface DexScreenerChartProps extends Omit<IframeHTMLAttributes<HTMLIFrameElem
   theme?: "dark" | "light"
 }
 
+const CHAIN_MAP: Record<number, string> = {
+  1: "ethereum",
+  8453: "base",
+  11155111: "sepolia",
+  84532: "base-sepolia",
+}
+
 /**
  * DexScreener chart embed for a given token address.
  * Uses the official DexScreener embed iframe — no API key required.
@@ -17,16 +24,9 @@ export function DexScreenerChart({
   className = "",
   ...rest
 }: DexScreenerChartProps) {
-  const chainMap: Record<number, string> = {
-    1: "ethereum",
-    8453: "base",
-    11155111: "sepolia",
-    84532: "base-sepolia",
-  }
-
-  const chainName = chainMap[chainId]
+  const chainName = CHAIN_MAP[chainId]
   const isValidAddress = /^0x[a-fA-F0-9]{40}$/.test(tokenAddress)
-  const wrapperClass = `relative w-full overflow-hidden rounded-lg border border-base-300 ${className}`.trim()
+  const wrapperClass = `relative w-full overflow-hidden rounded-lg border hairline ${className}`.trim()
 
   if (!chainName || !isValidAddress) {
     return (
@@ -48,6 +48,10 @@ export function DexScreenerChart({
         className="h-[500px] w-full border-0"
         loading="lazy"
         allow="clipboard-write"
+        // Sandboxed: the embed runs as a unique origin (no allow-same-origin),
+        // so it cannot reach the parent or its own cookies. Scripts, popups,
+        // and forms are the minimum it needs to render the chart.
+        sandbox="allow-scripts allow-popups allow-forms allow-downloads"
         {...rest}
       />
     </div>

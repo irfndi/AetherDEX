@@ -118,8 +118,8 @@ describe("PriceTicker", () => {
     })
     expect(screen.getByText("$5.0000")).toBeTruthy()
 
-    // No envelope for the new token yet: the old price must not linger.
-    rerender(<PriceTicker tokenAddress="0xdef" wsUrl={wsUrl} />)
+    // No envelope for the new token yet: remounting via key resets all state.
+    rerender(<PriceTicker key="0xdef" tokenAddress="0xdef" wsUrl={wsUrl} />)
     expect(screen.getByText("—")).toBeTruthy()
   })
 

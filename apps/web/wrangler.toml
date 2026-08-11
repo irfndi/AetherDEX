@@ -1,3 +1,15 @@
-name = "aether-dex"
+# Aether — Cloudflare Pages frontend
+#
+# The site is served at the custom domain `aether.pryx.dev`, bound to this
+# Pages project in the Cloudflare dashboard (Workers & Pages → the project →
+# Custom domains). The project name below determines the fallback
+# `*.pages.dev` hostname only.
+#
+# To bind the custom domain from the CLI instead of the dashboard:
+#   wrangler pages project update aether --project-domain aether.pryx.dev
+#
+# If you prefer the `pryx.dev/aether/*` path form, that requires a Worker
+# route (not a Pages custom subdomain) — see apps/api for the API worker.
+name = "aether"
 compatibility_date = "2026-06-29"
 pages_build_output_dir = "./dist"

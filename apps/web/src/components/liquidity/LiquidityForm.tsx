@@ -1,0 +1,499 @@
+import { useAppKit } from "@reown/appkit/react"
+import { type FormEvent, useState } from "react"
+import { encodeFunctionData, getAddress, isAddress, parseUnits } from "viem"
+import { useAccount, useChainId, usePublicClient, useSwitchChain, useWalletClient } from "wagmi"
+import { API_URL } from "../../lib/api"
+import {
+  buildLiquidityRequest,
+  LIQUIDITY_PROTOCOLS,
+  type LiquidityFormValues,
+  type LiquidityProtocol,
+  type LiquiditySide,
+  type LiquidityTransactionRequest,
+  validateLiquidityForm,
+} from "../../lib/liquidity"
+import {
+  computeProtocolFee,
+  computeProtocolFeeDisplay,
+  formatProtocolFeeAmount,
+  PROTOCOL_FEE_PERCENT_LABEL,
+} from "../../lib/protocol-fee"
+import { buildV4SingleSidedCall, findV4SwapAmount } from "../../lib/v4-liquidity"
+import { RangeSelector } from "../RangeSelector"
+import { Button } from "../ui/Button"
+import { Card, CardBody } from "../ui/Card"
+import { Input } from "../ui/Input"
+
+export interface Pool {
+  poolId: string
+  token0Address: string
+  token1Address: string
+  hookAddress: string | null
+  fee: number
+  tickSpacing: number
+  sqrtPriceX96: string
+  currentTick: number
+  liquidity: string
+  tvlUsd: number
+  volume24hUsd: number
+  fees24hUsd: number
+  isActive: boolean
+}
+
+export interface Token {
+  address: string
+  symbol: string
+  name: string
+  decimals: number
+  logoURI?: string
+}
+
+const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID ?? "11155111")
+const ERC20_ABI = [
+  {
+    name: "allowance",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "spender", type: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "approve",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "spender", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+] as const
+
+interface LiquidityFormProps {
+  readonly pool: Pool
+  readonly token0: Token | null
+  readonly token1: Token | null
+}
+
+export function LiquidityForm({ pool, token0, token1 }: LiquidityFormProps) {
+  const { open } = useAppKit()
+  const { address, isConnected } = useAccount()
+  const publicClient = usePublicClient()
+  const { data: walletClient } = useWalletClient()
+  const chainId = useChainId()
+  const { mutate: switchChain, isPending: isSwitchingChain } = useSwitchChain()
+  const isWrongChain = isConnected && chainId !== CHAIN_ID
+  const [values, setValues] = useState<LiquidityFormValues>({
+    protocol: "v4",
+    tokenSide: "token0",
+    amount: "",
+    lowerTick: "-600",
+    upperTick: "600",
+    slippage: "0.5",
+    deadline: "1800",
+  })
+  const [submitted, setSubmitted] = useState(false)
+  const [request, setRequest] = useState<LiquidityTransactionRequest | null>(null)
+  const [preparing, setPreparing] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  const validation = validateLiquidityForm(values, pool.tickSpacing)
+  const errors = submitted ? validation.errors : {}
+  const selectedToken = values.tokenSide === "token0" ? token0 : token1
+  const otherToken = values.tokenSide === "token0" ? token1 : token0
+  const walletName = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "Wallet not connected"
+  const depositFee = deriveDepositFeeEstimate(values.amount, selectedToken?.decimals ?? null)
+  const feeSymbolSuffix = selectedToken ? ` ${selectedToken.symbol}` : ""
+
+  const updateValue = (field: keyof LiquidityFormValues, value: string) => {
+    setValues((current) => ({ ...current, [field]: value }))
+    setRequest(null)
+    setErrorMessage(null)
+  }
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSubmitted(true)
+    if (!isConnected) {
+      open()
+      return
+    }
+    if (isWrongChain) {
+      setErrorMessage(`This pool is on chain ${CHAIN_ID}; switch your wallet network before continuing.`)
+      return
+    }
+
+    const nextRequest = buildLiquidityRequest(pool.poolId, values, pool.tickSpacing)
+    if (!nextRequest) return
+    setErrorMessage(null)
+    setPreparing(true)
+    try {
+      if (values.protocol === "v3") {
+        setRequest(nextRequest)
+        return
+      }
+      if (!address || !walletClient || !publicClient) throw new Error("Wallet client is not ready")
+      const routerAddress = import.meta.env.VITE_ROUTER_ADDRESS
+      if (!routerAddress || !isAddress(routerAddress)) throw new Error("V4 router address is not configured")
+      if (!selectedToken || !otherToken || !token0 || !token1 || !pool.hookAddress || !isAddress(pool.hookAddress)) {
+        throw new Error("Pool token metadata is incomplete")
+      }
+      const amountIn = parseUnits(values.amount.trim(), selectedToken.decimals)
+      const zeroForOne = selectedToken.address.toLowerCase() === pool.token0Address.toLowerCase()
+      if (!zeroForOne && selectedToken.address.toLowerCase() !== pool.token1Address.toLowerCase()) {
+        throw new Error("Selected token is not part of this pool")
+      }
+      const quote = async (swapAmountIn: bigint) => {
+        const response = await fetch(
+          `${API_URL}/quote?tokenIn=${selectedToken.address}&tokenOut=${otherToken.address}&amountIn=${swapAmountIn}&slippage=${values.slippage}`,
+        )
+        if (!response.ok) throw new Error(`Quote failed with HTTP ${response.status}`)
+        const data = parseSwapQuote(await response.json())
+        return { amountOut: BigInt(data.amountOut), minAmountOut: BigInt(data.minAmountOut) }
+      }
+      const poolInput = {
+        chainId: CHAIN_ID,
+        token0: getAddress(pool.token0Address),
+        token1: getAddress(pool.token1Address),
+        token0Decimals: token0.decimals,
+        token1Decimals: token1.decimals,
+        fee: pool.fee,
+        tickSpacing: pool.tickSpacing,
+        hooks: getAddress(pool.hookAddress),
+        sqrtPriceX96: BigInt(pool.sqrtPriceX96),
+        liquidity: BigInt(pool.liquidity),
+        currentTick: pool.currentTick,
+      } as const
+      const search = await findV4SwapAmount({
+        pool: poolInput,
+        tickLower: Number(values.lowerTick),
+        tickUpper: Number(values.upperTick),
+        zeroForOne,
+        amountIn,
+        quote,
+      })
+      const call = buildV4SingleSidedCall({
+        pool: poolInput,
+        tickLower: Number(values.lowerTick),
+        tickUpper: Number(values.upperTick),
+        zeroForOne,
+        amountIn,
+        swapAmountIn: search.swapAmountIn,
+        quotedAmountOut: search.quote.amountOut,
+        minSwapAmountOut: search.quote.minAmountOut,
+        slippageBps: nextRequest.slippageBps,
+        deadline: BigInt(Math.floor(Date.now() / 1000) + nextRequest.deadlineSeconds),
+      })
+      const tokenAddress = getAddress(selectedToken.address)
+      const router = getAddress(routerAddress)
+      const allowance = await publicClient.readContract({
+        address: tokenAddress,
+        abi: ERC20_ABI,
+        functionName: "allowance",
+        args: [address, router],
+      })
+      if (allowance < amountIn) {
+        const approvalHash = await walletClient.sendTransaction({
+          account: address,
+          to: tokenAddress,
+          data: encodeFunctionData({ abi: ERC20_ABI, functionName: "approve", args: [router, amountIn] }),
+          value: 0n,
+        })
+        await publicClient.waitForTransactionReceipt({ hash: approvalHash })
+      }
+      const txHash = await walletClient.sendTransaction({
+        account: address,
+        to: router,
+        data: call.calldata,
+        value: 0n,
+      })
+      setRequest({ ...nextRequest, execution: { status: "submitted", txHash } })
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to prepare liquidity transaction")
+    } finally {
+      setPreparing(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardBody>
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h2 className="card-title">Add liquidity</h2>
+            <p className="mt-1 text-sm text-base-content/60">Choose a range and deposit from one side.</p>
+          </div>
+          <span className={`badge ${isConnected ? "badge-success" : "badge-warning"}`}>
+            {isConnected ? "Connected" : "Connect wallet"}
+          </span>
+        </div>
+
+        <div className="mb-5 rounded-box border border-base-300 bg-base-100 p-3 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-base-content/60">Wallet</span>
+            {isConnected ? (
+              <span className="font-mono text-xs">{walletName}</span>
+            ) : (
+              <Button type="button" variant="outline" size="xs" onClick={() => open()}>
+                Connect
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <form onSubmit={submit} noValidate className="space-y-4">
+          <fieldset>
+            <legend className="label-text mb-2 block text-sm font-medium">Pool protocol</legend>
+            <div className="join mb-4 w-full">
+              {LIQUIDITY_PROTOCOLS.map((protocol: LiquidityProtocol) => (
+                <button
+                  className={`join-item btn btn-sm flex-1 ${values.protocol === protocol ? "btn-primary" : "btn-ghost"}`}
+                  key={protocol}
+                  type="button"
+                  aria-pressed={values.protocol === protocol}
+                  onClick={() => updateValue("protocol", protocol)}
+                >
+                  Uniswap {protocol}
+                </button>
+              ))}
+            </div>
+            <p className="mb-4 text-xs text-base-content/60">
+              V3 uses the position NFT manager; V4 uses the Aether position manager. Both remain execution-gated until
+              their deployed addresses and protected submission route are configured.
+            </p>
+          </fieldset>
+
+          <fieldset>
+            <legend className="label-text mb-2 block text-sm font-medium">Deposit from</legend>
+            <div className="join w-full">
+              {(["token0", "token1"] as const).map((side: LiquiditySide) => {
+                const token = side === "token0" ? token0 : token1
+                return (
+                  <button
+                    className={`join-item btn btn-sm flex-1 ${values.tokenSide === side ? "btn-primary" : "btn-ghost"}`}
+                    key={side}
+                    type="button"
+                    aria-pressed={values.tokenSide === side}
+                    onClick={() => updateValue("tokenSide", side)}
+                  >
+                    {token?.symbol ?? (side === "token0" ? "Token 0" : "Token 1")}
+                  </button>
+                )
+              })}
+            </div>
+          </fieldset>
+
+          <Input
+            id="liquidity-amount"
+            label={`Amount (${selectedToken?.symbol ?? "selected token"})`}
+            inputMode="decimal"
+            min="0"
+            step="any"
+            placeholder="0.00"
+            value={values.amount}
+            {...(errors.amount ? { error: errors.amount } : {})}
+            onChange={(event) => updateValue("amount", event.target.value)}
+          />
+
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <span className="label-text text-sm font-medium">Price range</span>
+              <span className="text-xs text-base-content/60">Tick spacing: {pool.tickSpacing}</span>
+            </div>
+            <RangeSelector
+              currentTick={pool.currentTick}
+              lowerTick={parseTick(values.lowerTick, pool.currentTick - pool.tickSpacing * 10)}
+              tickSpacing={pool.tickSpacing}
+              upperTick={parseTick(values.upperTick, pool.currentTick + pool.tickSpacing * 10)}
+              onChange={({ lowerTick, upperTick }) => {
+                setValues((current) => ({ ...current, lowerTick: String(lowerTick), upperTick: String(upperTick) }))
+                setRequest(null)
+              }}
+            />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Input
+                id="liquidity-lower-tick"
+                label="Lower tick"
+                type="number"
+                step={pool.tickSpacing}
+                value={values.lowerTick}
+                {...(errors.lowerTick ? { error: errors.lowerTick } : {})}
+                onChange={(event) => updateValue("lowerTick", event.target.value)}
+              />
+              <Input
+                id="liquidity-upper-tick"
+                label="Upper tick"
+                type="number"
+                step={pool.tickSpacing}
+                value={values.upperTick}
+                {...(errors.upperTick ? { error: errors.upperTick } : {})}
+                onChange={(event) => updateValue("upperTick", event.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Input
+              id="liquidity-slippage"
+              label="Max slippage (%)"
+              type="number"
+              min="0"
+              max="5"
+              step="0.1"
+              value={values.slippage}
+              {...(errors.slippage ? { error: errors.slippage } : {})}
+              onChange={(event) => updateValue("slippage", event.target.value)}
+            />
+            <Input
+              id="liquidity-deadline"
+              label="Deadline (seconds)"
+              type="number"
+              min="60"
+              max="86400"
+              step="60"
+              value={values.deadline}
+              {...(errors.deadline ? { error: errors.deadline } : {})}
+              onChange={(event) => updateValue("deadline", event.target.value)}
+            />
+          </div>
+
+          <div className="rounded-box border border-base-300 bg-base-100 p-3 text-xs text-base-content/60">
+            <div className="flex justify-between gap-3">
+              <span>Range</span>
+              <span className="font-mono">
+                {values.lowerTick || "—"} to {values.upperTick || "—"}
+              </span>
+            </div>
+            <div className="mt-2 flex justify-between gap-3">
+              <span>Other side</span>
+              <span>{otherToken?.symbol ?? "Token unavailable"} calculated at execution</span>
+            </div>
+            <div className="my-3 border-t border-base-300" aria-hidden="true" />
+            <div className="flex justify-between gap-3">
+              <span>Protocol fee ({PROTOCOL_FEE_PERCENT_LABEL})</span>
+              <span className="font-mono text-base-content">
+                {depositFee ? `${depositFee.fee}${feeSymbolSuffix}` : `${PROTOCOL_FEE_PERCENT_LABEL} of deposit`}
+              </span>
+            </div>
+            <div className="mt-2 flex justify-between gap-3">
+              <span>Deposit after fee (estimated)</span>
+              <span className="font-mono text-base-content">
+                {depositFee ? `${depositFee.net}${feeSymbolSuffix}` : "Sized from your input"}
+              </span>
+            </div>
+            <p className="mt-3">
+              The immutable {PROTOCOL_FEE_PERCENT_LABEL} entry fee is taken from the deposit before the position is
+              minted and sent to the treasury. Pool LP swap fees still accrue to LPs; swaps, rebalance, and TP/SL are
+              protocol-fee-free.
+            </p>
+          </div>
+
+          {isWrongChain ? (
+            <div role="alert" className="alert alert-warning text-sm">
+              <span>
+                Your wallet is connected to chain {chainId}, but this pool is on chain {CHAIN_ID}. Switch networks to
+                continue.
+              </span>
+              <button
+                type="button"
+                className="btn btn-warning btn-xs"
+                disabled={isSwitchingChain}
+                onClick={() => switchChain({ chainId: CHAIN_ID })}
+              >
+                {isSwitchingChain ? "Switching…" : "Switch network"}
+              </button>
+            </div>
+          ) : null}
+
+          {request ? (
+            <div role="status" className="alert alert-warning text-sm">
+              <span>
+                {request.execution.status === "submitted"
+                  ? `Transaction submitted: ${request.execution.txHash}`
+                  : "V3 execution remains gated until its position manager and protected batch route are configured."}
+              </span>
+            </div>
+          ) : null}
+          {errorMessage ? (
+            <p className="text-sm text-error" role="alert">
+              {errorMessage}
+            </p>
+          ) : null}
+
+          <Button
+            type="submit"
+            variant="primary"
+            fullWidth
+            disabled={isConnected && (!validation.valid || request !== null || preparing || isWrongChain)}
+          >
+            {preparing
+              ? "Preparing transaction…"
+              : request
+                ? "Transaction submitted"
+                : isConnected
+                  ? "Add liquidity privately"
+                  : "Connect wallet to continue"}
+          </Button>
+        </form>
+
+        <div className="divider">Pool info</div>
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-base-content/60">Current tick</span>
+            <span className="font-mono text-xs">{pool.currentTick}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-base-content/60">Liquidity</span>
+            <span className="font-mono text-xs">{pool.liquidity.slice(0, 10)}…</span>
+          </div>
+        </div>
+      </CardBody>
+    </Card>
+  )
+}
+
+function parseTick(value: string, fallback: number): number {
+  const parsed = Number(value)
+  return Number.isSafeInteger(parsed) ? parsed : fallback
+}
+
+interface DepositFeeEstimate {
+  readonly fee: string
+  readonly net: string
+}
+
+/**
+ * Protocol entry fee estimate for the entered amount. Mirrors AetherRouter:
+ * the fee is split from the GROSS input (calldata keeps the gross amount);
+ * the NET remainder is what actually gets deposited. Bigint-exact when
+ * decimals are known, decimal display estimate otherwise (mid-keystroke).
+ */
+function deriveDepositFeeEstimate(amount: string, decimals: number | null): DepositFeeEstimate | null {
+  const numeric = Number(amount)
+  if (!Number.isFinite(numeric) || numeric <= 0) return null
+  if (decimals !== null) {
+    try {
+      const { fee, amountAfterFee } = computeProtocolFee(parseUnits(amount.trim(), decimals))
+      return {
+        fee: formatProtocolFeeAmount(fee, decimals),
+        net: formatProtocolFeeAmount(amountAfterFee, decimals),
+      }
+    } catch {
+      // Partial input like "12." fails base-unit parsing; fall through to display math.
+    }
+  }
+  const display = computeProtocolFeeDisplay(numeric)
+  return { fee: String(display.fee), net: String(display.amountAfterFee) }
+}
+
+function parseSwapQuote(value: unknown): { readonly amountOut: string; readonly minAmountOut: string } {
+  if (typeof value !== "object" || value === null) throw new Error("Unexpected quote response")
+  const quote = value as { readonly amountOut?: unknown; readonly minAmountOut?: unknown }
+  if (typeof quote.amountOut !== "string" || typeof quote.minAmountOut !== "string") {
+    throw new Error("Quote response is missing amount bounds")
+  }
+  return { amountOut: quote.amountOut, minAmountOut: quote.minAmountOut }
+}

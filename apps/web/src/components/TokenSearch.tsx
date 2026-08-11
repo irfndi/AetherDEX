@@ -52,10 +52,10 @@ function TokenListItem({ token, isSelected, onSelect }: { token: Token; isSelect
     <li key={token.address}>
       <button type="button" className={`flex items-center gap-3 ${isSelected ? "active" : ""}`} onClick={onSelect}>
         {token.logoURI && isSafeImageUrl(token.logoURI) ? (
-          <img src={token.logoURI} alt={token.symbol} className="h-6 w-6 rounded-full" />
+          <img src={token.logoURI} alt={token.symbol} className="size-6 rounded-full" />
         ) : (
           <div className="avatar placeholder">
-            <div className="bg-base-300 h-6 w-6 rounded-full text-[10px]">
+            <div className="bg-base-300 size-6 rounded-full text-[0.625rem]">
               <span>{token.symbol.slice(0, 2)}</span>
             </div>
           </div>
@@ -183,7 +183,7 @@ export function TokenSearch({ onSelect, selectedToken, placeholder = "Search tok
           {selectedToken ? (
             <Fragment>
               {selectedToken.logoURI && isSafeImageUrl(selectedToken.logoURI) && (
-                <img src={selectedToken.logoURI} alt={selectedToken.symbol} className="h-5 w-5 rounded-full" />
+                <img src={selectedToken.logoURI} alt={selectedToken.symbol} className="size-5 rounded-full" />
               )}
               <span className="font-semibold">{selectedToken.symbol}</span>
             </Fragment>
@@ -211,7 +211,7 @@ export function TokenSearch({ onSelect, selectedToken, placeholder = "Search tok
             {isSearching && query.trim() && (
               <li className="disabled">
                 <span className="loading loading-spinner loading-sm" />
-                Searching...
+                Searching…
               </li>
             )}
 

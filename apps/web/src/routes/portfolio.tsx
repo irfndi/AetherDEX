@@ -2,7 +2,9 @@ import { useAppKit } from "@reown/appkit/react"
 import { createFileRoute } from "@tanstack/react-router"
 import { useEffect, useState } from "react"
 import { useAccount } from "wagmi"
-import { Button, Card, CardBody, CardTitle } from "../components/ui"
+import { Button } from "../components/ui/Button"
+import { Card, CardBody, CardTitle } from "../components/ui/Card"
+import { PageHeader } from "../components/ui/PageHeader"
 
 export const Route = createFileRoute("/portfolio")({
   component: PortfolioPage,
@@ -125,20 +127,18 @@ function PortfolioPage() {
 
   return (
     <div className="mx-auto max-w-6xl py-8">
-      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-medium text-primary">Liquidity overview</p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight">Portfolio</h1>
-          <p className="mt-2 max-w-2xl text-base-content/60">
-            Your active concentrated-liquidity positions, sourced from the AetherDEX index.
-          </p>
-        </div>
-        {isConnected ? (
-          <Button type="button" variant="outline" size="sm" onClick={() => setReloadKey((key) => key + 1)}>
-            Refresh positions
-          </Button>
-        ) : null}
-      </div>
+      <PageHeader
+        title="Portfolio"
+        eyebrow="Liquidity overview"
+        description="Your active concentrated-liquidity positions, sourced from the Aether index."
+        actions={
+          isConnected ? (
+            <Button type="button" variant="outline" size="sm" onClick={() => setReloadKey((key) => key + 1)}>
+              Refresh positions
+            </Button>
+          ) : null
+        }
+      />
 
       <PortfolioResults
         errorMessage={errorMessage}

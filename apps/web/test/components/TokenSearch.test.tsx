@@ -293,7 +293,7 @@ describe("TokenSearch", () => {
     const input = screen.getByPlaceholderText("Search token")
     await user.type(input, "WETH")
     await waitFor(() => expect(screen.getByText("No tokens found")).toBeDefined())
-    expect(screen.queryByText("Searching...")).toBeNull()
+    expect(screen.queryByText("Searching…")).toBeNull()
     expect(screen.queryByText("WETH")).toBeNull()
   })
 
@@ -333,7 +333,7 @@ describe("TokenSearch", () => {
 
     await waitFor(() => {
       expect(screen.queryByText("WETH")).toBeNull()
-      expect(screen.queryByText("Searching...")).toBeNull()
+      expect(screen.queryByText("Searching…")).toBeNull()
     })
   })
 })

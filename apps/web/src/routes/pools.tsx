@@ -1,9 +1,12 @@
 import type { Pool } from "@aetherdex/shared"
 import { useQuery } from "@tanstack/react-query"
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { TokenChip } from "../components/TokenChip"
-import { Card, CardBody, Input, Stat } from "../components/ui"
+import { Card, CardBody } from "../components/ui/Card"
+import { Input } from "../components/ui/Input"
+import { PageHeader } from "../components/ui/PageHeader"
+import { Stat } from "../components/ui/Stat"
 import { poolsQueryOptions } from "../lib/pools-query"
 
 interface Token {
@@ -45,7 +48,6 @@ function PoolsPage() {
 function PoolsIndexPage() {
   const { sortBy, filterToken } = Route.useSearch()
   const navigate = Route.useNavigate()
-  const [tokens, setTokens] = useState<Record<string, Token>>({})
   const [search, setSearch] = useState(filterToken)
 
   // Keep the input in sync when the URL filter changes (e.g. header navigation).
@@ -62,16 +64,21 @@ function PoolsIndexPage() {
   )
   const pools = data?.pools ?? []
 
-  useEffect(() => {
-    fetch(`${API_URL}/tokens?verified=true&limit=200`)
-      .then((r) => r.json())
-      .then((data: { tokens: Token[] }) => {
-        const map: Record<string, Token> = {}
-        for (const t of data.tokens ?? []) map[t.address.toLowerCase()] = t
-        setTokens(map)
-      })
-      .catch(() => {})
-  }, [])
+  const { data: tokenList } = useQuery({
+    queryKey: ["tokens", "verified"],
+    queryFn: async ({ signal }) => {
+      const res = await fetch(`${API_URL}/tokens?verified=true&limit=200`, { signal })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const json = (await res.json()) as { tokens: Token[] }
+      return json.tokens ?? []
+    },
+    staleTime: 60_000,
+  })
+  const tokens = useMemo(() => {
+    const map: Record<string, Token> = {}
+    for (const t of tokenList ?? []) map[t.address.toLowerCase()] = t
+    return map
+  }, [tokenList])
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -80,12 +87,16 @@ function PoolsIndexPage() {
 
   return (
     <div className="mx-auto max-w-6xl py-8">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Pools</h1>
-        <Link to="/pools/new" search={{ sortBy: "tvl", filterToken: "" }} className="btn btn-primary btn-sm">
-          New Position
-        </Link>
-      </div>
+      <PageHeader
+        title="Pools"
+        eyebrow="Concentrated liquidity"
+        description="Browse the active Uniswap V3 + V4 pools on Aether."
+        actions={
+          <Link to="/pools/new" search={{ sortBy: "tvl", filterToken: "" }} className="btn btn-primary btn-sm">
+            New Position
+          </Link>
+        }
+      />
 
       <div className="mb-6 flex flex-wrap items-end gap-4">
         <form onSubmit={handleSearch} className="max-w-sm flex-1">
@@ -104,7 +115,7 @@ function PoolsIndexPage() {
                 key={opt.value}
                 type="button"
                 onClick={() => navigate({ search: { sortBy: opt.value, filterToken } })}
-                className={`btn btn-sm ${sortBy === opt.value ? "btn-primary" : "btn-ghost border border-base-300"}`}
+                className={`btn btn-sm ${sortBy === opt.value ? "btn-primary" : "btn-ghost border hairline"}`}
               >
                 {opt.label}
               </button>

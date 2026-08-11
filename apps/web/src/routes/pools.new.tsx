@@ -2,7 +2,10 @@ import { createFileRoute } from "@tanstack/react-router"
 import { useState } from "react"
 import { getAddress, isAddress } from "viem"
 import { useAccount } from "wagmi"
-import { Button, Card, CardBody, CardTitle, Input } from "../components/ui"
+import { Button } from "../components/ui/Button"
+import { Card, CardBody, CardTitle } from "../components/ui/Card"
+import { Input } from "../components/ui/Input"
+import { PageHeader } from "../components/ui/PageHeader"
 import { PROTOCOL_FEE_PERCENT_LABEL } from "../lib/protocol-fee"
 
 const Q96 = 2n ** 96n
@@ -188,14 +191,11 @@ function NewPoolPage() {
 
   return (
     <div className="mx-auto min-w-0 max-w-3xl py-8">
-      <div className="mb-6">
-        <p className="mb-2 text-sm font-medium uppercase tracking-wide text-primary">Phase 1 · Pool creation</p>
-        <h1 className="text-3xl font-bold">Create a new pool</h1>
-        <p className="mt-2 max-w-2xl text-base-content/65">
-          Define the pool key and opening price. Submission is gated by fresh form validation and an explicit
-          execution-time price re-check acknowledgement.
-        </p>
-      </div>
+      <PageHeader
+        title="Create a new pool"
+        eyebrow="Pool creation"
+        description="Define the pool key and opening price. Submission is gated by fresh form validation and an explicit execution-time price re-check acknowledgement."
+      />
 
       <Card>
         <CardBody className="gap-6">

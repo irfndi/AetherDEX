@@ -46,7 +46,7 @@ export function WalletConnect() {
         {isSwitching || isDisconnecting ? (
           <li className="disabled">
             <span className="loading loading-spinner loading-xs" />
-            {isSwitching ? "Switching..." : "Disconnecting..."}
+            {isSwitching ? "Switching…" : "Disconnecting…"}
           </li>
         ) : null}
         {actionError ? (

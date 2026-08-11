@@ -74,6 +74,13 @@ coverage/
 .claude/
 agent/
 skills-lock.json
+.commandcode/
+.goose/
+.kilocode/
+.kiro/
+.qwen/
+.trae/
+skills/
 
 # Browser QA artifacts
 .playwright-cli/

@@ -2,8 +2,11 @@ import { useAppKit } from "@reown/appkit/react"
 import { createFileRoute } from "@tanstack/react-router"
 import { type FormEvent, useEffect, useMemo, useState } from "react"
 import { useAccount } from "wagmi"
+import { PageHeading } from "../components/positions/PageHeading"
+import { PositionValue } from "../components/positions/PositionValue"
 import { Card, CardBody, CardTitle } from "../components/ui/Card"
 import { Input } from "../components/ui/Input"
+import { PageHeader } from "../components/ui/PageHeader"
 import { API_URL, isRecord } from "../lib/api"
 import { PROTOCOL_FEE_PERCENT_LABEL } from "../lib/protocol-fee"
 import {
@@ -197,15 +200,11 @@ function PositionsPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 py-6">
-      <div>
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-3xl font-bold">Positions</h1>
-          <span className="badge badge-warning">Indexed position</span>
-        </div>
-        <p className="mt-2 text-base-content/60">
-          Prepare a protected close, collect, and re-mint sequence for a position you control.
-        </p>
-      </div>
+      <PageHeader
+        title="Positions"
+        eyebrow="Indexed position"
+        description="Prepare a protected close, collect, and re-mint sequence for a position you control."
+      />
 
       <Card>
         <CardBody>
@@ -223,7 +222,7 @@ function PositionsPage() {
             <label className="form-control mt-5 max-w-md">
               <span className="label-text text-xs uppercase tracking-[0.18em] text-base-content/50">Position</span>
               <select
-                className="select select-bordered mt-2 w-full font-mono text-sm"
+                className="select select-bordered mt-2 w-full font-mono text-base"
                 value={selectedPositionId ?? ""}
                 onChange={(event) => setSelectedPositionId(Number(event.target.value))}
               >
@@ -360,37 +359,6 @@ function PositionsPage() {
           </CardBody>
         </Card>
       </div>
-    </div>
-  )
-}
-
-function PageHeading() {
-  return (
-    <div>
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-3xl font-bold">Positions</h1>
-        <span className="badge badge-warning">Rebalance</span>
-      </div>
-      <p className="mt-2 text-base-content/60">
-        Prepare a protected close, collect, and re-mint sequence for a position you control.
-      </p>
-    </div>
-  )
-}
-
-function PositionValue({
-  label,
-  value,
-  mono = false,
-}: {
-  readonly label: string
-  readonly value: string
-  readonly mono?: boolean
-}) {
-  return (
-    <div>
-      <p className="text-xs text-base-content/50">{label}</p>
-      <p className={mono ? "font-mono text-sm" : "text-sm"}>{value}</p>
     </div>
   )
 }

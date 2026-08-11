@@ -85,7 +85,7 @@ describe("WalletConnect", () => {
     vi.mocked(useSwitchChain).mockReturnValue({ mutate: switchChain, error: null, isPending: true } as never)
     renderConnected()
 
-    expect(screen.getByText("Switching...")).toBeDefined()
+    expect(screen.getByText("Switching…")).toBeDefined()
   })
 
   it("disconnects the wallet", async () => {

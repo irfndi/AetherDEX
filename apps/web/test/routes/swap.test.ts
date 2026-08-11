@@ -8,7 +8,8 @@ vi.mock("wagmi", () => ({
   useWaitForTransactionReceipt: () => ({ isLoading: false, isSuccess: false, data: undefined }),
 }))
 
-import { formatAmount, isQuoteExpired, type SwapQuote } from "../../src/routes/swap"
+import { formatAmount, type SwapQuote } from "../../src/lib/swap"
+import { isQuoteExpired } from "../../src/routes/swap"
 
 const quote: SwapQuote = {
   poolId: "0x0000000000000000000000000000000000000001",

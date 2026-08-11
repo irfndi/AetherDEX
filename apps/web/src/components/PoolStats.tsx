@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { isValidAddress, shortenAddress } from "../lib/address"
-import { Card, CardBody, CardTitle } from "./ui"
+import { Card, CardBody, CardTitle } from "./ui/Card"
 
 interface DexScreenerPair {
   chainId: string

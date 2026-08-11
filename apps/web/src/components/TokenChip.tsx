@@ -27,7 +27,7 @@ export function TokenChip({ token, onRemove, className = "" }: TokenChipProps) {
         <img
           src={token.logoURI}
           alt={token.symbol}
-          className="h-4 w-4 rounded-full"
+          className="size-4 rounded-full"
           referrerPolicy="no-referrer"
           loading="lazy"
           decoding="async"
@@ -35,7 +35,7 @@ export function TokenChip({ token, onRemove, className = "" }: TokenChipProps) {
         />
       ) : showMonogram ? (
         <span
-          className="flex h-4 w-4 items-center justify-center rounded-full bg-base-300 text-[10px] font-semibold"
+          className="flex size-4 items-center justify-center rounded-full bg-base-300 text-[0.625rem] font-semibold"
           aria-hidden="true"
         >
           {token.symbol.charAt(0)}
@@ -50,15 +50,7 @@ export function TokenChip({ token, onRemove, className = "" }: TokenChipProps) {
           className="btn btn-ghost btn-xs ml-1 h-4 min-h-0 w-4 p-0"
           aria-label={`Remove ${token.symbol}`}
         >
-          <svg
-            className="h-3 w-3"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            role="img"
-            aria-label={`Remove ${token.symbol}`}
-          >
-            <title>{`Remove ${token.symbol}`}</title>
+          <svg className="size-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" role="img" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>

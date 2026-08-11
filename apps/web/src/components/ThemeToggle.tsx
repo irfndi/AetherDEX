@@ -24,7 +24,7 @@ export function ThemeToggle() {
     >
       {theme === "aetherdex" ? (
         <svg
-          className="h-5 w-5"
+          className="size-5"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -41,7 +41,7 @@ export function ThemeToggle() {
         </svg>
       ) : (
         <svg
-          className="h-5 w-5"
+          className="size-5"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"

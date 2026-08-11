@@ -2,7 +2,9 @@ import type { Pool } from "@aetherdex/shared"
 import { useQuery } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { useEffect, useMemo, useState } from "react"
-import { Card, CardBody, CardTitle, Input } from "../components/ui"
+import { Card, CardBody, CardTitle } from "../components/ui/Card"
+import { Input } from "../components/ui/Input"
+import { PageHeader } from "../components/ui/PageHeader"
 import { allocatePositionAmounts, type PriceScenario, priceFromTick, simulatePriceScenarios } from "../lib/playground"
 import { poolsQueryOptions } from "../lib/pools-query"
 
@@ -159,19 +161,16 @@ function PlaygroundPage() {
 
   return (
     <div className="mx-auto max-w-6xl py-8">
-      <div className="mb-6 flex flex-wrap items-center gap-3">
-        <h1 className="text-3xl font-bold">LP Playground</h1>
-        <span className="badge badge-warning badge-outline font-semibold">Paper trading</span>
-      </div>
-      <p className="mb-4 max-w-3xl text-sm text-base-content/60">
-        Simulate a concentrated-liquidity position without connecting a wallet. Pick a pool, set a price range, and see
-        how the position would split and re-value under price moves. Nothing here touches real funds.
-      </p>
+      <PageHeader
+        title="LP Playground"
+        eyebrow="Paper trading"
+        description="Simulate a concentrated-liquidity position without connecting a wallet. Pick a pool, set a price range, and see how the position would split and re-value under price moves. Nothing here touches real funds."
+      />
 
       <div className="alert alert-info mb-6 py-3 text-sm" role="note">
         <span>
           <strong>Simulation only.</strong> Prices are derived from pool ticks assuming equal token decimals, and
-          scenario values use a simple basket model — not full concentrated-liquidity math. Treat every number as an
+          scenario values use a simple basket model, not full concentrated-liquidity math. Treat every number as an
           illustration.
         </span>
       </div>
@@ -185,7 +184,7 @@ function PlaygroundPage() {
 
       {apiFailed ? (
         <div className="alert alert-warning mb-6 py-3 text-sm" role="note">
-          <span>Live pool data is unavailable — showing bundled sample pools instead.</span>
+          <span>Live pool data is unavailable, showing bundled sample pools instead.</span>
         </div>
       ) : null}
 
@@ -291,8 +290,8 @@ function PlaygroundPage() {
                   aria-label={`Allocation: ${(allocation.token0Share * 100).toFixed(0)}% token0, ${(100 - allocation.token0Share * 100).toFixed(0)}% token1 by value`}
                 >
                   <div
-                    className="bg-primary transition-[width] duration-200"
-                    style={{ width: `${allocation.token0Share * 100}%` }}
+                    className="origin-left bg-primary transition-transform duration-200"
+                    style={{ transform: `scaleX(${allocation.token0Share})` }}
                   />
                   <div className="flex-1 bg-base-300" />
                 </div>
@@ -327,7 +326,7 @@ function PlaygroundPage() {
               </div>
               <p className="mb-3 text-xs text-base-content/60">
                 Values the allocated basket at each simulated price (amount0 × price + amount1). Fee column assumes one
-                unit of turnover per 1% of price movement while in range — illustrative, not a forecast.
+                unit of turnover per 1% of price movement while in range, illustrative, not a forecast.
               </p>
               {scenarios ? (
                 <ScenarioTable scenarios={scenarios.scenarios} showFees={feePercent !== undefined && feePercent > 0} />
